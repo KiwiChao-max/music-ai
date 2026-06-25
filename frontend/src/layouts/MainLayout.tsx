@@ -17,8 +17,11 @@ export function MainLayout() {
             <NavLink to="/" end className={navLinkClass}>
               Home
             </NavLink>
+            <NavLink to="/upload" className={navLinkClass}>
+              Upload
+            </NavLink>
             <NavLink to="/audio" className={navLinkClass}>
-              Audio
+              Tasks
             </NavLink>
           </nav>
         </div>

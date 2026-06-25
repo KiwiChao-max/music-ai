@@ -12,6 +12,14 @@ export function useAudioTasks() {
   });
 }
 
+export function useAudioTask(taskId: number) {
+  return useQuery<AudioTask>({
+    queryKey: [...TASKS_KEY, taskId],
+    queryFn: () => audioApi.get(taskId),
+    enabled: Number.isFinite(taskId),
+  });
+}
+
 export function useUploadAudio() {
   const qc = useQueryClient();
   return useMutation({
