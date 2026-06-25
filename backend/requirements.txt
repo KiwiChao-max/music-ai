@@ -6,3 +6,9 @@ python-multipart>=0.0.9
 SQLAlchemy>=2.0
 alembic>=1.13
 psycopg2-binary>=2.9
+
+# Async task queue. `celery[redis]` pulls in the redis client transitively,
+# but we pin it explicitly so the API process (which only needs to dispatch)
+# installs cleanly even if a lighter `celery` extra is used elsewhere.
+celery>=5.4
+redis>=5.0

@@ -15,7 +15,23 @@ services:
       timeout: 5s
       retries: 10
 
-  backend:
+  redis:
+    # Broker + result backend for Celery. The `api` and `worker` services
+    # talk to it over the compose network; expose 6379 to the host only
+    # if you want to inspect queues with `redis-cli` from your laptop.
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
     build: ./backend
     environment:
       DB_HOST: postgres
@@ -23,15 +39,41 @@ services:
       DB_USER: ${POSTGRES_USER:-postgres}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres123}
       DB_NAME: ${POSTGRES_DB:-music_ai}
+      REDIS_URL: redis://redis:6379/0
       UPLOAD_DIR: /app/uploads
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:
       - backend_uploads:/app/uploads
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    # Celery consumer. No HTTP port; only logs. Reuses the same image as
+    # the API; only the entrypoint differs.
+    build: ./backend
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres123}
+      DB_NAME: ${POSTGRES_DB:-music_ai}
+      REDIS_URL: redis://redis:6379/0
+      UPLOAD_DIR: /app/uploads
+    volumes:
+      - backend_uploads:/app/uploads
+    command: ["celery", "-A", "app.celery_app:celery", "worker", "--loglevel=info", "--concurrency=2"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
 volumes:
   postgres_data:
   backend_uploads:
+  redis_data:

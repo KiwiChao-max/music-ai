@@ -10,6 +10,6 @@ class BasicPitchService:
     the Python API (`basic_pitch.inference.predict`) on a saved audio file.
     """
 
-    def transcribe(self, audio_path: Path) -> Path:
+    def transcribe(self, audio_path: Path, output_dir: Path) -> Path:
         """Return the path to the generated MIDI file."""
         raise NotImplementedError

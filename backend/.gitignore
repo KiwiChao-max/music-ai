@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# Local on-disk storage (uploads + worker outputs)
+storage/
+
+# Local config / secrets
+.env
+
+# IDE
+.vscode/
+.idea/

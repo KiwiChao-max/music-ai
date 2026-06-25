@@ -1,5 +1,11 @@
 import { api } from "./axios";
-import type { AudioTask, UploadResponse } from "@/types/audio";
+import type {
+  AudioTask,
+  ProcessResponse,
+  StemInfo,
+  TaskStatus,
+  UploadResponse,
+} from "@/types/audio";
 
 export const audioApi = {
   list: () => api.get<AudioTask[]>("/audio").then((r) => r.data),
@@ -16,4 +22,15 @@ export const audioApi = {
   },
   remove: (taskId: number) =>
     api.delete<void>(`/audio/${taskId}`).then((r) => r.status),
+};
+
+export const tasksApi = {
+  process: (taskId: number) =>
+    api
+      .post<ProcessResponse>(`/tasks/${taskId}/process`)
+      .then((r) => r.data),
+  status: (taskId: number) =>
+    api.get<TaskStatus>(`/tasks/${taskId}/status`).then((r) => r.data),
+  stems: (taskId: number) =>
+    api.get<StemInfo[]>(`/tasks/${taskId}/stems`).then((r) => r.data),
 };

@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 
+import { ProgressBar } from "@/components/ProgressBar";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useAudioTasks } from "@/hooks/useAudioTasks";
 
@@ -48,14 +49,29 @@ export function AudioListPage() {
             <li key={t.id}>
               <Link
                 to={`/audio/${t.id}`}
-                className="flex items-center justify-between px-4 py-3 transition-colors hover:bg-slate-50"
+                className="block px-4 py-3 transition-colors hover:bg-slate-50"
               >
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-slate-900">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900">
                     #{t.id} · {t.filename}
                   </p>
+                  <StatusBadge status={t.status} />
                 </div>
-                <StatusBadge status={t.status} />
+                {t.status === "PROCESSING" && (
+                  <div className="mt-2">
+                    <ProgressBar value={t.progress} />
+                    {t.current_step && (
+                      <p className="mt-1 truncate text-xs text-slate-500">
+                        {t.current_step}
+                      </p>
+                    )}
+                  </div>
+                )}
+                {t.status === "FAILED" && t.error_message && (
+                  <p className="mt-1 truncate text-xs text-red-600">
+                    {t.error_message}
+                  </p>
+                )}
               </Link>
             </li>
           ))}
