@@ -1,0 +1,20 @@
+interface ProgressBarProps {
+  value: number; // 0-100
+  className?: string;
+}
+
+export function ProgressBar({ value, className = "" }: ProgressBarProps) {
+  const v = Math.max(0, Math.min(100, value));
+  // 10 cells: ░ = empty, █ = filled.
+  const cells = 10;
+  const filled = Math.round((v / 100) * cells);
+  return (
+    <div className={`flex items-center gap-2 ${className}`}>
+      <div className="font-mono text-xs tracking-tight text-slate-700">
+        {"█".repeat(filled)}
+        <span className="text-slate-300">{"░".repeat(cells - filled)}</span>
+      </div>
+      <div className="text-xs tabular-nums text-slate-500">{v}%</div>
+    </div>
+  );
+}
