@@ -7,11 +7,42 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.db.session import get_db
 from app.schemas.audio import AudioTaskRead, UploadResponse
 from app.services import file_service, task_service
 
 router = APIRouter(prefix="/api/audio", tags=["audio"])
+
+_ALLOWED_AUDIO_EXTENSIONS = {
+    ".aac",
+    ".aiff",
+    ".aif",
+    ".flac",
+    ".m4a",
+    ".mp3",
+    ".ogg",
+    ".opus",
+    ".wav",
+    ".wave",
+    ".webm",
+    ".wma",
+}
+
+
+def _looks_like_audio(file: UploadFile) -> bool:
+    content_type = (file.content_type or "").lower()
+    if content_type.startswith("audio/"):
+        return True
+    suffix = Path(file.filename or "").suffix.lower()
+    return suffix in _ALLOWED_AUDIO_EXTENSIONS
+
+
+def _cleanup_failed_upload(db: Session, task_id: int) -> None:
+    task = task_service.delete_task(db, task_id)
+    db.commit()
+    if task is not None:
+        file_service.remove_task_files(task)
 
 
 def _probe_duration(path: Path) -> float | None:
@@ -41,19 +72,25 @@ def upload_audio(
     Flow: insert DB row first, then stream file to disk. If the file write
     fails we roll the row back so state and disk stay in sync.
     """
+    if not _looks_like_audio(file):
+        raise HTTPException(
+            status_code=415,
+            detail="only audio uploads are supported",
+        )
+
     task = task_service.create_task(db, file.filename or "upload.bin")
     db.commit()  # release the row so the FK-free file path is well-defined
     try:
-        path = file_service.save_upload(task, file.file)
+        path = file_service.save_upload(
+            task,
+            file.file,
+            max_bytes=settings.max_upload_bytes,
+        )
+    except file_service.UploadTooLargeError as exc:
+        _cleanup_failed_upload(db, task.id)
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
     except Exception:
-        # Best-effort cleanup; the row may have been committed already.
-        if db.in_transaction():
-            with db.begin_nested():
-                task_service.delete_task(db, task.id)
-        else:
-            task_service.delete_task(db, task.id)
-        db.commit()
-        file_service.remove_task_files(task)
+        _cleanup_failed_upload(db, task.id)
         raise
 
     # Stamp the conventional output path and (best-effort) duration.

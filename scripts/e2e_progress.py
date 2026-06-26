@@ -1,13 +1,18 @@
 """End-to-end: upload a task then run the worker and watch progress."""
 import json
+import subprocess
+import sys
 import time
 import urllib.request
+from pathlib import Path
 
 BASE = "http://127.0.0.1:8000"
-SAMPLE = "d:/project/overseas/music-ai/scripts/_e2e.wav"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+BACKEND = PROJECT_ROOT / "backend"
+SAMPLE = PROJECT_ROOT / "scripts" / "_e2e.wav"
 # Minimal valid WAV: PCM 8kHz mono 8-bit, 0.1s of silence.
-import struct, wave
-with wave.open(SAMPLE, "wb") as w:
+import wave
+with wave.open(str(SAMPLE), "wb") as w:
     w.setnchannels(1); w.setsampwidth(1); w.setframerate(8000)
     w.writeframes(b"\x80" * 800)
 
@@ -17,7 +22,7 @@ form = (
     f"--{boundary}\r\n"
     f"Content-Disposition: form-data; name=\"file\"; filename=\"_e2e.wav\"\r\n"
     f"Content-Type: audio/wav\r\n\r\n"
-).encode() + open(SAMPLE, "rb").read() + f"\r\n--{boundary}--\r\n".encode()
+).encode() + SAMPLE.read_bytes() + f"\r\n--{boundary}--\r\n".encode()
 req = urllib.request.Request(
     f"{BASE}/api/audio/upload",
     method="POST",
@@ -29,10 +34,9 @@ with urllib.request.urlopen(req) as r:
 print(f"uploaded task_id={task_id}")
 
 # 2) spawn the worker in a subprocess so it has the right sys.path
-import subprocess
 subprocess.Popen(
-    ["python", "-m", "app.workers.audio_worker", str(task_id)],
-    cwd="d:/project/overseas/music-ai/backend",
+    [sys.executable, "-m", "app.workers.audio_worker", str(task_id)],
+    cwd=BACKEND,
     stdout=subprocess.DEVNULL,
     stderr=subprocess.DEVNULL,
 )
@@ -46,4 +50,4 @@ for i in range(20):
     if t["status"] in ("FINISHED", "FAILED"):
         break
 
-import os; os.remove(SAMPLE)
+SAMPLE.unlink(missing_ok=True)

@@ -10,7 +10,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     upload_dir: Path | None = None
     # Where the worker writes processed outputs. One subdirectory per task.
     output_dir: Path | None = None
+    # Hard stop for a single uploaded audio file. The file writer enforces
+    # this while streaming so large uploads are rejected before hitting disk.
+    max_upload_bytes: int = 200 * 1024 * 1024
 
     # ---- celery / redis ----------------------------------------------------
     # The Celery broker (queue transport) and result backend share the same
@@ -64,6 +67,22 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     celery_broker_url: str | None = None
     celery_result_backend: str | None = None
+
+    # ---- HTTP --------------------------------------------------------------
+    # Comma-separated string or repeated env value accepted by pydantic.
+    cors_origins: list[str] = Field(
+        default_factory=lambda: [
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+        ]
+    )
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def _parse_cors_origins(cls, value):
+        if isinstance(value, str):
+            return [origin.strip() for origin in value.split(",") if origin.strip()]
+        return value
 
     @property
     def resolved_upload_dir(self) -> Path:

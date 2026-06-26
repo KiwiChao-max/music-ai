@@ -194,8 +194,11 @@ export function AudioDetailPage() {
   };
 
   const onStart = () => {
+    startProcess.reset();
     setPolling(true);
-    startProcess.mutate(task.id);
+    startProcess.mutate(task.id, {
+      onError: () => setPolling(false),
+    });
   };
 
   const isFinished = task.status === "FINISHED";
@@ -236,6 +239,11 @@ export function AudioDetailPage() {
           >
             {startProcess.isPending ? "Starting..." : "Start processing"}
           </button>
+          {startProcess.isError && (
+            <p className="mt-3 text-sm text-red-600">
+              Failed to start: {(startProcess.error as Error).message}
+            </p>
+          )}
         </div>
       )}
 
@@ -266,6 +274,11 @@ export function AudioDetailPage() {
           >
             {startProcess.isPending ? "Retrying..." : "Retry"}
           </button>
+          {startProcess.isError && (
+            <p className="text-sm text-red-700">
+              Retry failed: {(startProcess.error as Error).message}
+            </p>
+          )}
         </div>
       )}
 
@@ -328,6 +341,11 @@ export function AudioDetailPage() {
           {remove.isPending ? "Deleting..." : "Delete task"}
         </button>
       </div>
+      {remove.isError && (
+        <p className="text-right text-sm text-red-600">
+          Delete failed: {(remove.error as Error).message}
+        </p>
+      )}
     </section>
   );
 }

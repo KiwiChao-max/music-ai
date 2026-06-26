@@ -23,7 +23,9 @@ just overwrites the local temp WAV and the broker DB.
 import json
 import math
 import os
+from pathlib import Path
 import shutil
+import signal
 import struct
 import subprocess
 import sys
@@ -34,8 +36,9 @@ import urllib.request
 import wave
 
 BASE = "http://127.0.0.1:8000"
-BACKEND = "d:/project/overseas/music-ai/backend"
-SAMPLE = "d:/project/overseas/music-ai/scripts/_e2e_midi.wav"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+BACKEND = PROJECT_ROOT / "backend"
+SAMPLE = PROJECT_ROOT / "scripts" / "_e2e_midi.wav"
 midi_tmp = os.path.join(tempfile.gettempdir(), "_e2e_midi_out.mid")
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 E2E_BROKER = os.environ.get("E2E_BROKER", "redis")  # see e2e_tasks.py
@@ -54,13 +57,29 @@ def http(method, path, body=None, headers=None):
 
 
 def kill_port(port):
-    """Kill whatever is bound to `port` on Windows."""
-    subprocess.run(
-        ["powershell", "-NoProfile", "-Command",
-         f"Get-NetTCPConnection -LocalPort {port} -ErrorAction SilentlyContinue"
-         f" | ForEach-Object {{ Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }}"],
+    """Kill whatever is bound to `port` on common dev platforms."""
+    if sys.platform.startswith("win"):
+        subprocess.run(
+            ["powershell", "-NoProfile", "-Command",
+             f"Get-NetTCPConnection -LocalPort {port} -ErrorAction SilentlyContinue"
+             f" | ForEach-Object {{ Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }}"],
+            check=False,
+        )
+        return
+
+    if shutil.which("lsof") is None:
+        return
+    result = subprocess.run(
+        ["lsof", "-ti", f":{port}"],
         check=False,
+        capture_output=True,
+        text=True,
     )
+    for pid in result.stdout.split():
+        try:
+            os.kill(int(pid), signal.SIGTERM)
+        except (OSError, ValueError):
+            pass
 
 
 def wait_http(url, timeout=30.0):
@@ -110,7 +129,7 @@ def write_test_wav(path: str) -> None:
         s += 0.3 * env * math.sin(2 * math.pi * 2 * freq * (i / rate))
         samples.append(int(max(-1.0, min(1.0, s * 0.5)) * 32767))
 
-    with wave.open(path, "wb") as w:
+    with wave.open(str(path), "wb") as w:
         w.setnchannels(1)
         w.setsampwidth(2)  # 16-bit
         w.setframerate(rate)
@@ -181,7 +200,7 @@ try:
         f"--{boundary}\r\n"
         f'Content-Disposition: form-data; name="file"; filename="_e2e_midi.wav"\r\n'
         f"Content-Type: audio/wav\r\n\r\n"
-    ).encode() + open(SAMPLE, "rb").read() + f"\r\n--{boundary}--\r\n".encode()
+    ).encode() + SAMPLE.read_bytes() + f"\r\n--{boundary}--\r\n".encode()
     status, body = http(
         "POST", "/api/audio/upload", form,
         {"Content-Type": f"multipart/form-data; boundary={boundary}"},
@@ -268,9 +287,9 @@ finally:
             p.kill()
     if broker_dir and os.path.isdir(broker_dir):
         shutil.rmtree(broker_dir, ignore_errors=True)
-    for f in (SAMPLE, midi_tmp):
-        if os.path.exists(f):
-            try:
-                os.remove(f)
-            except OSError:
-                pass
+    SAMPLE.unlink(missing_ok=True)
+    if os.path.exists(midi_tmp):
+        try:
+            os.remove(midi_tmp)
+        except OSError:
+            pass

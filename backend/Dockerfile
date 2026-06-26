@@ -22,9 +22,9 @@ COPY . .
 # package's model/ directory and is baked into this image layer.
 RUN python warmup_basic_pitch.py
 
-# Persistent storage for uploads — mount a volume here in compose.
-RUN mkdir -p /app/uploads
-ENV UPLOAD_DIR=/app/uploads
+# Persistent storage for uploads and worker outputs — mount a volume here in compose.
+RUN mkdir -p /app/storage/uploads /app/storage/outputs
+ENV STORAGE_DIR=/app/storage
 
 EXPOSE 8000
 

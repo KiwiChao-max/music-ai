@@ -9,6 +9,10 @@ export function useAudioTasks() {
   return useQuery({
     queryKey: TASKS_KEY,
     queryFn: audioApi.list,
+    refetchInterval: (query) =>
+      query.state.data?.some((task) => task.status === "PROCESSING")
+        ? 1500
+        : false,
   });
 }
 
