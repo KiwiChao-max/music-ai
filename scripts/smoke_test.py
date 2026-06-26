@@ -1,12 +1,12 @@
 """Smoke-test the four audio endpoints."""
 import json
-import os
 import urllib.request
 import urllib.error
 from pathlib import Path
 
 BASE = "http://127.0.0.1:8000"
-TMP = Path("d:/project/overseas/music-ai/scripts/_sample.wav")
+SCRIPT_DIR = Path(__file__).resolve().parent
+TMP = SCRIPT_DIR / "_sample.wav"
 TMP.write_bytes(b"RIFF" + b"\x00" * 100)  # minimal dummy audio
 
 def req(method: str, path: str, *, data: bytes | None = None, headers: dict | None = None) -> tuple[int, str]:
@@ -55,4 +55,4 @@ print(f"DELETE /api/audio/{task_id}      -> {code}  {body}")
 code, body = req("GET", f"/api/audio/{task_id}")
 print(f"GET  /api/audio/{task_id} (gone) -> {code}  {body}")
 
-os.remove(TMP)
+TMP.unlink(missing_ok=True)
