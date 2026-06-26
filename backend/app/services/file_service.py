@@ -48,7 +48,11 @@ def storage_path(task_id: int, filename: str) -> Path:
 
 
 def save_upload(task: AudioTask, source_file, *, max_bytes: int | None = None) -> Path:
-    """Stream `source_file` to disk under the task id. Caller owns the file."""
+    """Stream `source_file` to disk under the task id. Caller owns the file.
+
+    The size check runs *before* writing each chunk so we never put more than
+    `max_bytes` on disk, even though the request body might be much larger.
+    """
     limit = max_bytes if max_bytes is not None else settings.max_upload_bytes
     target = storage_path(task.id, task.filename)
     written = 0
@@ -57,12 +61,12 @@ def save_upload(task: AudioTask, source_file, *, max_bytes: int | None = None) -
             chunk = source_file.read(1024 * 1024)
             if not chunk:
                 break
-            written += len(chunk)
-            if limit > 0 and written > limit:
+            if limit > 0 and written + len(chunk) > limit:
                 out.close()
                 target.unlink(missing_ok=True)
                 raise UploadTooLargeError(f"upload exceeds {limit} bytes")
             out.write(chunk)
+            written += len(chunk)
     return target
 
 

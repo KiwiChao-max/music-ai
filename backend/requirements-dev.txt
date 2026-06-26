@@ -1,0 +1,4 @@
+# Test dependencies. Kept separate from `requirements.txt` so production
+# images don't pull pytest + SQLAlchemy in-memory helpers.
+pytest>=8.0
+pytest-asyncio>=0.23

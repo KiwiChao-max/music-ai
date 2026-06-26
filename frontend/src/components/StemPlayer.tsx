@@ -63,7 +63,13 @@ interface StemListProps {
 
 export function StemList({ stems }: StemListProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  // `currentName` = which stem is loaded. `paused` reflects the actual
+  // play/pause state of the <audio> element. Keeping these as two separate
+  // state values lets us render the right button label for every transition
+  // (play → pause → play again) without the previous "Play flash" bug that
+  // happened when `onPause` itself cleared the active stem.
   const [currentName, setCurrentName] = useState<string | null>(null);
+  const [paused, setPaused] = useState(true);
 
   const togglePlay = (stem: StemInfo) => {
     if (stem.kind !== "audio") return;
@@ -81,40 +87,50 @@ export function StemList({ stems }: StemListProps) {
       return;
     }
 
+    // Switching to a different stem. Pause the current one, set the new
+    // stem *first* (so React state is in sync before `pause()` triggers an
+    // async onPause event), then start the new playback.
     audio.pause();
+    setCurrentName(stem.name);
+    setPaused(false);
     audio.src = stem.url;
     audio.currentTime = 0;
-    setCurrentName(stem.name);
     audio.play().catch(() => {
       // User gesture is satisfied since this is a click handler.
     });
   };
 
-  const clearCurrent = () => setCurrentName(null);
-
   useEffect(() => {
     audioRef.current?.pause();
     setCurrentName(null);
+    setPaused(true);
   }, [stems]);
 
   return (
     <>
       <audio
         ref={audioRef}
-        onEnded={clearCurrent}
-        onPause={clearCurrent}
+        onPlay={() => setPaused(false)}
+        onPause={() => setPaused(true)}
+        onEnded={() => {
+          setPaused(true);
+          setCurrentName(null);
+        }}
         preload="none"
         className="hidden"
       />
       <ul className="space-y-2">
-        {stems.map((stem) => (
-          <StemRow
-            key={stem.name}
-            stem={stem}
-            isPlaying={currentName === stem.name}
-            onTogglePlay={() => togglePlay(stem)}
-          />
-        ))}
+        {stems.map((stem) => {
+          const isCurrent = currentName === stem.name;
+          return (
+            <StemRow
+              key={stem.name}
+              stem={stem}
+              isPlaying={isCurrent && !paused}
+              onTogglePlay={() => togglePlay(stem)}
+            />
+          );
+        })}
       </ul>
     </>
   );

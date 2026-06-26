@@ -1,9 +1,10 @@
 """Audio task REST endpoints."""
 from __future__ import annotations
 
-import wave
+import logging
 from pathlib import Path
 
+import soundfile as sf
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
@@ -11,6 +12,8 @@ from app.config import settings
 from app.db.session import get_db
 from app.schemas.audio import AudioTaskRead, UploadResponse
 from app.services import file_service, task_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/audio", tags=["audio"])
 
@@ -39,27 +42,40 @@ def _looks_like_audio(file: UploadFile) -> bool:
 
 
 def _cleanup_failed_upload(db: Session, task_id: int) -> None:
+    """Delete the task row and its on-disk files, swallowing file errors.
+
+    DB and disk cleanup happen in two steps on purpose. We must commit the
+    row deletion so a subsequent retry can create a fresh row with the same
+    id, but we *also* want to remove the partially-written upload. If the
+    filesystem operation fails, we log it and move on — the next upload for
+    the same task will overwrite the partial file anyway, and
+    `remove_task_files` is already best-effort (it uses
+    `shutil.rmtree(ignore_errors=True)`).
+    """
     task = task_service.delete_task(db, task_id)
     db.commit()
     if task is not None:
-        file_service.remove_task_files(task)
+        try:
+            file_service.remove_task_files(task)
+        except Exception:  # noqa: BLE001 - cleanup must never raise
+            logger.exception(
+                "cleanup_failed_upload: file removal failed for task %s", task_id
+            )
 
 
 def _probe_duration(path: Path) -> float | None:
-    """Best-effort WAV duration probe using only the stdlib.
+    """Best-effort duration probe using `soundfile` (WAV/FLAC/OGG/...).
 
-    Returns `None` for non-WAV files (we don't pull in `mutagen` yet). The
-    worker can re-probe with a proper audio lib in Milestone 2.
+    Returns `None` for formats soundfile cannot decode without an external
+    decoder (e.g. some MP3 builds) so the worker can re-probe if needed.
     """
     try:
-        with wave.open(str(path), "rb") as w:
-            frames = w.getnframes()
-            rate = w.getframerate()
-            if rate <= 0:
-                return None
-            return round(frames / float(rate), 2)
-    except (wave.Error, EOFError, FileNotFoundError):
+        info = sf.info(str(path))
+    except (OSError, RuntimeError):
         return None
+    if info.samplerate <= 0 or info.frames <= 0:
+        return None
+    return round(info.frames / float(info.samplerate), 2)
 
 
 @router.post("/upload", response_model=UploadResponse, status_code=201)
@@ -69,8 +85,9 @@ def upload_audio(
 ) -> UploadResponse:
     """Persist the uploaded file and create an `audio_tasks` row.
 
-    Flow: insert DB row first, then stream file to disk. If the file write
-    fails we roll the row back so state and disk stay in sync.
+    Flow: insert DB row (flush so we get the id), stream file to disk, then
+    commit once. If the file write fails we roll the row back so state and
+    disk stay in sync — no half-created task lingers in the DB.
     """
     if not _looks_like_audio(file):
         raise HTTPException(
@@ -79,7 +96,7 @@ def upload_audio(
         )
 
     task = task_service.create_task(db, file.filename or "upload.bin")
-    db.commit()  # release the row so the FK-free file path is well-defined
+    db.flush()  # populate task.id without committing
     try:
         path = file_service.save_upload(
             task,
@@ -87,10 +104,10 @@ def upload_audio(
             max_bytes=settings.max_upload_bytes,
         )
     except file_service.UploadTooLargeError as exc:
-        _cleanup_failed_upload(db, task.id)
+        db.rollback()
         raise HTTPException(status_code=413, detail=str(exc)) from exc
     except Exception:
-        _cleanup_failed_upload(db, task.id)
+        db.rollback()
         raise
 
     # Stamp the conventional output path and (best-effort) duration.
@@ -103,9 +120,22 @@ def upload_audio(
 
 
 @router.get("", response_model=list[AudioTaskRead])
-def list_tasks(db: Session = Depends(get_db)) -> list[AudioTaskRead]:
-    """Return all tasks, newest first."""
-    return [AudioTaskRead.model_validate(t) for t in task_service.list_tasks(db)]
+def list_tasks(
+    limit: int = 100,
+    offset: int = 0,
+    db: Session = Depends(get_db),
+) -> list[AudioTaskRead]:
+    """Return tasks, newest first. `limit` is clamped to [1, 500]."""
+    if limit < 1:
+        limit = 1
+    elif limit > 500:
+        limit = 500
+    if offset < 0:
+        offset = 0
+    return [
+        AudioTaskRead.model_validate(t)
+        for t in task_service.list_tasks(db, limit=limit, offset=offset)
+    ]
 
 
 @router.get("/{task_id}", response_model=AudioTaskRead)
@@ -124,4 +154,7 @@ def delete_task(task_id: int, db: Session = Depends(get_db)) -> None:
     if task is None:
         raise HTTPException(status_code=404, detail="task not found")
     db.commit()
-    file_service.remove_task_files(task)
+    try:
+        file_service.remove_task_files(task)
+    except Exception:  # noqa: BLE001 - cleanup must never raise
+        logger.exception("delete_task: file removal failed for task %s", task_id)

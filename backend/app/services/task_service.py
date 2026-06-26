@@ -19,8 +19,13 @@ def safe_filename(name: str) -> str:
 
 
 # ---- reads ----------------------------------------------------------------
-def list_tasks(db: Session) -> list[AudioTask]:
-    stmt = select(AudioTask).order_by(AudioTask.created_at.desc(), AudioTask.id.desc())
+def list_tasks(db: Session, *, limit: int = 100, offset: int = 0) -> list[AudioTask]:
+    stmt = (
+        select(AudioTask)
+        .order_by(AudioTask.created_at.desc(), AudioTask.id.desc())
+        .limit(limit)
+        .offset(offset)
+    )
     return list(db.scalars(stmt).all())
 
 

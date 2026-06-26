@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { ProgressBar } from "@/components/ProgressBar";
@@ -150,13 +149,14 @@ export function AudioDetailPage() {
   const taskId = Number(id);
   const navigate = useNavigate();
 
-  const [polling, setPolling] = useState(true);
+  // Derive the polling interval from the current task status. This is the
+  // single source of truth: while PROCESSING we poll, otherwise we don't.
+  // React Query re-evaluates the callback on every data change, so flipping
+  // the status automatically starts or stops polling.
   const { data: task, isLoading, isError, error } = useAudioTask(taskId, {
-    refetchInterval: polling ? POLL_MS : false,
+    refetchInterval: (current) =>
+      current?.status === "PROCESSING" ? POLL_MS : false,
   });
-  useEffect(() => {
-    if (task && task.status !== "PROCESSING") setPolling(false);
-  }, [task]);
 
   const startProcess = useStartProcess();
   const remove = useDeleteAudio();
@@ -173,7 +173,7 @@ export function AudioDetailPage() {
     return (
       <div className="space-y-3">
         <p className="text-sm text-red-600">
-          Failed to load: {(error as Error).message}
+          Failed to load: {error.message}
         </p>
         <Link
           to="/audio"
@@ -195,9 +195,11 @@ export function AudioDetailPage() {
 
   const onStart = () => {
     startProcess.reset();
-    setPolling(true);
     startProcess.mutate(task.id, {
-      onError: () => setPolling(false),
+      onError: () => {
+        // Refetch will pick up the FAILED state from the server; nothing
+        // extra to do here.
+      },
     });
   };
 
@@ -241,7 +243,7 @@ export function AudioDetailPage() {
           </button>
           {startProcess.isError && (
             <p className="mt-3 text-sm text-red-600">
-              Failed to start: {(startProcess.error as Error).message}
+              Failed to start: {startProcess.error.message}
             </p>
           )}
         </div>
@@ -276,7 +278,7 @@ export function AudioDetailPage() {
           </button>
           {startProcess.isError && (
             <p className="text-sm text-red-700">
-              Retry failed: {(startProcess.error as Error).message}
+              Retry failed: {startProcess.error.message}
             </p>
           )}
         </div>
@@ -289,7 +291,7 @@ export function AudioDetailPage() {
             {stemsQuery.isLoading && <p className="text-sm text-slate-500">Loading stems...</p>}
             {stemsQuery.isError && (
               <p className="text-sm text-red-600">
-                Failed to load stems: {(stemsQuery.error as Error).message}
+                Failed to load stems: {stemsQuery.error.message}
               </p>
             )}
             {stemsQuery.data && stemsQuery.data.length === 0 && (
@@ -343,7 +345,7 @@ export function AudioDetailPage() {
       </div>
       {remove.isError && (
         <p className="text-right text-sm text-red-600">
-          Delete failed: {(remove.error as Error).message}
+          Delete failed: {remove.error.message}
         </p>
       )}
     </section>
