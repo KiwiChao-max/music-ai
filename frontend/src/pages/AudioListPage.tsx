@@ -27,7 +27,7 @@ export function AudioListPage() {
       {isLoading && <p className="text-sm text-slate-500">Loading tasks...</p>}
       {isError && (
         <p className="text-sm text-red-600">
-          Failed to load: {(error as Error).message}
+          Failed to load: {error.message}
         </p>
       )}
 

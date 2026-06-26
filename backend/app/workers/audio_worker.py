@@ -7,11 +7,14 @@ Runs the processing pipeline for one `audio_tasks` row:
 Demucs is attempted first. If it is not installed or fails, the worker falls
 back to the original mix plus placeholder stems so the app remains usable in
 lightweight development environments.
+
+Heavy services (Demucs / Basic Pitch / drum-MIDI / MIDI mapping / analysis)
+hold no per-call state, so they are instantiated once at module load instead
+of being recreated for every task.
 """
 from __future__ import annotations
 
 import logging
-import time
 import wave
 from pathlib import Path
 
@@ -29,17 +32,16 @@ from app.services import (
 
 logger = logging.getLogger(__name__)
 
+# Module-level service singletons. Safe to share across tasks within one
+# worker process; each call takes a fresh audio path so state cannot leak.
+_DEMUCS = demucs_service.DemucsService()
+_BASIC_PITCH = basic_pitch_service.BasicPitchService()
+_DRUM_MIDI = drum_midi_service.DrumMidiService()
+_MIDI_MAPPING = midi_mapping_service.MidiMappingService()
+_MUSIC_ANALYSIS = music_analysis_service.MusicAnalysisService()
+
 _PLACEHOLDER_STEMS: tuple[str, ...] = demucs_service.EXPECTED_STEMS
 _MELODIC_STEMS: tuple[str, ...] = ("bass", "other", "vocals")
-
-_PIPELINE_STEPS: list[tuple[int, str, float]] = [
-    (10, "Preparing audio...", 0.3),
-    (30, "Separating stems...", 0.3),
-    (72, "Transcribing to MIDI...", 0.3),
-    (88, "Mapping GM/XG MIDI...", 0.2),
-    (94, "Analyzing music...", 0.2),
-    (98, "Finalizing outputs...", 0.2),
-]
 
 
 def _write_silent_wav(path: Path, *, seconds: float = 0.1, rate: int = 8000) -> None:
@@ -63,7 +65,7 @@ def _emit_placeholder_stems(output_dir: Path) -> dict[str, Path]:
 def _separate_stems(audio_path: Path, output_dir: Path) -> dict[str, Path]:
     """Run Demucs if available, otherwise return placeholder stems."""
     try:
-        result = demucs_service.DemucsService().separate(audio_path, output_dir)
+        result = _DEMUCS.separate(audio_path, output_dir)
         logger.info(
             "demucs: separated %s with %s into %s",
             audio_path.name,
@@ -77,13 +79,12 @@ def _separate_stems(audio_path: Path, output_dir: Path) -> dict[str, Path]:
 
 
 def _run_basic_pitch(audio_path: Path, output_dir: Path) -> Path:
-    service = basic_pitch_service.BasicPitchService()
-    result = service.transcribe(audio_path, output_dir)
+    result = _BASIC_PITCH.transcribe(audio_path, output_dir)
     return result.midi_path
 
+
 def _run_drum_midi(stem_path: Path, output_dir: Path) -> Path | None:
-    service = drum_midi_service.DrumMidiService()
-    result = service.create_drum_midi(stem_path, output_dir)
+    result = _DRUM_MIDI.create_drum_midi(stem_path, output_dir)
     if result.event_count == 0:
         logger.warning("drum-midi produced no hits for %s", stem_path.name)
     return result.combined_path
@@ -123,20 +124,30 @@ def _transcribe_stems_or_mix(
     return midi_paths
 
 
-def _map_midi(output_dir: Path, fallback_midi_path: Path) -> midi_mapping_service.MidiMappingResult:
+def _map_midi(
+    output_dir: Path, fallback_midi_path: Path
+) -> midi_mapping_service.MidiMappingResult:
     source_paths = midi_mapping_service.collect_raw_midi_sources(
         output_dir,
         fallback=fallback_midi_path,
     )
     if not source_paths:
         raise RuntimeError("no raw MIDI files found to map")
-    service = midi_mapping_service.MidiMappingService()
-    return service.create_variants_for_sources(source_paths, output_dir)
+    return _MIDI_MAPPING.create_variants_for_sources(source_paths, output_dir)
 
 
 def _analyze_music(output_dir: Path) -> Path:
-    service = music_analysis_service.MusicAnalysisService()
-    return service.analyze_and_write(output_dir)
+    return _MUSIC_ANALYSIS.analyze_and_write(output_dir)
+
+
+def _report(db, task, progress: int, step: str) -> None:
+    """Commit a progress update. Kept in one helper so we don't sprinkle
+    `db.commit()` calls throughout the pipeline — every step ends with this
+    call so the API can observe fresh state on the next /status poll.
+    """
+    task_service.set_progress(db, task, progress, step)
+    db.commit()
+    logger.info("task %s: %s%% %s", task.id, progress, step)
 
 
 def _run_pipeline(
@@ -145,36 +156,42 @@ def _run_pipeline(
     audio_path: Path,
     output_dir: Path,
 ) -> None:
+    """Run the pipeline as a sequence of explicit steps.
+
+    Each step calls `_report` once with its starting progress percentage; the
+    actual work runs *before* the next step's `_report`, so the UI sees the
+    previous value until the new one lands. No more `time.sleep` padding —
+    progress is real work, real progress.
+    """
     output_dir.mkdir(parents=True, exist_ok=True)
-    stems: dict[str, Path] = {}
-    midi_paths: list[Path] = []
 
-    for progress, step, delay in _PIPELINE_STEPS:
-        task_service.set_progress(db, task, progress, step)
-        db.commit()
-        logger.info("task %s: %s%% %s", task.id, progress, step)
+    _report(db, task, 10, "Preparing audio...")
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-        if step == "Separating stems...":
-            stems = _separate_stems(audio_path, output_dir)
-        elif step == "Transcribing to MIDI...":
-            midi_paths = _transcribe_stems_or_mix(audio_path, output_dir, stems)
-            logger.info("task %s: wrote %d midi file(s)", task.id, len(midi_paths))
-        elif step == "Mapping GM/XG MIDI...":
-            if not midi_paths:
-                raise RuntimeError("cannot map MIDI before transcription completes")
-            mapping = _map_midi(output_dir, midi_paths[0])
-            logger.info(
-                "task %s: mapped %d midi source(s) to %s and %s",
-                task.id,
-                len(mapping.source_paths),
-                mapping.gm_path,
-                mapping.xg_path,
-            )
-        elif step == "Analyzing music...":
-            analysis_path = _analyze_music(output_dir)
-            logger.info("task %s: analysis written to %s", task.id, analysis_path)
-        else:
-            time.sleep(delay)
+    _report(db, task, 30, "Separating stems...")
+    stems = _separate_stems(audio_path, output_dir)
+
+    _report(db, task, 72, "Transcribing to MIDI...")
+    midi_paths = _transcribe_stems_or_mix(audio_path, output_dir, stems)
+    logger.info("task %s: wrote %d midi file(s)", task.id, len(midi_paths))
+
+    _report(db, task, 88, "Mapping GM/XG MIDI...")
+    if not midi_paths:
+        raise RuntimeError("cannot map MIDI before transcription completes")
+    mapping = _map_midi(output_dir, midi_paths[0])
+    logger.info(
+        "task %s: mapped %d midi source(s) to %s and %s",
+        task.id,
+        len(mapping.source_paths),
+        mapping.gm_path,
+        mapping.xg_path,
+    )
+
+    _report(db, task, 94, "Analyzing music...")
+    analysis_path = _analyze_music(output_dir)
+    logger.info("task %s: analysis written to %s", task.id, analysis_path)
+
+    _report(db, task, 100, "Done")
 
     if not stems:
         _emit_placeholder_stems(output_dir)

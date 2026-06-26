@@ -36,7 +36,16 @@ class AudioTaskStatus(str, enum.Enum):
 class AudioTask(Base):
     __tablename__ = "audio_tasks"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    # PostgreSQL uses `BIGSERIAL` for autoincrement. SQLite's rowid-based
+    # autoincrement only fires on `INTEGER PRIMARY KEY`, so the test setup
+    # (which runs against an in-memory SQLite) needs the column typed as
+    # plain `Integer` there. The variant keeps the production schema on
+    # BigInteger while making the model portable.
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
     filename: Mapped[str] = mapped_column(String(512), nullable=False)
     status: Mapped[AudioTaskStatus] = mapped_column(
         SAEnum(

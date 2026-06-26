@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { audioApi, tasksApi } from "@/api/audio";
-import type { MusicAnalysis, ProcessResponse, StemInfo } from "@/types/audio";
+import type { AudioTask, MusicAnalysis, ProcessResponse, StemInfo } from "@/types/audio";
 
 const TASKS_KEY = ["audio-tasks"] as const;
 
@@ -16,15 +16,31 @@ export function useAudioTasks() {
   });
 }
 
+interface UseAudioTaskOptions {
+  /**
+   * Polling interval in milliseconds. Pass a function of the current task
+   * to drive polling off live data (e.g. only while `status === "PROCESSING"`).
+   * Defaults to "no polling".
+   */
+  refetchInterval?:
+    | number
+    | false
+    | ((task: AudioTask | undefined) => number | false);
+}
+
 export function useAudioTask(
   taskId: number,
-  options?: { refetchInterval?: number | (() => number | false) | false },
+  options: UseAudioTaskOptions = {},
 ) {
+  const { refetchInterval } = options;
   return useQuery({
     queryKey: [...TASKS_KEY, taskId],
     queryFn: () => audioApi.get(taskId),
     enabled: Number.isFinite(taskId),
-    refetchInterval: options?.refetchInterval,
+    refetchInterval: (query) =>
+      typeof refetchInterval === "function"
+        ? refetchInterval(query.state.data)
+        : refetchInterval,
   });
 }
 

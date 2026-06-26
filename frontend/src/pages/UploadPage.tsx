@@ -2,38 +2,9 @@ import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useUploadAudio } from "@/hooks/useAudioTasks";
+import { MAX_UPLOAD_BYTES, validateAudioFile } from "@/utils/upload";
 
 const ACCEPT = "audio/*";
-const MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
-const AUDIO_EXTENSIONS = [
-  ".aac",
-  ".aiff",
-  ".aif",
-  ".flac",
-  ".m4a",
-  ".mp3",
-  ".ogg",
-  ".opus",
-  ".wav",
-  ".wave",
-  ".webm",
-  ".wma",
-];
-
-function uploadError(file: File | null): string | null {
-  if (!file) return null;
-  const lowerName = file.name.toLowerCase();
-  const looksLikeAudio =
-    file.type.startsWith("audio/") ||
-    AUDIO_EXTENSIONS.some((ext) => lowerName.endsWith(ext));
-  if (!looksLikeAudio) {
-    return "Please choose an audio file.";
-  }
-  if (file.size > MAX_UPLOAD_BYTES) {
-    return "Audio files must be 200 MB or smaller.";
-  }
-  return null;
-}
 
 export function UploadPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -60,7 +31,8 @@ export function UploadPage() {
   };
 
   const sizeKB = picked ? (picked.size / 1024).toFixed(1) : null;
-  const validationError = uploadError(picked);
+  const validationError = validateAudioFile(picked);
+  const maxMB = Math.floor(MAX_UPLOAD_BYTES / (1024 * 1024));
 
   return (
     <section className="max-w-2xl space-y-6">
@@ -84,7 +56,7 @@ export function UploadPage() {
             Click to choose an audio file
           </span>
           <span className="mt-1 text-xs text-slate-500">
-            Supports browser-readable audio files up to 200 MB
+            Supports browser-readable audio files up to {maxMB} MB
           </span>
           <input
             id="file"
@@ -118,7 +90,7 @@ export function UploadPage() {
 
         {upload.isError && (
           <p className="text-sm text-red-600">
-            Upload failed: {(upload.error as Error).message}
+            Upload failed: {upload.error.message}
           </p>
         )}
         {validationError && (
