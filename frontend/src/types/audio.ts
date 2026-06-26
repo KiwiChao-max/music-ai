@@ -29,6 +29,7 @@ export interface TaskStatus {
 }
 
 export interface StemInfo {
-  name: string; // e.g. "drums"
+  name: string; // e.g. "drums" or "original"
   url: string; // e.g. "/storage/outputs/task_6/drums.wav"
+  kind: "audio" | "midi"; // "audio" = playable stem, "midi" = downloadable MIDI
 }

@@ -8,8 +8,22 @@ Drives the full processing pipeline for one `audio_tasks` row:
 queue consumer) should use. It opens its own DB session so it is safe to
 invoke from a thread, a worker process, or a Celery task.
 
-Milestone 2 will replace the body of `_run_pipeline` with the real Demucs
-+ Basic Pitch calls. The status / progress contract stays the same.
+The pipeline has three real steps and two cosmetic ones:
+
+    1. Prepare audio               (probe duration, normalize, ...)
+    2. Separate stems (Demucs)     [currently placeholder silent WAVs]
+    3. Transcribe to MIDI (Basic   [real, runs on the original mix]
+       Pitch)
+    4. Finalize outputs
+    5. Map to GM / XG bank         [Milestone 3+]
+
+Step 2 still writes silent placeholders so the /stems contract keeps
+working. When real Demucs is wired in, MIDI will move to step 2.5 and
+transcribe each melodic stem (vocals/piano/other/...) separately.
+
+The status / progress / current_step / commit contract is the public
+contract that the API and frontend depend on — do not change those
+without coordinating with `app/api/tasks.py` and the React polling code.
 """
 from __future__ import annotations
 
@@ -20,20 +34,21 @@ from pathlib import Path
 
 from app.db.models import AudioTaskStatus
 from app.db.session import SessionLocal
-from app.services import file_service, task_service
+from app.services import basic_pitch_service, file_service, task_service
 
 logger = logging.getLogger(__name__)
 
 
-# Stems emitted by the 4-stem Demucs model. Milestone 2 will write real
-# audio for each; the placeholder pipeline writes a tiny silent WAV so the
-# `/api/tasks/{id}/stems` contract is testable end-to-end.
+# Stems emitted by the 4-stem Demucs model. The placeholder pipeline writes
+# a tiny silent WAV per stem so the `/api/tasks/{id}/stems` contract is
+# testable end-to-end. When real Demucs lands, the placeholder is replaced
+# with a real audio file of the same name.
 _PLACEHOLDER_STEMS: tuple[str, ...] = ("vocals", "drums", "bass", "other")
 
 
-# Steps reported to the user. In Milestone 1 the body is a sleep, but the
-# progress / current_step / commit contract is exactly what Milestone 2 will
-# follow when we swap sleeps for real Demucs / Basic Pitch calls.
+# Steps reported to the user. `delay` is the placeholder wait that the real
+# AI call will eventually replace. Keep the progress numbers monotonically
+# increasing and spaced so the bar actually moves during long operations.
 _PIPELINE_STEPS: list[tuple[int, str, float]] = [
     (10, "Preparing audio...", 0.4),
     (30, "Separating vocals...", 0.6),
@@ -53,13 +68,29 @@ def _write_silent_wav(path: Path, *, seconds: float = 0.1, rate: int = 8000) -> 
 
 
 def _emit_placeholder_stems(output_dir: Path) -> None:
-    """Milestone 1 only: write empty placeholder stems so /stems has something to return.
-
-    Milestone 2 will replace this whole `_run_pipeline` body with the real
-    Demucs call, which writes proper stems directly into `output_dir`.
+    """Demucs is not wired in yet; write empty placeholder stems so /stems
+    has something to return. Replaced by a real Demucs call in a later
+    milestone.
     """
     for stem in _PLACEHOLDER_STEMS:
         _write_silent_wav(output_dir / f"{stem}.wav")
+
+
+def _run_basic_pitch(audio_path: Path, output_dir: Path) -> Path:
+    """Run Basic Pitch on the original mix and return the produced .mid path.
+
+    The full mix is the right input for now: Demucs is still a placeholder,
+    so per-stem transcription would just feed silent WAVs into the model.
+    Once Demucs is real, this function will be moved into the per-stem
+    branch and called once per melodic stem.
+
+    Anything `BasicPitchService.transcribe` raises propagates up — the
+    outer `process_task` will catch it, roll back, and mark the task
+    FAILED with the exception message.
+    """
+    service = basic_pitch_service.BasicPitchService()
+    result = service.transcribe(audio_path, output_dir)
+    return result.midi_path
 
 
 def _run_pipeline(
@@ -75,8 +106,18 @@ def _run_pipeline(
         task_service.set_progress(db, task, progress, step)
         db.commit()
         logger.info("task %s: %s%% %s", task.id, progress, step)
-        time.sleep(delay)
 
+        # Replace the "Transcribing to MIDI..." step with the real Basic
+        # Pitch call. Everything else still uses the placeholder delay so
+        # the progress UX is unchanged when Demucs lands.
+        if step == "Transcribing to MIDI...":
+            midi_path = _run_basic_pitch(audio_path, output_dir)
+            logger.info("task %s: midi written to %s", task.id, midi_path)
+        else:
+            time.sleep(delay)
+
+    # Demucs placeholder — produces the silent stems the /stems endpoint
+    # serves today. No-op once real Demucs is wired into the steps above.
     _emit_placeholder_stems(output_dir)
 
 

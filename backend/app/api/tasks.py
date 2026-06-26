@@ -30,11 +30,13 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
-# File extensions that count as a "stem" (Demucs writes WAV; Basic Pitch
-# writes MIDI). When Milestone 2 lands, the worker will overwrite these with
-# real content; the placeholder worker writes empty WAVs to make the API
-# contract testable end-to-end.
-_STEM_SUFFIXES = {".wav", ".mp3", ".flac", ".ogg", ".m4a", ".mid", ".midi"}
+# Suffixes that count as an "output file" the worker can produce.
+#   * `.wav/.mp3/.flac/.ogg/.m4a` — Demucs audio stems
+#   * `.mid/.midi`                — Basic Pitch MIDI transcription
+# The API sorts audio first, then MIDI, so the UI can group them visually.
+_AUDIO_SUFFIXES: set[str] = {".wav", ".mp3", ".flac", ".ogg", ".m4a"}
+_MIDI_SUFFIXES: set[str] = {".mid", ".midi"}
+_OUTPUT_SUFFIXES: set[str] = _AUDIO_SUFFIXES | _MIDI_SUFFIXES
 
 
 def _public_url(file_path: Path) -> str:
@@ -151,8 +153,17 @@ def list_stems(
     if not out_dir.is_dir():
         return []
 
-    stems: list[StemInfo] = []
+    # Collect audio and MIDI outputs separately, then concatenate with
+    # audio first so the frontend naturally shows the "playable" rows
+    # before the "downloadable" ones.
+    audio_stems: list[StemInfo] = []
+    midi_stems: list[StemInfo] = []
     for f in sorted(out_dir.iterdir()):
-        if f.is_file() and f.suffix.lower() in _STEM_SUFFIXES:
-            stems.append(StemInfo(name=f.stem, url=_public_url(f)))
-    return stems
+        if not f.is_file():
+            continue
+        suffix = f.suffix.lower()
+        if suffix in _AUDIO_SUFFIXES:
+            audio_stems.append(StemInfo(name=f.stem, url=_public_url(f), kind="audio"))
+        elif suffix in _MIDI_SUFFIXES:
+            midi_stems.append(StemInfo(name=f.stem, url=_public_url(f), kind="midi"))
+    return audio_stems + midi_stems

@@ -12,3 +12,15 @@ psycopg2-binary>=2.9
 # installs cleanly even if a lighter `celery` extra is used elsewhere.
 celery>=5.4
 redis>=5.0
+
+# ---- Audio To MIDI (Milestone 2) ----------------------------------------
+# Spotify Basic Pitch: ONNX-based polyphonic audio-to-MIDI transcription.
+# Pinned to a minor range that's known to install cleanly on Windows + Linux
+# with the bundled ONNX runtime.
+basic-pitch>=0.3,<0.5
+
+# MIDI I/O. `pretty_midi` is used to re-load what Basic Pitch wrote (round
+# trip + counting notes for the e2e test). `mido` is lighter and used for
+# any future low-level edits (tempo, program change, ...).
+pretty_midi>=0.2.10
+mido>=1.3
