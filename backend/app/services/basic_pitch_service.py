@@ -1,28 +1,16 @@
-"""Spotify Basic Pitch audio-to-MIDI service.
+﻿"""Audio-to-MIDI service with Basic Pitch first and a local fallback.
 
-Basic Pitch is a polyphonic note tracker (Spotify, Apache-2.0) that runs an
-ONNX model on a mono audio signal and returns:
-
-  * a `.mid` Standard MIDI File (Format 1) with one note per detected event
-  * a `note_events` array of `(start_time_s, end_time_s, pitch_midi, velocity, [pitch_bend])`
-
-This module is a thin wrapper around `basic_pitch.inference.predict`. The
-heavy lifting (ONNX inference, MIDI quantization) happens in the library;
-we only deal with file paths and progress-friendly parameters.
-
-Output layout (per task):
-    <output_dir>/
-        <basename>.mid         # the MIDI file
-        <basename>_notes.csv   # one row per note: start,end,pitch,velocity,bend
-        <basename>.npz         # raw model output (onset/frame/contour), optional
-
-The CSV sidecar is what the e2e test reads to assert "yes, notes were
-detected" without having to parse the .mid binary.
+Basic Pitch remains the preferred polyphonic transcription engine. In local
+Python 3.12 environments it can be unavailable because its TensorFlow range is
+not compatible, so this module falls back to a lightweight librosa.pyin based
+monophonic transcription. The fallback is useful for bass, vocal and simple
+melodic stems; production polyphonic quality still comes from Basic Pitch.
 """
 from __future__ import annotations
 
 import csv
 import logging
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -39,21 +27,13 @@ class BasicPitchResult:
 
 
 class BasicPitchService:
-    """Wraps Spotify's `basic-pitch` model.
+    """Wrap audio-to-MIDI transcription behind a stable worker API."""
 
-    The model is shipped as an ONNX file inside the `basic-pitch` package and
-    is loaded on first use. A successful run writes the MIDI file plus a
-    CSV sidecar to `output_dir`.
-    """
-
-    # Default transcription parameters. Tuned for clean polyphonic piano /
-    # guitar-ish material. Drums need separate handling (use the Demucs
-    # `drums` stem + a post-processing pass that snaps to GM kit pitches).
     DEFAULT_ONSET_THRESHOLD = 0.5
     DEFAULT_FRAME_THRESHOLD = 0.3
     DEFAULT_MIN_NOTE_LENGTH_MS = 58.0
-    DEFAULT_MIN_FREQUENCY = 27.5   # A0 — anything below is sub-audio
-    DEFAULT_MAX_FREQUENCY = 4186.0  # C8 — cover the piano range
+    DEFAULT_MIN_FREQUENCY = 27.5
+    DEFAULT_MAX_FREQUENCY = 4186.0
 
     def transcribe(
         self,
@@ -66,24 +46,41 @@ class BasicPitchService:
         min_frequency: float | None = DEFAULT_MIN_FREQUENCY,
         max_frequency: float | None = DEFAULT_MAX_FREQUENCY,
     ) -> BasicPitchResult:
-        """Run Basic Pitch on `audio_path` and write MIDI + CSV to `output_dir`.
+        """Run audio-to-MIDI and write MIDI + CSV note sidecar."""
+        try:
+            return self._transcribe_with_basic_pitch(
+                audio_path,
+                output_dir,
+                onset_threshold=onset_threshold,
+                frame_threshold=frame_threshold,
+                min_note_length_ms=min_note_length_ms,
+                min_frequency=min_frequency,
+                max_frequency=max_frequency,
+            )
+        except (ImportError, ModuleNotFoundError) as exc:
+            logger.warning("basic-pitch unavailable; using librosa fallback: %s", exc)
+            return self._transcribe_with_librosa(
+                audio_path,
+                output_dir,
+                min_note_length_ms=min_note_length_ms,
+                min_frequency=min_frequency,
+                max_frequency=max_frequency,
+            )
 
-        `audio_path` is typically a stem WAV produced by Demucs, or the
-        original mix if Demucs is not used. Basic Pitch will resample /
-        downmix internally; the caller does not need to pre-process.
-
-        Returns a `BasicPitchResult` pointing at the produced files.
-        Raises whatever the underlying library raises (file not found,
-        unsupported codec, ONNX runtime errors, ...).
-        """
-        # Imported lazily so the rest of the app can still import this module
-        # in environments where `basic-pitch` is not installed (e.g. CI for
-        # non-M2 jobs). The worker is the only place that calls transcribe().
+    def _transcribe_with_basic_pitch(
+        self,
+        audio_path: Path,
+        output_dir: Path,
+        *,
+        onset_threshold: float,
+        frame_threshold: float,
+        min_note_length_ms: float,
+        min_frequency: float | None,
+        max_frequency: float | None,
+    ) -> BasicPitchResult:
         from basic_pitch.inference import predict
 
         output_dir.mkdir(parents=True, exist_ok=True)
-        # Use a single basename for all artifacts so the relation is obvious
-        # on disk: `piano.mid`, `piano_notes.csv`, `piano.npz`.
         basename = audio_path.stem
         midi_path = output_dir / f"{basename}.mid"
         notes_csv_path = output_dir / f"{basename}_notes.csv"
@@ -97,9 +94,6 @@ class BasicPitchService:
             min_note_length_ms,
         )
 
-        # `predict` returns (model_output, midi_data, note_events).
-        # We only need the side effects (midi file written) and note_events
-        # for the CSV. midi_data is the pretty_midi.PrettyMIDI object.
         _, _midi_data, note_events = predict(
             str(audio_path),
             onset_threshold=onset_threshold,
@@ -107,61 +101,193 @@ class BasicPitchService:
             minimum_note_length=min_note_length_ms,
             minimum_frequency=min_frequency,
             maximum_frequency=max_frequency,
-            # Disable CLI-style side artifacts; we want control of paths.
             save_midi=True,
             midi_path=str(midi_path),
             sonify_midi=False,
             save_model_outputs=False,
             save_notes=False,
         )
-
-        # Note: `note_events` is a list of (start, end, pitch, velocity, [bend])
-        # tuples (numpy array-like). Write a CSV so the e2e / frontend can
-        # inspect note timings without parsing the .mid binary.
         note_count = self._write_notes_csv(note_events, notes_csv_path)
+        logger.info("basic-pitch: wrote %s (%d notes)", midi_path.name, note_count)
+        return BasicPitchResult(midi_path=midi_path, notes_csv_path=notes_csv_path, note_count=note_count)
 
-        logger.info(
-            "basic-pitch: wrote %s (%d notes) and %s",
-            midi_path.name,
-            note_count,
-            notes_csv_path.name,
-        )
-        return BasicPitchResult(
-            midi_path=midi_path,
-            notes_csv_path=notes_csv_path,
-            note_count=note_count,
-        )
+    def _transcribe_with_librosa(
+        self,
+        audio_path: Path,
+        output_dir: Path,
+        *,
+        min_note_length_ms: float,
+        min_frequency: float | None,
+        max_frequency: float | None,
+    ) -> BasicPitchResult:
+        import librosa
+        import numpy as np
+
+        output_dir.mkdir(parents=True, exist_ok=True)
+        basename = audio_path.stem
+        midi_path = output_dir / f"{basename}.mid"
+        notes_csv_path = output_dir / f"{basename}_notes.csv"
+
+        sr = 22050
+        hop_length = 256
+        y, sr = librosa.load(str(audio_path), sr=sr, mono=True)
+        if y.size == 0 or float(np.max(np.abs(y))) < 1e-5:
+            note_events: list[tuple[float, float, int, int]] = []
+        else:
+            fmin = max(20.0, float(min_frequency or self.DEFAULT_MIN_FREQUENCY))
+            fmax = min(float(max_frequency or 2093.0), (sr / 2.0) * 0.95)
+            f0, voiced_flag, voiced_prob = librosa.pyin(
+                y,
+                fmin=fmin,
+                fmax=fmax,
+                sr=sr,
+                frame_length=2048,
+                hop_length=hop_length,
+                fill_na=float("nan"),
+            )
+            times = librosa.frames_to_time(range(len(f0)), sr=sr, hop_length=hop_length)
+            rms = librosa.feature.rms(y=y, frame_length=2048, hop_length=hop_length)[0]
+            note_events = _notes_from_f0(
+                f0=f0,
+                voiced_flag=voiced_flag,
+                voiced_prob=voiced_prob,
+                times=times,
+                rms=rms,
+                min_note_length_s=max(0.04, min_note_length_ms / 1000.0),
+            )
+
+        self._write_midi(note_events, midi_path)
+        note_count = self._write_notes_csv(note_events, notes_csv_path)
+        logger.info("librosa-midi: wrote %s (%d notes)", midi_path.name, note_count)
+        return BasicPitchResult(midi_path=midi_path, notes_csv_path=notes_csv_path, note_count=note_count)
+
+    @staticmethod
+    def _write_midi(note_events, midi_path: Path) -> None:
+        from mido import Message, MetaMessage, MidiFile, MidiTrack, bpm2tempo, second2tick
+
+        ticks_per_beat = 480
+        tempo = bpm2tempo(120)
+        midi = MidiFile(type=1, ticks_per_beat=ticks_per_beat)
+
+        meta_track = MidiTrack()
+        meta_track.append(MetaMessage("track_name", name="tempo", time=0))
+        meta_track.append(MetaMessage("set_tempo", tempo=tempo, time=0))
+        meta_track.append(MetaMessage("end_of_track", time=0))
+        midi.tracks.append(meta_track)
+
+        note_track = MidiTrack()
+        note_track.append(MetaMessage("track_name", name="librosa transcription", time=0))
+        note_track.append(Message("program_change", channel=0, program=0, time=0))
+
+        events = []
+        for start, end, pitch, velocity in note_events:
+            start_tick = int(round(second2tick(float(start), ticks_per_beat, tempo)))
+            end_tick = max(start_tick + 1, int(round(second2tick(float(end), ticks_per_beat, tempo))))
+            events.append((start_tick, 1, Message("note_on", channel=0, note=int(pitch), velocity=int(velocity), time=0)))
+            events.append((end_tick, 0, Message("note_off", channel=0, note=int(pitch), velocity=0, time=0)))
+
+        last_tick = 0
+        for tick, _order, message in sorted(events, key=lambda item: (item[0], item[1])):
+            message.time = max(0, tick - last_tick)
+            note_track.append(message)
+            last_tick = tick
+
+        note_track.append(MetaMessage("end_of_track", time=0))
+        midi.tracks.append(note_track)
+        midi_path.parent.mkdir(parents=True, exist_ok=True)
+        midi.save(str(midi_path))
 
     @staticmethod
     def _write_notes_csv(note_events, csv_path: Path) -> int:
-        """Write one CSV row per detected note. Returns the note count.
-
-        `note_events` is a numpy structured array with fields
-        (start_time_s, end_time_s, pitch_midi, velocity, pitch_bend).
-        We only persist the first 5 columns; pitch_bend is per-frame and
-        is already baked into the .mid as pitch wheel events.
-        """
-        # Convert to a plain Python iterable of tuples. The shape varies
-        # slightly between basic-pitch versions, so be defensive.
         rows = []
         for ev in note_events:
-            # Newer versions: (start_time_s, end_time_s, pitch_midi, velocity, pitch_bend)
-            # Older versions: (start_time_s, end_time_s, pitch_midi, velocity)
             try:
                 start, end, pitch, vel = ev[0], ev[1], ev[2], ev[3]
             except (IndexError, TypeError, ValueError):
                 continue
-            rows.append(
-                (
-                    f"{float(start):.6f}",
-                    f"{float(end):.6f}",
-                    int(pitch),
-                    int(vel),
-                )
-            )
+            rows.append((f"{float(start):.6f}", f"{float(end):.6f}", int(pitch), int(vel)))
 
         with csv_path.open("w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow(["start_time_s", "end_time_s", "pitch_midi", "velocity"])
             writer.writerows(rows)
         return len(rows)
+
+
+def _notes_from_f0(
+    *,
+    f0,
+    voiced_flag,
+    voiced_prob,
+    times,
+    rms,
+    min_note_length_s: float,
+) -> list[tuple[float, float, int, int]]:
+    import numpy as np
+
+    if len(f0) == 0:
+        return []
+
+    pitches = np.full(len(f0), np.nan)
+    valid = voiced_flag & np.isfinite(f0)
+    pitches[valid] = 69.0 + 12.0 * np.log2(f0[valid] / 440.0)
+
+    events: list[tuple[float, float, int, int]] = []
+    start_index: int | None = None
+    segment_pitches: list[float] = []
+    segment_rms: list[float] = []
+    current_pitch: float | None = None
+
+    for index, pitch in enumerate(pitches):
+        is_voiced = bool(np.isfinite(pitch) and voiced_prob[index] >= 0.35)
+        if not is_voiced:
+            if start_index is not None:
+                _append_segment(events, start_index, index, times, segment_pitches, segment_rms, min_note_length_s)
+            start_index = None
+            segment_pitches = []
+            segment_rms = []
+            current_pitch = None
+            continue
+
+        rounded_pitch = float(round(float(pitch)))
+        if start_index is not None and current_pitch is not None and abs(rounded_pitch - current_pitch) > 1.5:
+            _append_segment(events, start_index, index, times, segment_pitches, segment_rms, min_note_length_s)
+            start_index = index
+            segment_pitches = []
+            segment_rms = []
+
+        if start_index is None:
+            start_index = index
+        current_pitch = rounded_pitch
+        segment_pitches.append(float(pitch))
+        if index < len(rms):
+            segment_rms.append(float(rms[index]))
+
+    if start_index is not None:
+        _append_segment(events, start_index, len(pitches) - 1, times, segment_pitches, segment_rms, min_note_length_s)
+
+    return events
+
+
+def _append_segment(
+    events: list[tuple[float, float, int, int]],
+    start_index: int,
+    end_index: int,
+    times,
+    segment_pitches: list[float],
+    segment_rms: list[float],
+    min_note_length_s: float,
+) -> None:
+    import numpy as np
+
+    if not segment_pitches:
+        return
+    safe_end_index = min(max(end_index, start_index + 1), len(times) - 1)
+    start_time = float(times[start_index])
+    end_time = float(times[safe_end_index])
+    if end_time - start_time < min_note_length_s:
+        return
+    pitch = int(max(0, min(127, round(float(np.median(segment_pitches))))))
+    level = float(np.mean(segment_rms)) if segment_rms else 0.25
+    velocity = max(35, min(118, int(round(45 + 73 * math.sqrt(min(1.0, max(0.0, level * 8.0)))))))
+    events.append((start_time, end_time, pitch, velocity))

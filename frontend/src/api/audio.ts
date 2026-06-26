@@ -1,6 +1,7 @@
 import { api } from "./axios";
 import type {
   AudioTask,
+  MusicAnalysis,
   ProcessResponse,
   StemInfo,
   TaskStatus,
@@ -33,4 +34,6 @@ export const tasksApi = {
     api.get<TaskStatus>(`/tasks/${taskId}/status`).then((r) => r.data),
   stems: (taskId: number) =>
     api.get<StemInfo[]>(`/tasks/${taskId}/stems`).then((r) => r.data),
+  analysis: (taskId: number) =>
+    api.get<MusicAnalysis>(`/tasks/${taskId}/analysis`).then((r) => r.data),
 };

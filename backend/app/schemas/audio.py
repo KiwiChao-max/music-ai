@@ -76,3 +76,36 @@ class StemInfo(BaseModel):
     name: str   # e.g. "drums" or "original"
     url: str    # e.g. "/storage/outputs/task_6/drums.wav"
     kind: str = "audio"  # "audio" | "midi"
+    profile: str | None = None  # for MIDI: "raw" | "gm" | "xg"
+
+
+class ChordSegment(BaseModel):
+    start: float
+    end: float
+    chord: str
+    confidence: float
+
+
+class MusicSection(BaseModel):
+    label: str
+    start: float
+    end: float
+    energy: str
+    density: float
+    suggestion: str
+
+
+class MusicAnalysisResponse(BaseModel):
+    bpm: int | None = None
+    bpm_confidence: float = 0.0
+    key: str | None = None
+    key_confidence: float = 0.0
+    scale: str | None = None
+    note_count: int = 0
+    duration: float = 0.0
+    pitch_range: str | None = None
+    chords: list[ChordSegment] = []
+    sections: list[MusicSection] = []
+    instrumentation: list[str] = []
+    arrangement: list[str] = []
+    warnings: list[str] = []

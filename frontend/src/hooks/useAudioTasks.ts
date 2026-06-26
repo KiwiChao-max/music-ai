@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { audioApi, tasksApi } from "@/api/audio";
-import type { ProcessResponse, StemInfo } from "@/types/audio";
+import type { MusicAnalysis, ProcessResponse, StemInfo } from "@/types/audio";
 
 const TASKS_KEY = ["audio-tasks"] as const;
 
@@ -40,8 +40,6 @@ export function useDeleteAudio() {
   });
 }
 
-// ---- /api/tasks/{id}/* ---------------------------------------------------
-
 export function useStartProcess() {
   const qc = useQueryClient();
   return useMutation<ProcessResponse, Error, number>({
@@ -53,11 +51,19 @@ export function useStartProcess() {
   });
 }
 
-/** Fetch the stem list. Caller is expected to gate this with `status === 'FINISHED'`. */
 export function useStems(taskId: number, enabled: boolean) {
   return useQuery<StemInfo[]>({
     queryKey: [...TASKS_KEY, taskId, "stems"],
     queryFn: () => tasksApi.stems(taskId),
     enabled: enabled && Number.isFinite(taskId),
+  });
+}
+
+export function useMusicAnalysis(taskId: number, enabled: boolean) {
+  return useQuery<MusicAnalysis>({
+    queryKey: [...TASKS_KEY, taskId, "analysis"],
+    queryFn: () => tasksApi.analysis(taskId),
+    enabled: enabled && Number.isFinite(taskId),
+    retry: false,
   });
 }

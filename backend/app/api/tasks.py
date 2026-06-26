@@ -22,8 +22,8 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db.models import AudioTaskStatus
 from app.db.session import get_db
-from app.schemas.audio import ProcessResponse, StemInfo, TaskStatusResponse
-from app.services import task_service
+from app.schemas.audio import MusicAnalysisResponse, ProcessResponse, StemInfo, TaskStatusResponse
+from app.services import midi_mapping_service, music_analysis_service, task_service
 from app.tasks_audio import process_audio_task
 
 logger = logging.getLogger(__name__)
@@ -165,5 +165,40 @@ def list_stems(
         if suffix in _AUDIO_SUFFIXES:
             audio_stems.append(StemInfo(name=f.stem, url=_public_url(f), kind="audio"))
         elif suffix in _MIDI_SUFFIXES:
-            midi_stems.append(StemInfo(name=f.stem, url=_public_url(f), kind="midi"))
+            midi_stems.append(
+                StemInfo(
+                    name=f.stem,
+                    url=_public_url(f),
+                    kind="midi",
+                    profile=midi_mapping_service.midi_profile_from_name(f.stem),
+                )
+            )
     return audio_stems + midi_stems
+
+
+# ---------------------------------------------------------------------------
+# GET /api/tasks/{id}/analysis
+# ---------------------------------------------------------------------------
+@router.get(
+    "/{task_id}/analysis",
+    response_model=MusicAnalysisResponse,
+)
+def get_task_analysis(
+    task_id: int, db: Session = Depends(get_db)
+) -> MusicAnalysisResponse:
+    """Return generated music analysis once the task has FINISHED."""
+    task = task_service.get_task(db, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="task not found")
+    if task.status != AudioTaskStatus.FINISHED:
+        raise HTTPException(
+            status_code=409,
+            detail=f"task not ready (status={task.status.value})",
+        )
+    if not task.output_dir:
+        raise HTTPException(status_code=404, detail="analysis not found")
+
+    analysis = music_analysis_service.read_analysis(Path(task.output_dir))
+    if analysis is None:
+        raise HTTPException(status_code=404, detail="analysis not found")
+    return MusicAnalysisResponse.model_validate(analysis)

@@ -24,3 +24,12 @@ basic-pitch>=0.3,<0.5
 # any future low-level edits (tempo, program change, ...).
 pretty_midi>=0.2.10
 mido>=1.3
+librosa>=0.11
+soundfile>=0.12
+
+# ---- AI source separation ------------------------------------------------
+# Meta Demucs: separates mixed audio into vocals / drums / bass / other.
+# The worker falls back to placeholder stems if this dependency is absent,
+# but production-quality stem MIDI needs it installed.
+demucs>=4.0,<5
+# WAV inputs run through the local Python API; FFmpeg/ffprobe is only needed for CLI fallback / compressed formats.

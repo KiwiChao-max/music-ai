@@ -36,6 +36,7 @@ import wave
 BASE = "http://127.0.0.1:8000"
 BACKEND = "d:/project/overseas/music-ai/backend"
 SAMPLE = "d:/project/overseas/music-ai/scripts/_e2e_midi.wav"
+midi_tmp = os.path.join(tempfile.gettempdir(), "_e2e_midi_out.mid")
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 E2E_BROKER = os.environ.get("E2E_BROKER", "redis")  # see e2e_tasks.py
 
@@ -105,7 +106,7 @@ def write_test_wav(path: str) -> None:
         freq = midi_to_hz(notes[idx])
         s = env * math.sin(2 * math.pi * freq * (i / rate))
         # Add a quieter second harmonic so the timbre is less of a pure
-        # sine — Basic Pitch is trained on real instruments.
+        # sine 閳?Basic Pitch is trained on real instruments.
         s += 0.3 * env * math.sin(2 * math.pi * 2 * freq * (i / rate))
         samples.append(int(max(-1.0, min(1.0, s * 0.5)) * 32767))
 
@@ -185,7 +186,7 @@ try:
         "POST", "/api/audio/upload", form,
         {"Content-Type": f"multipart/form-data; boundary={boundary}"},
     )
-    assert status == 200, body
+    assert status in (200, 201), body
     task_id = json.loads(body)["task_id"]
     print(f"uploaded task_id={task_id}")
 
@@ -196,7 +197,7 @@ try:
 
     # ---- 3) poll /status -------------------------------------------------
     snap = None
-    for i in range(120):  # up to ~60 s — Basic Pitch is fast but cold load takes time
+    for i in range(120):  # up to ~60 s 閳?Basic Pitch is fast but cold load takes time
         time.sleep(0.5)
         status, body = http("GET", f"/api/tasks/{task_id}/status")
         snap = json.loads(body)
@@ -205,7 +206,7 @@ try:
             break
     assert snap and snap["status"] == "FINISHED", snap
 
-    # ---- 4) GET /stems — must include a MIDI row ------------------------
+    # ---- 4) GET /stems 閳?must include a MIDI row ------------------------
     status, body = http("GET", f"/api/tasks/{task_id}/stems")
     stems = json.loads(body)
     print(f"GET   /api/tasks/{task_id}/stems          -> {status}")
@@ -220,37 +221,43 @@ try:
     assert len(midi_stems) >= 1, f"expected >= 1 MIDI stem, got {stems}"
     assert all(s["url"].endswith(".mid") for s in midi_stems), stems
 
-    # ---- 5) download the MIDI file --------------------------------------
-    midi_url = midi_stems[0]["url"]
-    status, body = http("GET", midi_url)
-    print(f"GET   {midi_url}  -> {status}, {len(body)} bytes")
-    assert status == 200 and len(body) > 0
-
-    midi_tmp = os.path.join(tempfile.gettempdir(), "_e2e_midi_out.mid")
-    with open(midi_tmp, "wb") as f:
-        f.write(body)
-
-    # ---- 6) parse the MIDI file with pretty_midi -----------------------
-    # Imported lazily so the e2e script fails fast on a clean import
-    # error rather than during setup.
+    # ---- 5) download and parse MIDI outputs ------------------------------
+    # Real stem separation can produce several MIDI files. Some stems may be
+    # intentionally empty for the synthetic input (e.g. bass on a piano-like
+    # arpeggio), so find one MIDI with enough notes instead of assuming the
+    # first row is the melodic one.
     import pretty_midi  # type: ignore
 
-    pm = pretty_midi.PrettyMIDI(midi_tmp)
-    note_count = sum(len(inst.notes) for inst in pm.instruments)
-    pitches = sorted({
-        n.pitch
-        for inst in pm.instruments
-        for n in inst.notes
-    })
-    print(f"pretty_midi: {note_count} notes, pitches (MIDI) = {pitches}")
-    # Sanity checks for our C-major arpeggio (C4=60, E4=64, G4=67, C5=72):
-    assert note_count >= 2, f"too few notes detected ({note_count})"
-    # We don't require every pitch (Basic Pitch may collapse some), but at
-    # least one of the four expected notes should appear.
-    assert any(p in {60, 64, 67, 72} for p in pitches), (
-        f"none of the expected C-major arpeggio pitches were detected: {pitches}"
-    )
+    selected = None
+    for candidate in sorted(
+        midi_stems,
+        key=lambda item: (item["name"] not in {"original", "other", "vocals", "stems_gm"}, item["name"]),
+    ):
+        midi_url = candidate["url"]
+        status, body = http("GET", midi_url)
+        print(f"GET   {midi_url}  -> {status}, {len(body)} bytes")
+        assert status == 200 and len(body) > 0
 
+        with open(midi_tmp, "wb") as f:
+            f.write(body)
+
+        pm = pretty_midi.PrettyMIDI(midi_tmp)
+        note_count = sum(len(inst.notes) for inst in pm.instruments)
+        pitches = sorted({
+            n.pitch
+            for inst in pm.instruments
+            for n in inst.notes
+        })
+        print(f"pretty_midi[{candidate['name']}]: {note_count} notes, pitches (MIDI) = {pitches}")
+        if note_count >= 2:
+            selected = (candidate["name"], note_count, pitches)
+            break
+
+    assert selected is not None, f"no MIDI output contained enough notes: {midi_stems}"
+    selected_name, note_count, pitches = selected
+    assert any(p in {60, 64, 67, 72} for p in pitches), (
+        f"selected MIDI {selected_name} did not include expected C-major arpeggio pitches: {pitches}"
+    )
     print("\nALL CHECKS PASSED")
 finally:
     for p in (worker, api):

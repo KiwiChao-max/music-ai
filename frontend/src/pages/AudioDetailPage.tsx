@@ -7,23 +7,142 @@ import { StatusBadge } from "@/components/StatusBadge";
 import {
   useAudioTask,
   useDeleteAudio,
+  useMusicAnalysis,
   useStartProcess,
   useStems,
 } from "@/hooks/useAudioTasks";
+import type { MusicAnalysis } from "@/types/audio";
 
 const POLL_MS = 1500;
 
 function formatDuration(seconds: number | null): string {
-  if (seconds == null) return "—";
+  if (seconds == null) return "-";
   const m = Math.floor(seconds / 60);
   const s = (seconds - m * 60).toFixed(1);
   return `${m}m ${s}s`;
 }
 
 function formatTime(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  return d.toLocaleString();
+  if (!iso) return "-";
+  return new Date(iso).toLocaleString();
+}
+
+function formatRange(start: number, end: number): string {
+  return `${start.toFixed(1)}s-${end.toFixed(1)}s`;
+}
+
+function confidenceLabel(value: number): string {
+  if (value >= 0.66) return "high";
+  if (value >= 0.33) return "medium";
+  return "low";
+}
+
+function AnalysisPanel({ analysis }: { analysis: MusicAnalysis }) {
+  const keyLabel = analysis.key && analysis.scale
+    ? `${analysis.key} ${analysis.scale}`
+    : "Unknown";
+
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-lg font-semibold text-slate-900">AI Analysis</h2>
+        {analysis.warnings.length > 0 && (
+          <span className="rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
+            {analysis.warnings.length} warning{analysis.warnings.length > 1 ? "s" : ""}
+          </span>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">BPM</p>
+          <p className="mt-1 text-2xl font-semibold text-slate-900">{analysis.bpm ?? "-"}</p>
+          <p className="text-xs text-slate-500">{confidenceLabel(analysis.bpm_confidence)}</p>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Key</p>
+          <p className="mt-1 text-lg font-semibold text-slate-900">{keyLabel}</p>
+          <p className="text-xs text-slate-500">{confidenceLabel(analysis.key_confidence)}</p>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Notes</p>
+          <p className="mt-1 text-2xl font-semibold text-slate-900">{analysis.note_count}</p>
+          <p className="text-xs text-slate-500">{analysis.pitch_range ?? "-"}</p>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Duration</p>
+          <p className="mt-1 text-2xl font-semibold text-slate-900">{analysis.duration.toFixed(1)}s</p>
+          <p className="text-xs text-slate-500">analysis window</p>
+        </div>
+      </div>
+
+      {analysis.chords.length > 0 && (
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <h3 className="text-sm font-semibold text-slate-900">Chord Map</h3>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {analysis.chords.map((chord) => (
+              <span
+                key={`${chord.start}-${chord.end}-${chord.chord}`}
+                className="rounded border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-sm text-slate-700"
+                title={`Confidence ${Math.round(chord.confidence * 100)}%`}
+              >
+                <span className="font-semibold text-slate-900">{chord.chord}</span>{" "}
+                <span className="text-xs text-slate-500">{formatRange(chord.start, chord.end)}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {analysis.sections.length > 0 && (
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <h3 className="text-sm font-semibold text-slate-900">Sections</h3>
+          <div className="mt-3 space-y-2">
+            {analysis.sections.map((section) => (
+              <div key={section.label} className="rounded border border-slate-200 bg-slate-50 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-semibold text-slate-900">Section {section.label}</span>
+                  <span className="text-xs uppercase tracking-wide text-slate-500">{section.energy}</span>
+                </div>
+                <p className="mt-1 text-xs text-slate-500">{formatRange(section.start, section.end)} · density {section.density}</p>
+                <p className="mt-2 text-sm text-slate-700">{section.suggestion}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="grid gap-3 md:grid-cols-2">
+        <AdviceList title="Instrument Suggestions" items={analysis.instrumentation} />
+        <AdviceList title="Arrangement Suggestions" items={analysis.arrangement} />
+      </div>
+
+      {analysis.warnings.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+          <h3 className="text-sm font-semibold text-amber-900">Analysis Notes</h3>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-amber-900">
+            {analysis.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function AdviceList({ title, items }: { title: string; items: string[] }) {
+  if (items.length === 0) return null;
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-4">
+      <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
+      <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
+        {items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 export function AudioDetailPage() {
@@ -31,7 +150,6 @@ export function AudioDetailPage() {
   const taskId = Number(id);
   const navigate = useNavigate();
 
-  // Keep polling while the task is in flight; stop once it's terminal.
   const [polling, setPolling] = useState(true);
   const { data: task, isLoading, isError, error } = useAudioTask(taskId, {
     refetchInterval: polling ? POLL_MS : false,
@@ -42,10 +160,8 @@ export function AudioDetailPage() {
 
   const startProcess = useStartProcess();
   const remove = useDeleteAudio();
-
-  // Stems are only meaningful once the task is FINISHED. The hook no-ops
-  // otherwise; the GET would 409 anyway.
   const stemsQuery = useStems(taskId, task?.status === "FINISHED");
+  const analysisQuery = useMusicAnalysis(taskId, task?.status === "FINISHED");
 
   if (!Number.isFinite(taskId)) {
     return <p className="text-sm text-red-600">Invalid task id: {id}</p>;
@@ -78,7 +194,7 @@ export function AudioDetailPage() {
   };
 
   const onStart = () => {
-    setPolling(true); // resume polling so the progress bar appears immediately
+    setPolling(true);
     startProcess.mutate(task.id);
   };
 
@@ -88,36 +204,30 @@ export function AudioDetailPage() {
   const isUploaded = task.status === "UPLOADED";
 
   return (
-    <section className="max-w-2xl space-y-6">
+    <section className="max-w-3xl space-y-6">
       <nav className="text-sm text-slate-500">
         <Link to="/audio" className="hover:text-slate-900 hover:underline">
-          ← Back to tasks
+          Back to tasks
         </Link>
       </nav>
 
-      {/* Hero: song name + status, as in the design spec. */}
       <header className="space-y-3">
         <h1 className="break-all text-3xl font-bold tracking-tight text-slate-900">
           {task.filename}
         </h1>
         <div className="flex items-center gap-2 text-sm text-slate-600">
-          <span className="text-slate-500">状态：</span>
+          <span className="text-slate-500">Status:</span>
           {isFinished ? (
-            <span className="inline-flex items-center gap-1.5 text-base font-semibold text-emerald-700">
-              <span aria-hidden>✅</span> Finished
-            </span>
+            <span className="text-base font-semibold text-emerald-700">Finished</span>
           ) : (
             <StatusBadge status={task.status} />
           )}
         </div>
       </header>
 
-      {/* State 1: UPLOADED — show Start button. */}
       {isUploaded && (
         <div className="rounded-lg border border-slate-200 bg-white p-6 text-center">
-          <p className="text-sm text-slate-600">
-            任务已上传，尚未开始处理。
-          </p>
+          <p className="text-sm text-slate-600">The task is uploaded and ready to process.</p>
           <button
             type="button"
             onClick={onStart}
@@ -129,26 +239,20 @@ export function AudioDetailPage() {
         </div>
       )}
 
-      {/* State 2: PROCESSING — show progress. */}
       {isProcessing && (
         <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-6">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium uppercase tracking-wide text-slate-500">
-              Processing
-            </span>
+            <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Processing</span>
             <span className="text-xs text-slate-500">live</span>
           </div>
           <ProgressBar value={task.progress} className="mt-1" />
-          <p className="text-sm text-slate-700">
-            {task.current_step ?? "Starting..."}
-          </p>
+          <p className="text-sm text-slate-700">{task.current_step ?? "Starting..."}</p>
         </div>
       )}
 
-      {/* State 3: FAILED — show error + retry. */}
       {isFailed && (
         <div className="space-y-3 rounded-lg border border-red-200 bg-red-50 p-6">
-          <p className="text-sm font-semibold text-red-700">处理失败</p>
+          <p className="text-sm font-semibold text-red-700">Processing failed</p>
           {task.error_message && (
             <pre className="overflow-x-auto rounded bg-white p-3 text-xs text-red-700">
               {task.error_message}
@@ -165,55 +269,51 @@ export function AudioDetailPage() {
         </div>
       )}
 
-      {/* State 4: FINISHED — show stems. */}
       {isFinished && (
-        <section className="space-y-3">
-          <h2 className="text-lg font-semibold text-slate-900">分轨结果</h2>
-          {stemsQuery.isLoading && (
-            <p className="text-sm text-slate-500">Loading stems...</p>
+        <>
+          <section className="space-y-3">
+            <h2 className="text-lg font-semibold text-slate-900">Output Files</h2>
+            {stemsQuery.isLoading && <p className="text-sm text-slate-500">Loading stems...</p>}
+            {stemsQuery.isError && (
+              <p className="text-sm text-red-600">
+                Failed to load stems: {(stemsQuery.error as Error).message}
+              </p>
+            )}
+            {stemsQuery.data && stemsQuery.data.length === 0 && (
+              <p className="text-sm text-slate-500">No stems produced.</p>
+            )}
+            {stemsQuery.data && stemsQuery.data.length > 0 && (
+              <StemList stems={stemsQuery.data} />
+            )}
+          </section>
+
+          {analysisQuery.isLoading && (
+            <p className="text-sm text-slate-500">Loading music analysis...</p>
           )}
-          {stemsQuery.isError && (
-            <p className="text-sm text-red-600">
-              Failed to load stems: {(stemsQuery.error as Error).message}
+          {analysisQuery.isError && (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              Analysis is not available for this task yet.
             </p>
           )}
-          {stemsQuery.data && stemsQuery.data.length === 0 && (
-            <p className="text-sm text-slate-500">No stems produced.</p>
-          )}
-          {stemsQuery.data && stemsQuery.data.length > 0 && (
-            <StemList stems={stemsQuery.data} />
-          )}
-        </section>
+          {analysisQuery.data && <AnalysisPanel analysis={analysisQuery.data} />}
+        </>
       )}
 
-      {/* Metadata + delete — collapsed for FINISHED tasks, full for others. */}
       <dl className="grid grid-cols-1 gap-4 rounded-lg border border-slate-200 bg-white p-6 sm:grid-cols-2">
         <div>
-          <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
-            ID
-          </dt>
+          <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">ID</dt>
           <dd className="mt-1 text-sm text-slate-900">{task.id}</dd>
         </div>
         <div>
-          <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
-            Duration
-          </dt>
-          <dd className="mt-1 text-sm text-slate-900">
-            {formatDuration(task.duration)}
-          </dd>
+          <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Duration</dt>
+          <dd className="mt-1 text-sm text-slate-900">{formatDuration(task.duration)}</dd>
         </div>
         <div>
-          <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
-            Finished at
-          </dt>
-          <dd className="mt-1 text-sm text-slate-900">
-            {formatTime(task.finished_at)}
-          </dd>
+          <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Finished at</dt>
+          <dd className="mt-1 text-sm text-slate-900">{formatTime(task.finished_at)}</dd>
         </div>
         <div>
-          <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
-            Status
-          </dt>
+          <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Status</dt>
           <dd className="mt-1 text-sm text-slate-900">{task.status}</dd>
         </div>
       </dl>
