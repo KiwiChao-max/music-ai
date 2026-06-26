@@ -16,6 +16,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the source.
 COPY . .
 
+# Pre-download the Basic Pitch ONNX model. Without this, the first user
+# request blocks for several seconds while the worker fetches the model
+# from Spotify's release. After the warm-up the ONNX file lives in the
+# package's model/ directory and is baked into this image layer.
+RUN python warmup_basic_pitch.py
+
 # Persistent storage for uploads — mount a volume here in compose.
 RUN mkdir -p /app/uploads
 ENV UPLOAD_DIR=/app/uploads

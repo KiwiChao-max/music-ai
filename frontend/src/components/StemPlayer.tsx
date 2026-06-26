@@ -8,30 +8,50 @@ interface StemRowProps {
   onTogglePlay: () => void;
 }
 
-/** One row in the stem list. Self-contained styling, no playback state. */
+/** Pick a sensible default file extension for the "download" attribute. */
+function downloadName(stem: StemInfo): string {
+  return stem.kind === "midi" ? `${stem.name}.mid` : `${stem.name}.wav`;
+}
+
+/** One row in the stem list. Self-contained styling, no playback state.
+ *
+ * Two visual variants:
+ *   - `kind === "audio"` — play/pause + download (existing behaviour).
+ *   - `kind === "midi"`  — download only, with a "MIDI" badge so the user
+ *     can tell at a glance which file is editable.
+ */
 function StemRow({ stem, isPlaying, onTogglePlay }: StemRowProps) {
+  const isMidi = stem.kind === "midi";
+
   return (
     <li className="flex items-center gap-4 rounded-lg border border-slate-200 bg-white px-4 py-3">
       <span aria-hidden className="text-2xl leading-none">
-        🎧
+        {isMidi ? "🎼" : "🎧"}
       </span>
       <span className="min-w-0 flex-1 truncate text-base font-semibold capitalize text-slate-900">
         {stem.name}
+        {isMidi && (
+          <span className="ml-2 inline-flex items-center rounded bg-indigo-100 px-1.5 py-0.5 align-middle text-[10px] font-semibold uppercase tracking-wide text-indigo-700">
+            MIDI
+          </span>
+        )}
       </span>
 
-      <button
-        type="button"
-        onClick={onTogglePlay}
-        className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800"
-        aria-label={isPlaying ? `Pause ${stem.name}` : `Play ${stem.name}`}
-      >
-        <span aria-hidden>{isPlaying ? "⏸" : "▶"}</span>
-        <span>{isPlaying ? "Pause" : "Play"}</span>
-      </button>
+      {!isMidi && (
+        <button
+          type="button"
+          onClick={onTogglePlay}
+          className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800"
+          aria-label={isPlaying ? `Pause ${stem.name}` : `Play ${stem.name}`}
+        >
+          <span aria-hidden>{isPlaying ? "⏸" : "▶"}</span>
+          <span>{isPlaying ? "Pause" : "Play"}</span>
+        </button>
+      )}
 
       <a
         href={stem.url}
-        download={`${stem.name}.wav`}
+        download={downloadName(stem)}
         className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
       >
         <span aria-hidden>⬇</span>
@@ -45,12 +65,17 @@ interface StemListProps {
   stems: StemInfo[];
 }
 
-/** Stem list with a single shared `<audio>` element. Only one stem plays at a time. */
+/** Stem list with a single shared `<audio>` element. Only one stem plays at a time.
+ *
+ * MIDI rows are passed through `StemRow` with `onTogglePlay` ignored; they
+ * render the same shape as audio rows but without the play button.
+ */
 export function StemList({ stems }: StemListProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [currentName, setCurrentName] = useState<string | null>(null);
 
   const togglePlay = (stem: StemInfo) => {
+    if (stem.kind !== "audio") return; // MIDI rows never reach this branch
     const a = audioRef.current;
     if (!a) return;
     if (currentName === stem.name) {

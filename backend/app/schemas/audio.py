@@ -66,6 +66,13 @@ class TaskStatusResponse(BaseModel):
 
 
 class StemInfo(BaseModel):
-    """One separated stem (vocals / drums / bass / other / ...)."""
-    name: str   # e.g. "drums"
+    """One output file produced by the worker (a separated stem or a MIDI file).
+
+    `kind` tells the frontend whether to render a play/pause button (`audio`)
+    or just a download button (`midi`). New kinds (e.g. `pdf` for sheet
+    music) can be added without breaking existing callers — the frontend
+    defaults to a download link for anything it doesn't recognize.
+    """
+    name: str   # e.g. "drums" or "original"
     url: str    # e.g. "/storage/outputs/task_6/drums.wav"
+    kind: str = "audio"  # "audio" | "midi"
