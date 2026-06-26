@@ -1,0 +1,44 @@
+{
+  "bpm": 92,
+  "bpm_confidence": 0.333,
+  "key": "C",
+  "key_confidence": 0.021,
+  "scale": "major",
+  "note_count": 4,
+  "duration": 2.496,
+  "pitch_range": "C4-C5",
+  "chords": [
+    {
+      "start": 0.0,
+      "end": 2.5,
+      "chord": "C",
+      "confidence": 1.0
+    }
+  ],
+  "sections": [
+    {
+      "label": "A",
+      "start": 0.0,
+      "end": 2.5,
+      "energy": "high",
+      "density": 1.6,
+      "suggestion": "Use as hook: add drums, bass and a wider lead/pad layer."
+    }
+  ],
+  "instrumentation": [
+    "Add a simple electric bass or synth bass layer to anchor the low end.",
+    "Use piano, clean guitar, or warm pad for the main harmonic body.",
+    "Add a small top-line counter melody after the first section.",
+    "Keep lead and pad material close to C major for a coherent first pass."
+  ],
+  "arrangement": [
+    "Start with a laid-back drum groove around 92 BPM, then vary hats between sections.",
+    "Use the first chord loop as the harmonic motif: C.",
+    "Treat section A as the hook or chorus and widen the stereo image there.",
+    "Humanize velocities downward in dense passages to avoid a stiff MIDI feel."
+  ],
+  "warnings": [
+    "Only a few notes were detected; BPM, key and chord confidence may be low.",
+    "Key confidence is low because the pitch-class distribution is ambiguous."
+  ]
+}

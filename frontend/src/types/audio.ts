@@ -32,4 +32,37 @@ export interface StemInfo {
   name: string; // e.g. "drums" or "original"
   url: string; // e.g. "/storage/outputs/task_6/drums.wav"
   kind: "audio" | "midi"; // "audio" = playable stem, "midi" = downloadable MIDI
+  profile?: "raw" | "gm" | "xg" | null;
+}
+
+export interface ChordSegment {
+  start: number;
+  end: number;
+  chord: string;
+  confidence: number;
+}
+
+export interface MusicSection {
+  label: string;
+  start: number;
+  end: number;
+  energy: "low" | "medium" | "high" | string;
+  density: number;
+  suggestion: string;
+}
+
+export interface MusicAnalysis {
+  bpm: number | null;
+  bpm_confidence: number;
+  key: string | null;
+  key_confidence: number;
+  scale: string | null;
+  note_count: number;
+  duration: number;
+  pitch_range: string | null;
+  chords: ChordSegment[];
+  sections: MusicSection[];
+  instrumentation: string[];
+  arrangement: string[];
+  warnings: string[];
 }
