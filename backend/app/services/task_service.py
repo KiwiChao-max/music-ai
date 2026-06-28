@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.db.models import AudioTask, AudioTaskStatus
@@ -19,10 +19,22 @@ def safe_filename(name: str) -> str:
 
 
 # ---- reads ----------------------------------------------------------------
-def list_tasks(db: Session, *, limit: int = 100, offset: int = 0) -> list[AudioTask]:
+def list_tasks(
+    db: Session,
+    *,
+    limit: int = 100,
+    offset: int = 0,
+    user_id: int | None = None,
+) -> list[AudioTask]:
+    """Return tasks, newest first. When `user_id` is set, filter the
+    list to that user (used by non-admin endpoints to scope to "my
+    tasks"). `None` means "no filter" (admin view).
+    """
+    stmt = select(AudioTask)
+    if user_id is not None:
+        stmt = stmt.where(AudioTask.user_id == user_id)
     stmt = (
-        select(AudioTask)
-        .order_by(AudioTask.created_at.desc(), AudioTask.id.desc())
+        stmt.order_by(AudioTask.created_at.desc(), AudioTask.id.desc())
         .limit(limit)
         .offset(offset)
     )
@@ -33,11 +45,27 @@ def get_task(db: Session, task_id: int) -> AudioTask | None:
     return db.get(AudioTask, task_id)
 
 
+def count_tasks_by_status(db: Session) -> dict[str, int]:
+    """Return `{status.value: count}` for every status, filling missing
+    statuses with 0 so the metrics endpoint can publish a stable
+    label set."""
+    stmt = select(AudioTask.status, func.count(AudioTask.id)).group_by(
+        AudioTask.status
+    )
+    counts = {status.value: 0 for status in AudioTaskStatus}
+    for status_value, count in db.execute(stmt).all():
+        counts[status_value.value] = int(count)
+    return counts
+
+
 # ---- writes ---------------------------------------------------------------
-def create_task(db: Session, filename: str) -> AudioTask:
+def create_task(
+    db: Session, filename: str, *, user_id: int | None = None
+) -> AudioTask:
     task = AudioTask(
         filename=safe_filename(filename),
         status=AudioTaskStatus.UPLOADED,
+        user_id=user_id,
     )
     db.add(task)
     db.flush()  # populate task.id without committing

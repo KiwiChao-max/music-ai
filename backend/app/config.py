@@ -59,6 +59,41 @@ class Settings(BaseSettings):
     # this while streaming so large uploads are rejected before hitting disk.
     max_upload_bytes: int = 200 * 1024 * 1024
 
+    # ---- auth ------------------------------------------------------------
+    # JWT signing key. In production this MUST be set via JWT_SECRET (a long
+    # random string). The default is only useful for local development and
+    # smoke tests; the API will refuse to start if `production_mode=True`
+    # and the secret still matches the default.
+    jwt_secret: str = "dev-only-secret-please-change-in-production"
+    jwt_algorithm: str = "HS256"
+    access_token_ttl_minutes: int = 60 * 24  # 24 hours
+    refresh_token_ttl_minutes: int = 60 * 24 * 30  # 30 days
+
+    # Default quota applied to every user that has not overridden the value
+    # on their row. 0 = unlimited.
+    default_max_tasks_per_user: int = 50
+    default_max_upload_bytes_per_user: int = 0  # 0 = use global max_upload_bytes
+
+    # Production mode flips on stricter validation (no default JWT secret,
+    # verbose CORS errors, etc.). Off by default so local dev keeps working.
+    production_mode: bool = False
+
+    # When true, all task endpoints require a valid Bearer token. When
+    # false, endpoints still accept the `Authorization` header and stamp
+    # the user_id on the task if present, but do not reject anonymous
+    # traffic. The frontend always sends the header, so the only
+    # environment that ships with `auth_required=False` is local dev /
+    # CI smoke tests that don't want to deal with the login dance.
+    auth_required: bool = False
+
+    # Default administrator seeded on first boot. Both fields can be
+    # overridden via env vars; setting `bootstrap_admin_email=""` skips
+    # the seed entirely.
+    bootstrap_admin_email: str = "[email protected]"
+    bootstrap_admin_username: str = "admin"
+    bootstrap_admin_password: str = "admin1234"
+    bootstrap_admin_full_name: str = "Bootstrap Admin"
+
     # ---- celery / redis ----------------------------------------------------
     # The Celery broker (queue transport) and result backend share the same
     # Redis instance by default. Override `celery_broker_url` /

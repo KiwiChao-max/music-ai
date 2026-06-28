@@ -13,12 +13,15 @@ from typing import Optional
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     DateTime,
     Enum as SAEnum,
     Float,
+    ForeignKey,
     Integer,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column
@@ -88,10 +91,82 @@ class AudioTask(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # ---- ownership (Milestone 4) ---------------------------------------
+    # Nullable so legacy tasks from before the auth migration keep working.
+    # New tasks always have a non-null `user_id`; the API enforces this.
+    user_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     __mapper_args__ = {"eager_defaults": True}
 
     def __repr__(self) -> str:  # pragma: no cover - debug helper
         return f"<AudioTask id={self.id} filename={self.filename!r} status={self.status}>"
+
+
+class User(Base):
+    """Account that owns tasks, sample libraries and a quota.
+
+    `password_hash` is bcrypt. `role` distinguishes regular users from
+    admins; the API gates /api/admin/* on admin role. `is_active=False`
+    soft-deletes the account without breaking historical FK references.
+    """
+
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Case-insensitive uniqueness is enforced via a functional index in the
+    # migration; the column itself stores whatever the user typed at signup.
+    username: Mapped[str] = mapped_column(String(64), nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    full_name: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    role: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="user", server_default="user"
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
+
+    # Per-user quota knobs. 0 means "use the server default from settings".
+    max_tasks: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    max_upload_bytes: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+    last_login_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    __table_args__ = (
+        UniqueConstraint("email", name="ux_users_email"),
+        UniqueConstraint("username", name="ux_users_username"),
+    )
+    __mapper_args__ = {"eager_defaults": True}
+
+    def __repr__(self) -> str:  # pragma: no cover - debug helper
+        return f"<User id={self.id} email={self.email!r} role={self.role}>"
 
 
 class SampleLibrary(Base):

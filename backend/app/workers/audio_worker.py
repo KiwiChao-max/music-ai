@@ -15,9 +15,11 @@ of being recreated for every task.
 from __future__ import annotations
 
 import logging
+import time
 import wave
 from pathlib import Path
 
+from app.config import settings
 from app.db.models import AudioTaskStatus
 from app.db.session import SessionLocal
 from app.services import (
@@ -144,6 +146,35 @@ def _analyze_music(output_dir: Path) -> Path:
     return _MUSIC_ANALYSIS.analyze_and_write(output_dir)
 
 
+def _publish_progress(task, progress: int, step: str) -> None:
+    """Fan out a progress event on Redis so WebSocket clients can pick
+    it up in real time. Best-effort: if Redis is down we just log and
+    continue — the DB row is still the source of truth for the polling
+    fallback.
+    """
+    try:
+        import json
+
+        import redis
+
+        client = redis.Redis.from_url(settings.redis_url)
+        payload = json.dumps(
+            {
+                "type": "progress",
+                "task_id": task.id,
+                "status": task.status.value if task.status else None,
+                "progress": progress,
+                "current_step": step,
+                "ts": time.time(),
+            },
+            ensure_ascii=False,
+        )
+        client.publish(f"task:{task.id}", payload)
+        client.close()
+    except Exception as exc:  # noqa: BLE001 - never fail the worker for pub/sub
+        logger.debug("publish_progress: redis unavailable: %s", exc)
+
+
 def _report(db, task, progress: int, step: str) -> None:
     """Commit a progress update. Kept in one helper so we don't sprinkle
     `db.commit()` calls throughout the pipeline — every step ends with this
@@ -152,6 +183,7 @@ def _report(db, task, progress: int, step: str) -> None:
     task_service.set_progress(db, task, progress, step)
     db.commit()
     logger.info("task %s: %s%% %s", task.id, progress, step)
+    _publish_progress(task, progress, step)
 
 
 def _run_pipeline(
@@ -286,6 +318,9 @@ def process_task(task_id: int) -> None:
                     error_message=str(exc),
                 )
                 db.commit()
+                # Publish the final "task_finished" event so WebSocket
+                # clients don't sit on a stale PROCESSING state.
+                _publish_progress(task, 0, f"FAILED: {exc}")
             raise
 
 
