@@ -1,11 +1,12 @@
 import { Link } from "react-router-dom";
 
 import { ProgressBar } from "@/components/ProgressBar";
+import { Skeleton, EmptyState, ErrorState } from "@/components/States";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useAudioTasks } from "@/hooks/useAudioTasks";
 
 export function AudioListPage() {
-  const { data: tasks, isLoading, isError, error } = useAudioTasks();
+  const { data: tasks, isLoading, isError, error, refetch } = useAudioTasks();
 
   return (
     <section className="space-y-6">
@@ -24,23 +25,35 @@ export function AudioListPage() {
         </Link>
       </div>
 
-      {isLoading && <p className="text-sm text-slate-500">Loading tasks...</p>}
-      {isError && (
-        <p className="text-sm text-red-600">
-          Failed to load: {error.message}
-        </p>
+      {isLoading && (
+        <ul className="space-y-2" aria-label="Loading tasks">
+          {Array.from({ length: 3 }).map((_, idx) => (
+            <li
+              key={idx}
+              className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3"
+            >
+              <Skeleton width="w-1/2" />
+              <Skeleton width="w-20" height="h-5" />
+            </li>
+          ))}
+        </ul>
       )}
 
+      {isError && <ErrorState error={error} onRetry={() => refetch()} />}
+
       {tasks && tasks.length === 0 && (
-        <div className="rounded-lg border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
-          <p className="text-sm text-slate-600">No audio tasks yet.</p>
-          <Link
-            to="/upload"
-            className="mt-3 inline-block text-sm font-medium text-slate-900 underline"
-          >
-            Upload your first file
-          </Link>
-        </div>
+        <EmptyState
+          title="No audio tasks yet"
+          description="Upload a short clip and we'll separate the stems, transcribe the MIDI, and write a quick commentary."
+          action={
+            <Link
+              to="/upload"
+              className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800"
+            >
+              Upload your first file
+            </Link>
+          }
+        />
       )}
 
       {tasks && tasks.length > 0 && (

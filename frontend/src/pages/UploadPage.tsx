@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 import { useUploadAudio } from "@/hooks/useAudioTasks";
 import { MAX_UPLOAD_BYTES, validateAudioFile } from "@/utils/upload";
+import { ErrorState } from "@/components/States";
 
 const ACCEPT = "audio/*";
 
@@ -89,9 +90,11 @@ export function UploadPage() {
         )}
 
         {upload.isError && (
-          <p className="text-sm text-red-600">
-            Upload failed: {upload.error.message}
-          </p>
+          <ErrorState
+            title="Upload failed"
+            error={upload.error}
+            onRetry={() => upload.mutate(picked!)}
+          />
         )}
         {validationError && (
           <p className="text-sm text-red-600">{validationError}</p>
