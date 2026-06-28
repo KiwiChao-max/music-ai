@@ -47,15 +47,23 @@ function Waveform({
     const container = containerRef.current;
     if (!container) return undefined;
 
+    // Pick colors that contrast with the current theme. We re-read on
+    // every mount because the user can flip the theme while the bar is
+    // open.
+    const dark = document.documentElement.classList.contains("dark");
+    const waveColor = dark ? "#475569" : "#cbd5e1";
+    const progressColor = dark ? "#e2e8f0" : "#0f172a";
+    const cursorColor = dark ? "#e2e8f0" : "#0f172a";
+
     const ws = WaveSurfer.create({
       container,
       url,
       height,
       // Visual: a thin bar with rounded edges. We keep the cursor and
       // progress visible so the user can see where playback is.
-      waveColor: "#cbd5e1",
-      progressColor: "#0f172a",
-      cursorColor: "#0f172a",
+      waveColor,
+      progressColor,
+      cursorColor,
       cursorWidth: 1,
       barWidth: 2,
       barGap: 1,
@@ -111,7 +119,7 @@ export function PlayerBar() {
     <div
       role="region"
       aria-label="Audio player"
-      className="sticky bottom-0 left-0 right-0 z-30 border-t border-slate-200 bg-white shadow-[0_-4px_12px_rgba(15,23,42,0.06)]"
+      className="sticky bottom-0 left-0 right-0 z-30 border-t border-slate-200 bg-white shadow-[0_-4px_12px_rgba(15,23,42,0.06)] dark:border-slate-800 dark:bg-slate-900 dark:shadow-[0_-4px_12px_rgba(0,0,0,0.4)]"
     >
       <div className="mx-auto flex w-full max-w-5xl items-center gap-4 px-6 py-3">
         <div className="min-w-0 flex-1">
@@ -121,15 +129,15 @@ export function PlayerBar() {
               style={{ backgroundColor: loading ? "#f59e0b" : isPlaying ? "#10b981" : "#94a3b8" }}
               aria-hidden="true"
             />
-            <p className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900">
+            <p className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
               {current.title}
               {current.kind && (
-                <span className="ml-2 inline-flex items-center rounded bg-slate-100 px-1.5 py-0.5 align-middle text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                <span className="ml-2 inline-flex items-center rounded bg-slate-100 px-1.5 py-0.5 align-middle text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                   {current.kind}
                 </span>
               )}
             </p>
-            <span className="shrink-0 font-mono text-xs text-slate-500">
+            <span className="shrink-0 font-mono text-xs text-slate-500 dark:text-slate-400">
               {formatTime(currentTime)} / {formatTime(duration)}
             </span>
           </div>
@@ -148,7 +156,7 @@ export function PlayerBar() {
             type="button"
             onClick={toggle}
             disabled={loading}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-slate-900 text-white transition-colors hover:bg-slate-800 disabled:opacity-50"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-slate-900 text-white transition-colors hover:bg-slate-800 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
             aria-label={isPlaying ? "Pause" : "Play"}
           >
             {isPlaying ? (
@@ -177,7 +185,7 @@ export function PlayerBar() {
             )}
           </button>
 
-          <label className="flex items-center gap-1 text-xs text-slate-500" title="Volume">
+          <label className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400" title="Volume">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               width="14"
@@ -200,7 +208,7 @@ export function PlayerBar() {
               step={0.05}
               value={volume}
               onChange={(e) => setVolume(Number(e.target.value))}
-              className="h-1 w-20 cursor-pointer accent-slate-900"
+              className="h-1 w-20 cursor-pointer accent-slate-900 dark:accent-slate-100"
               aria-label="Volume"
             />
           </label>
@@ -208,7 +216,7 @@ export function PlayerBar() {
           <button
             type="button"
             onClick={stop}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
             aria-label="Close player"
             title="Close player"
           >

@@ -10,11 +10,11 @@ export function ProgressBar({ value, className = "" }: ProgressBarProps) {
   const filled = Math.round((v / 100) * cells);
   return (
     <div className={`flex items-center gap-2 ${className}`}>
-      <div className="font-mono text-xs tracking-tight text-slate-700">
+      <div className="font-mono text-xs tracking-tight text-slate-700 dark:text-slate-200">
         {"█".repeat(filled)}
-        <span className="text-slate-300">{"░".repeat(cells - filled)}</span>
+        <span className="text-slate-300 dark:text-slate-700">{"░".repeat(cells - filled)}</span>
       </div>
-      <div className="text-xs tabular-nums text-slate-500">{v}%</div>
+      <div className="text-xs tabular-nums text-slate-500 dark:text-slate-400">{v}%</div>
     </div>
   );
 }

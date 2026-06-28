@@ -262,12 +262,12 @@ export function SampleBasedDrumPlayer({
   if (!eventsUrl) return null;
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-5 space-y-4">
+    <section className="rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 p-5 space-y-4">
       <header className="space-y-1">
-        <h3 className="text-sm font-semibold text-slate-900">
+        <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
           Sample-based drum playback
         </h3>
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-slate-500 dark:text-slate-400">
           {library
             ? `Playing ${eventListRef.current?.events.length ?? 0} drum hits with "${library.name}".`
             : "No sample library is active — the default GM bank will be used in your DAW."}
@@ -280,7 +280,7 @@ export function SampleBasedDrumPlayer({
             type="button"
             onClick={onPlay}
             disabled={state.kind !== "ready" || (library !== null && !hasSamples)}
-            className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+            className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 dark:bg-slate-100 dark:bg-slate-800 dark:text-slate-900 dark:hover:bg-slate-200 disabled:opacity-50"
           >
             {position > 0 ? "Resume" : "Play with my samples"}
           </button>
@@ -288,7 +288,7 @@ export function SampleBasedDrumPlayer({
           <button
             type="button"
             onClick={onPause}
-            className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800"
+            className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 dark:bg-slate-100 dark:bg-slate-800 dark:text-slate-900 dark:hover:bg-slate-200"
           >
             Pause
           </button>
@@ -297,30 +297,30 @@ export function SampleBasedDrumPlayer({
           type="button"
           onClick={onStop}
           disabled={position === 0 && !isPlaying}
-          className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 dark:bg-slate-400 disabled:opacity-50"
         >
           Stop
         </button>
-        <span className="ml-auto font-mono text-xs text-slate-500">
+        <span className="ml-auto font-mono text-xs text-slate-500 dark:text-slate-400">
           {position.toFixed(1)}s / {duration.toFixed(1)}s
         </span>
       </div>
 
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
         <div
-          className="h-full bg-slate-700 transition-all"
+          className="h-full bg-slate-700 dark:bg-slate-400 transition-all"
           style={{ width: `${duration > 0 ? (position / duration) * 100 : 0}%` }}
         />
       </div>
 
       {state.kind === "loading" && (
-        <p className="text-xs text-slate-500">Loading drum events…</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400">Loading drum events…</p>
       )}
       {state.kind === "error" && (
-        <p className="text-xs text-red-600">Player error: {state.message}</p>
+        <p className="text-xs text-red-600 dark:text-red-400">Player error: {state.message}</p>
       )}
       {library && hasSamples && (
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-slate-500 dark:text-slate-400">
           {library.files.length} sample
           {library.files.length === 1 ? "" : "s"} loaded across{" "}
           {new Set(library.files.map((f) => f.midi_note)).size} GM percussion note
@@ -328,7 +328,7 @@ export function SampleBasedDrumPlayer({
         </p>
       )}
       {library && !hasSamples && (
-        <p className="text-xs text-amber-700">
+        <p className="text-xs text-amber-700 dark:text-amber-300">
           The active library is empty. Upload samples on the Samples page.
         </p>
       )}

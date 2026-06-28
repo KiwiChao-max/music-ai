@@ -5,6 +5,25 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>music-ai</title>
+    <script>
+      // Apply the saved theme before React mounts to avoid the
+      // flash-of-wrong-theme. The actual toggle is in
+      // `useDarkMode`; this script just keeps the very first paint
+      // consistent with what the user picked last time.
+      (function () {
+        try {
+          var saved = localStorage.getItem("music-ai.theme");
+          var dark =
+            saved === "dark" ||
+            (saved == null &&
+              window.matchMedia &&
+              window.matchMedia("(prefers-color-scheme: dark)").matches);
+          if (dark) document.documentElement.classList.add("dark");
+        } catch (e) {
+          // localStorage disabled — fall through to default light.
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
