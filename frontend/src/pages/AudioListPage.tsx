@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 
 import { ProgressBar } from "@/components/ProgressBar";
 import { Skeleton, EmptyState, ErrorState } from "@/components/States";
@@ -7,21 +8,22 @@ import { useAudioTasks } from "@/hooks/useAudioTasks";
 
 export function AudioListPage() {
   const { data: tasks, isLoading, isError, error, refetch } = useAudioTasks();
+  const { t } = useTranslation();
 
   return (
     <section className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="space-y-1">
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Audio tasks</h1>
-          <p className="text-sm text-slate-600 dark:text-slate-400">
-            All uploaded audio files. Click a row to view details.
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+            {t("tasks.title")}
+          </h1>
+          <p className="text-sm text-slate-600 dark:text-slate-400">{t("tasks.subtitle")}</p>
         </div>
         <Link
           to="/upload"
           className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
         >
-          New upload
+          {t("tasks.newUpload")}
         </Link>
       </div>
 
@@ -43,14 +45,14 @@ export function AudioListPage() {
 
       {tasks && tasks.length === 0 && (
         <EmptyState
-          title="No audio tasks yet"
-          description="Upload a short clip and we'll separate the stems, transcribe the MIDI, and write a quick commentary."
+          title={t("tasks.empty.title")}
+          description={t("tasks.empty.description")}
           action={
             <Link
               to="/upload"
               className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
             >
-              Upload your first file
+              {t("tasks.empty.cta")}
             </Link>
           }
         />

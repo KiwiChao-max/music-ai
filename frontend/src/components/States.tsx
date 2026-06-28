@@ -14,6 +14,7 @@
  * "product".
  */
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
 interface SkeletonProps {
   className?: string;
@@ -91,23 +92,26 @@ interface ErrorStateProps {
 }
 
 export function ErrorState({
-  title = "Something went wrong",
+  title,
   error,
   onRetry,
 }: ErrorStateProps) {
+  const { t } = useTranslation();
   const message =
     error instanceof Error
       ? error.message
       : typeof error === "string"
         ? error
-        : "Unknown error";
+        : t("errors.generic");
 
   return (
     <div
       role="alert"
       className="rounded-lg border border-rose-200 bg-rose-50 p-6 dark:border-rose-800 dark:bg-rose-950/30"
     >
-      <h3 className="text-base font-semibold text-rose-900 dark:text-rose-100">{title}</h3>
+      <h3 className="text-base font-semibold text-rose-900 dark:text-rose-100">
+        {title ?? t("errors.generic")}
+      </h3>
       <p className="mt-1 break-words rounded bg-rose-100 px-2 py-1 font-mono text-xs text-rose-900 dark:bg-rose-900/40 dark:text-rose-100">
         {message}
       </p>
@@ -117,7 +121,7 @@ export function ErrorState({
           onClick={onRetry}
           className="mt-3 inline-flex items-center justify-center rounded-md bg-rose-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-700 dark:bg-rose-700 dark:hover:bg-rose-600"
         >
-          Retry
+          {t("common.retry")}
         </button>
       )}
     </div>

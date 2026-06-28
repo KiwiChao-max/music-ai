@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
@@ -62,6 +63,7 @@ const GM_DRUM_LABELS: Record<number, string> = {
 const QUERY_KEY = ["sample-libraries"] as const;
 
 export function SampleLibraryPage() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const librariesQuery = useQuery({
     queryKey: QUERY_KEY,
@@ -91,32 +93,35 @@ export function SampleLibraryPage() {
   return (
     <section className="space-y-8">
       <header className="space-y-1">
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Sample libraries</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+          {t("samples.title")}
+        </h1>
         <p className="text-sm text-slate-600 dark:text-slate-400">
-          Upload your own drum samples. The active library plays back
-          generated drum MIDI in place of the default GM bank. Filenames
-          like <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">kick.wav</code>,{" "}
+          {t("samples.subtitle")}{" "}
+          <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">kick.wav</code>,{" "}
           <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">snare.wav</code>,{" "}
-          <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">open_hat.wav</code> are
-          mapped to their GM percussion notes automatically.
+          <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">open_hat.wav</code>{" "}
+          {t("samples.filenameHint")}
         </p>
       </header>
 
       <UploadCard />
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">Your libraries</h2>
+        <h2 className="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">
+          {t("samples.yourLibraries")}
+        </h2>
         {librariesQuery.isLoading && (
-          <p className="text-sm text-slate-500 dark:text-slate-400">Loading…</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">{t("common.loading")}</p>
         )}
         {librariesQuery.isError && (
           <p className="text-sm text-red-600 dark:text-red-400">
-            Failed to load libraries: {librariesQuery.error.message}
+            {t("samples.loadError", { message: librariesQuery.error.message })}
           </p>
         )}
         {libraries.length === 0 && !librariesQuery.isLoading && (
           <p className="rounded-md border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
-            No sample libraries yet. Upload one above to get started.
+            {t("samples.noLibraries")}
           </p>
         )}
         <ul className="space-y-3">
@@ -127,7 +132,7 @@ export function SampleLibraryPage() {
               isActive={activeId === library.id}
               onActivate={() => activate.mutate(library.id)}
               onDelete={() => {
-                if (confirm(`Delete library "${library.name}"?`)) {
+                if (confirm(t("samples.deleteConfirm", { name: library.name }))) {
                   remove.mutate(library.id);
                 }
               }}
@@ -140,6 +145,7 @@ export function SampleLibraryPage() {
 }
 
 function UploadCard() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const zipInputRef = useRef<HTMLInputElement | null>(null);
@@ -174,25 +180,27 @@ function UploadCard() {
 
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-6 space-y-4 dark:border-slate-800 dark:bg-slate-900">
-      <h2 className="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">Upload a new library</h2>
+      <h2 className="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">
+        {t("samples.new")}
+      </h2>
       <div className="grid gap-4 md:grid-cols-2">
         <label className="block text-sm">
-          <span className="font-medium text-slate-700 dark:text-slate-300">Library name</span>
+          <span className="font-medium text-slate-700 dark:text-slate-300">{t("samples.name")}</span>
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="My studio kit"
+            placeholder={t("samples.namePlaceholder")}
             className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
           />
         </label>
         <label className="block text-sm">
-          <span className="font-medium text-slate-700 dark:text-slate-300">Description (optional)</span>
+          <span className="font-medium text-slate-700 dark:text-slate-300">{t("samples.description")}</span>
           <input
             type="text"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Recorded 2025-08-12"
+            placeholder={t("samples.descriptionPlaceholder")}
             className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
           />
         </label>
@@ -200,7 +208,7 @@ function UploadCard() {
 
       <div className="grid gap-4 md:grid-cols-2">
         <FilePicker
-          label="Drop multiple WAV / AIFF / FLAC files"
+          label={t("samples.files")}
           accept="audio/*"
           multiple
           files={pickedFiles}
@@ -208,7 +216,7 @@ function UploadCard() {
           inputRef={fileInputRef}
         />
         <FilePicker
-          label="… or upload a single .zip archive"
+          label={t("samples.orZip")}
           accept=".zip,application/zip"
           multiple={false}
           files={zipFile ? [zipFile] : []}
@@ -226,7 +234,7 @@ function UploadCard() {
           disabled={!canSubmit || create.isPending}
           className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
         >
-          {create.isPending ? "Uploading…" : "Create library"}
+          {create.isPending ? t("samples.creating") : t("samples.create")}
         </button>
       </div>
     </section>
@@ -243,12 +251,15 @@ interface FilePickerProps {
 }
 
 function FilePicker({ label, accept, multiple, files, onFiles, inputRef }: FilePickerProps) {
+  const { t } = useTranslation();
   return (
     <label className="flex cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center transition-colors hover:border-slate-400 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:hover:border-slate-500 dark:hover:bg-slate-700">
       <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{label}</span>
       {files.length > 0 && (
         <span className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          {files.length === 1 ? files[0].name : `${files.length} file(s) selected`}
+          {files.length === 1
+            ? files[0].name
+            : t("samples.filesSelectedPlural", { count: files.length })}
         </span>
       )}
       <input
@@ -271,6 +282,7 @@ interface LibraryCardProps {
 }
 
 function LibraryCard({ library, isActive, onActivate, onDelete }: LibraryCardProps) {
+  const { t } = useTranslation();
   const grouped = useMemo(() => groupByNote(library.files), [library.files]);
   const missing = useMemo(() => findMissingNotes(library.files), [library.files]);
 
@@ -290,7 +302,7 @@ function LibraryCard({ library, isActive, onActivate, onDelete }: LibraryCardPro
             </h3>
             {isActive && (
               <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
-                Active
+                {t("samples.active")}
               </span>
             )}
           </div>
@@ -305,7 +317,7 @@ function LibraryCard({ library, isActive, onActivate, onDelete }: LibraryCardPro
               onClick={onActivate}
               className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
             >
-              Activate
+              {t("samples.activate")}
             </button>
           )}
           <button
@@ -313,19 +325,23 @@ function LibraryCard({ library, isActive, onActivate, onDelete }: LibraryCardPro
             onClick={onDelete}
             className="rounded-md border border-rose-200 bg-rose-50 px-3 py-1.5 text-sm font-medium text-rose-700 hover:bg-rose-100 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-900/60"
           >
-            Delete
+            {t("samples.delete")}
           </button>
         </div>
       </header>
 
       <div className="text-xs text-slate-500 dark:text-slate-400">
-        {library.files.length} sample
-        {library.files.length === 1 ? "" : "s"} mapped · {grouped.size} distinct GM notes
+        {t(library.files.length === 1 ? "samples.stats" : "samples.statsPlural", {
+          count: library.files.length,
+          notes: grouped.size,
+        })}
         {missing.length > 0 && (
           <span className="ml-1 text-amber-600 dark:text-amber-400">
-            · missing {missing.length} note
-            {missing.length === 1 ? "" : "s"}: {missing.slice(0, 5).join(", ")}
-            {missing.length > 5 ? "…" : ""}
+            ·{" "}
+            {t(missing.length === 1 ? "samples.missing" : "samples.missingPlural", {
+              count: missing.length,
+              notes: missing.slice(0, 5).join(", ") + (missing.length > 5 ? "…" : ""),
+            })}
           </span>
         )}
       </div>
@@ -333,7 +349,7 @@ function LibraryCard({ library, isActive, onActivate, onDelete }: LibraryCardPro
       {library.files.length > 0 && (
         <details className="text-sm">
           <summary className="cursor-pointer text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100">
-            Show all samples
+            {t("samples.showAll")}
           </summary>
           <ul className="mt-2 grid grid-cols-1 gap-1 text-xs sm:grid-cols-2 md:grid-cols-3">
             {[...grouped.entries()].map(([note, files]) => (
@@ -343,7 +359,7 @@ function LibraryCard({ library, isActive, onActivate, onDelete }: LibraryCardPro
               >
                 <span className="font-mono text-slate-500 dark:text-slate-400">{note}</span>
                 <span className="truncate text-slate-700 dark:text-slate-200">
-                  {GM_DRUM_LABELS[note] ?? `Note ${note}`}
+                  {GM_DRUM_LABELS[note] ?? t("samples.noteFallback", { note })}
                 </span>
                 <span className="text-slate-400 dark:text-slate-500">
                   {files.length > 1 ? `×${files.length}` : ""}

@@ -1,0 +1,191 @@
+{
+  "app": {
+    "title": "music-ai",
+    "nav": {
+      "home": "首页",
+      "upload": "上传",
+      "tasks": "任务",
+      "samples": "采样库"
+    }
+  },
+  "home": {
+    "title": "music-ai",
+    "tagline": "AI 驱动的音乐处理工具。上传一个音频文件,任务会出现在列表中,点进去就能看到处理进度。",
+    "cards": {
+      "upload": {
+        "title": "上传音频",
+        "description": "开启一个新的处理任务,系统会分离音轨、转写 MIDI 并生成一段简短点评。",
+        "cta": "去上传"
+      },
+      "tasks": {
+        "title": "你的任务",
+        "description": "查看你上传过的所有任务,实时跟踪进度,完成后可以重新打开查看分析。",
+        "cta": "查看任务"
+      }
+    }
+  },
+  "upload": {
+    "title": "上传音频",
+    "subtitle": "选择一个音频文件以创建新任务,上传完成后会自动跳转到任务详情页。",
+    "dropLabel": "点击选择音频文件",
+    "dropHelp": "支持浏览器可识别的音频文件,最大 {{max}} MB",
+    "remove": "移除",
+    "clear": "清空",
+    "submit": "上传",
+    "submitting": "上传中…",
+    "error": {
+      "title": "上传失败",
+      "type": "仅支持音频文件 (MP3、WAV、FLAC、M4A、OGG 等)。",
+      "size": "文件过大 (最大 {{max}} MB)。",
+      "empty": "请先选择文件。"
+    }
+  },
+  "tasks": {
+    "title": "音频任务",
+    "subtitle": "所有上传过的音频文件,点击行查看详情。",
+    "newUpload": "新建上传",
+    "loading": "正在加载任务…",
+    "empty": {
+      "title": "还没有音频任务",
+      "description": "上传一段音频,我们会自动分离音轨、转写 MIDI 并写一段简短点评。",
+      "cta": "上传你的第一个文件"
+    },
+    "error": "加载任务失败"
+  },
+  "detail": {
+    "back": "返回列表",
+    "backToList": "返回任务列表",
+    "loading": "正在加载任务…",
+    "notFound": {
+      "title": "未找到任务",
+      "description": "没有找到 id 为 #{{id}} 的任务。它可能已被删除,或链接错误。"
+    },
+    "error": "加载任务失败",
+    "invalidId": "URL 中的任务 id 无效: {{id}}",
+    "startProcessing": "开始处理",
+    "starting": "启动中…",
+    "retry": "重试",
+    "retrying": "重试中…",
+    "delete": "删除任务",
+    "deleting": "删除中…",
+    "deleteError": "删除失败",
+    "deleteConfirm": "确定要删除任务 #{{id}} ({{name}}) 吗?",
+    "retryError": "重试失败",
+    "startError": "启动处理失败",
+    "processing": "处理中",
+    "live": "实时",
+    "readyToProcess": "任务已上传,准备好开始处理。",
+    "processingFailed": "处理失败",
+    "status": "状态:",
+    "finished": "已完成",
+    "fields": {
+      "id": "ID",
+      "duration": "时长",
+      "finishedAt": "完成时间",
+      "status": "状态"
+    },
+    "stems": {
+      "loading": "正在加载分轨…",
+      "error": "加载分轨失败",
+      "empty": {
+        "title": "没有生成任何分轨",
+        "description": "工作进程结束时没有产出任何文件,这种情况比较少见 —— 尝试重新处理任务。"
+      }
+    },
+    "drums": {
+      "title": "鼓组分轨 (按乐器拆分的 MIDI)",
+      "subtitle": "把任意一个拖进 DAW 即可单独编辑底鼓、军鼓、踩镲等组件。"
+    },
+    "samples": {
+      "title": "基于采样的鼓点播放器"
+    },
+    "analysis": {
+      "loading": "正在加载音乐分析…",
+      "error": "该任务暂无可用的分析。",
+      "title": "AI 分析",
+      "bpm": "BPM",
+      "key": "调式",
+      "notes": "音符数",
+      "duration": "时长",
+      "analysisWindow": "分析窗口",
+      "chordMap": "和弦图",
+      "sections": "段落",
+      "section": "段落 {{label}}",
+      "density": "密度 {{value}}",
+      "instruments": "检测到的乐器",
+      "dominant": "主导:{{name}}",
+      "instrumentSuggestions": "乐器建议",
+      "arrangementSuggestions": "编排建议",
+      "analysisNotes": "分析说明",
+      "unknown": "未知",
+      "warning": "{{count}} 个提示",
+      "warningPlural": "{{count}} 个提示",
+      "confidenceHigh": "高",
+      "confidenceMedium": "中",
+      "confidenceLow": "低",
+      "commentary": {
+        "title": "AI 点评",
+        "empty": "分析完成后,AI 点评会显示在这里。",
+        "generatedAt": "生成于 {{when}}",
+        "model": "AI",
+        "modelPreview": "AI (预览)"
+      }
+    }
+  },
+  "samples": {
+    "title": "采样库",
+    "subtitle": "上传你自己的鼓采样,激活的采样库会用你的音色播放生成的鼓点 MIDI。",
+    "filenameHint": "这些文件名会自动映射到对应的 GM 打击乐音符。",
+    "active": "已激活",
+    "yourLibraries": "你的采样库",
+    "noLibraries": "还没有采样库,在上方创建一个开始使用。",
+    "new": "上传新采样库",
+    "name": "采样库名称",
+    "namePlaceholder": "我的工作室鼓组",
+    "description": "描述 (可选)",
+    "descriptionPlaceholder": "2025-08-12 录制",
+    "files": "拖入多个 WAV / AIFF / FLAC 文件",
+    "orZip": "… 或者上传一个 .zip 压缩包",
+    "create": "创建采样库",
+    "creating": "上传中…",
+    "activate": "激活",
+    "delete": "删除",
+    "stats": "{{count}} 个采样 · {{notes}} 个不同的 GM 音符",
+    "statsPlural": "{{count}} 个采样 · {{notes}} 个不同的 GM 音符",
+    "missing": "缺少 {{count}} 个音符:{{notes}}",
+    "missingPlural": "缺少 {{count}} 个音符:{{notes}}",
+    "showAll": "查看全部采样",
+    "loadError": "加载采样库失败:{{message}}",
+    "filesSelected": "已选 {{count}} 个文件",
+    "filesSelectedPlural": "已选 {{count}} 个文件",
+    "noteFallback": "音符 {{note}}",
+    "deleteConfirm": "确定要删除采样库\"{{name}}\"吗?"
+  },
+  "player": {
+    "audioPlayer": "音频播放器",
+    "play": "播放",
+    "pause": "暂停",
+    "close": "关闭播放器",
+    "volume": "音量",
+    "switchToLight": "切换到浅色主题",
+    "switchToDark": "切换到深色主题",
+    "switchToEnglish": "切换到英文",
+    "switchToChinese": "切换到中文"
+  },
+  "common": {
+    "retry": "重试",
+    "loading": "加载中…",
+    "cancel": "取消",
+    "download": "下载",
+    "audio": "音频",
+    "midi": "MIDI",
+    "rawMidi": "原始 MIDI",
+    "gmMidi": "GM MIDI",
+    "xgMidi": "XG MIDI",
+    "minutes": "{{count}} 分钟",
+    "seconds": "{{count}} 秒"
+  },
+  "errors": {
+    "generic": "出错了"
+  }
+}

@@ -1,4 +1,5 @@
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 
 import { CommentaryCard } from "@/components/CommentaryCard";
@@ -39,54 +40,78 @@ function formatRange(start: number, end: number): string {
   return `${start.toFixed(1)}s-${end.toFixed(1)}s`;
 }
 
-function confidenceLabel(value: number): string {
-  if (value >= 0.66) return "high";
-  if (value >= 0.33) return "medium";
-  return "low";
+function confidenceLabel(value: number, t: (key: string) => string): string {
+  if (value >= 0.66) return t("detail.analysis.confidenceHigh");
+  if (value >= 0.33) return t("detail.analysis.confidenceMedium");
+  return t("detail.analysis.confidenceLow");
 }
 
 function AnalysisPanel({ analysis }: { analysis: MusicAnalysis }) {
+  const { t } = useTranslation();
   const keyLabel = analysis.key && analysis.scale
     ? `${analysis.key} ${analysis.scale}`
-    : "Unknown";
+    : t("detail.analysis.unknown");
 
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">AI Analysis</h2>
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+          {t("detail.analysis.title")}
+        </h2>
         {analysis.warnings.length > 0 && (
           <span className="rounded bg-amber-100 dark:bg-amber-900/40 px-2 py-1 text-xs font-medium text-amber-800 dark:text-amber-200">
-            {analysis.warnings.length} warning{analysis.warnings.length > 1 ? "s" : ""}
+            {t(
+              analysis.warnings.length === 1
+                ? "detail.analysis.warning"
+                : "detail.analysis.warningPlural",
+              { count: analysis.warnings.length },
+            )}
           </span>
         )}
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">BPM</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            {t("detail.analysis.bpm")}
+          </p>
           <p className="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">{analysis.bpm ?? "-"}</p>
-          <p className="text-xs text-slate-500 dark:text-slate-400">{confidenceLabel(analysis.bpm_confidence)}</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {confidenceLabel(analysis.bpm_confidence, t)}
+          </p>
         </div>
         <div className="rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Key</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            {t("detail.analysis.key")}
+          </p>
           <p className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100">{keyLabel}</p>
-          <p className="text-xs text-slate-500 dark:text-slate-400">{confidenceLabel(analysis.key_confidence)}</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {confidenceLabel(analysis.key_confidence, t)}
+          </p>
         </div>
         <div className="rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Notes</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            {t("detail.analysis.notes")}
+          </p>
           <p className="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">{analysis.note_count}</p>
           <p className="text-xs text-slate-500 dark:text-slate-400">{analysis.pitch_range ?? "-"}</p>
         </div>
         <div className="rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Duration</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            {t("detail.analysis.duration")}
+          </p>
           <p className="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">{analysis.duration.toFixed(1)}s</p>
-          <p className="text-xs text-slate-500 dark:text-slate-400">analysis window</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {t("detail.analysis.analysisWindow")}
+          </p>
         </div>
       </div>
 
       {analysis.chords.length > 0 && (
         <div className="rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 p-4">
-          <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Chord Map</h3>
+          <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+            {t("detail.analysis.chordMap")}
+          </h3>
           <div className="mt-3 flex flex-wrap gap-2">
             {analysis.chords.map((chord) => (
               <span
@@ -111,15 +136,22 @@ function AnalysisPanel({ analysis }: { analysis: MusicAnalysis }) {
 
       {analysis.sections.length > 0 && (
         <div className="rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 p-4">
-          <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Sections</h3>
+          <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+            {t("detail.analysis.sections")}
+          </h3>
           <div className="mt-3 space-y-2">
             {analysis.sections.map((section) => (
               <div key={section.label} className="rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-3">
                 <div className="flex items-center justify-between gap-3">
-                  <span className="font-semibold text-slate-900 dark:text-slate-100">Section {section.label}</span>
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">
+                    {t("detail.analysis.section", { label: section.label })}
+                  </span>
                   <span className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">{section.energy}</span>
                 </div>
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{formatRange(section.start, section.end)} · density {section.density}</p>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  {formatRange(section.start, section.end)} ·{" "}
+                  {t("detail.analysis.density", { value: section.density })}
+                </p>
                 <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{section.suggestion}</p>
               </div>
             ))}
@@ -128,13 +160,15 @@ function AnalysisPanel({ analysis }: { analysis: MusicAnalysis }) {
       )}
 
       <div className="grid gap-3 md:grid-cols-2">
-        <AdviceList title="Instrument Suggestions" items={analysis.instrumentation} />
-        <AdviceList title="Arrangement Suggestions" items={analysis.arrangement} />
+        <AdviceList title={t("detail.analysis.instrumentSuggestions")} items={analysis.instrumentation} />
+        <AdviceList title={t("detail.analysis.arrangementSuggestions")} items={analysis.arrangement} />
       </div>
 
       {analysis.warnings.length > 0 && (
         <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-4">
-          <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-200">Analysis Notes</h3>
+          <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+            {t("detail.analysis.analysisNotes")}
+          </h3>
           <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-amber-900 dark:text-amber-200">
             {analysis.warnings.map((warning) => (
               <li key={warning}>{warning}</li>
@@ -174,17 +208,18 @@ function DetectedInstrumentsPanel({
   items: DetectedInstrument[];
   dominant: string | null;
 }) {
+  const { t } = useTranslation();
   // Render high-to-low so the dominant instrument sits on top.
   const sorted = [...items].sort((a, b) => b.probability - a.probability);
   return (
     <div className="rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 p-4">
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-          Detected instruments
+          {t("detail.analysis.instruments")}
         </h3>
         {dominant && (
           <span className="rounded bg-indigo-100 dark:bg-indigo-900/40 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-indigo-700 dark:text-indigo-300">
-            Dominant: {formatInstrumentName(dominant)}
+            {t("detail.analysis.dominant", { name: formatInstrumentName(dominant) })}
           </span>
         )}
       </div>
@@ -235,6 +270,7 @@ const DRUM_PART_LABELS: Record<string, string> = {
 };
 
 function DrumPartPanel({ stems }: { stems: StemInfo[] }) {
+  const { t } = useTranslation();
   const parts = stems
     .filter((s) => s.kind === "midi" && s.name.startsWith("drums_"))
     .map((s) => {
@@ -247,10 +283,10 @@ function DrumPartPanel({ stems }: { stems: StemInfo[] }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 p-4">
       <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-        Drum parts (per-instrument MIDI)
+        {t("detail.drums.title")}
       </h3>
       <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-        Drop any of these into a DAW to edit a single component of the kit.
+        {t("detail.drums.subtitle")}
       </p>
       <ul className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
         {parts.map(({ part, stem }) => (
@@ -276,6 +312,7 @@ function DrumPartPanel({ stems }: { stems: StemInfo[] }) {
 }
 
 export function AudioDetailPage() {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const taskId = Number(id);
   const navigate = useNavigate();
@@ -305,8 +342,8 @@ export function AudioDetailPage() {
   if (!Number.isFinite(taskId)) {
     return (
       <ErrorState
-        title="Invalid task id"
-        error={`The URL contains an invalid task id: ${id}`}
+        title={t("errors.generic")}
+        error={t("detail.invalidId", { id: String(id) })}
       />
     );
   }
@@ -330,7 +367,7 @@ export function AudioDetailPage() {
     return (
       <section className="max-w-3xl space-y-4">
         <ErrorState
-          title="Failed to load task"
+          title={t("detail.error")}
           error={error}
           onRetry={() => refetch()}
         />
@@ -338,7 +375,7 @@ export function AudioDetailPage() {
           to="/audio"
           className="inline-block text-sm text-slate-600 dark:text-slate-400 underline hover:text-slate-900 dark:hover:text-slate-100 dark:text-slate-100"
         >
-          Back to list
+          {t("detail.backToList")}
         </Link>
       </section>
     );
@@ -346,14 +383,14 @@ export function AudioDetailPage() {
   if (!task) {
     return (
       <EmptyState
-        title="Task not found"
-        description={`No task with id #${taskId}. It may have been deleted, or the link is wrong.`}
+        title={t("detail.notFound.title")}
+        description={t("detail.notFound.description", { id: taskId })}
         action={
           <Link
           to="/audio"
           className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
         >
-            Back to tasks
+            {t("detail.backToList")}
           </Link>
         }
       />
@@ -361,7 +398,7 @@ export function AudioDetailPage() {
   }
 
   const onDelete = () => {
-    if (!confirm(`Delete task #${task.id} (${task.filename})?`)) return;
+    if (!confirm(t("detail.deleteConfirm", { id: task.id, name: task.filename }))) return;
     remove.mutate(task.id, { onSuccess: () => navigate("/audio") });
   };
 
@@ -384,7 +421,7 @@ export function AudioDetailPage() {
     <section className="max-w-3xl space-y-6">
       <nav className="text-sm text-slate-500 dark:text-slate-400">
         <Link to="/audio" className="hover:text-slate-900 dark:hover:text-slate-100 dark:text-slate-100 hover:underline">
-          Back to tasks
+          {t("detail.backToList")}
         </Link>
       </nav>
 
@@ -393,9 +430,11 @@ export function AudioDetailPage() {
           {task.filename}
         </h1>
         <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
-          <span className="text-slate-500 dark:text-slate-400">Status:</span>
+          <span className="text-slate-500 dark:text-slate-400">{t("detail.status")}</span>
           {isFinished ? (
-            <span className="text-base font-semibold text-emerald-700 dark:text-emerald-300">Finished</span>
+            <span className="text-base font-semibold text-emerald-700 dark:text-emerald-300">
+              {t("detail.finished")}
+            </span>
           ) : (
             <StatusBadge status={task.status} />
           )}
@@ -404,18 +443,20 @@ export function AudioDetailPage() {
 
       {isUploaded && (
         <div className="rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 p-6 text-center">
-          <p className="text-sm text-slate-600 dark:text-slate-400">The task is uploaded and ready to process.</p>
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            {t("detail.readyToProcess")}
+          </p>
           <button
             type="button"
             onClick={onStart}
             disabled={startProcess.isPending}
             className="mt-3 rounded-md bg-slate-900 px-5 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
           >
-            {startProcess.isPending ? "Starting..." : "Start processing"}
+            {startProcess.isPending ? t("detail.starting") : t("detail.startProcessing")}
           </button>
           {startProcess.isError && (
             <ErrorState
-              title="Failed to start processing"
+              title={t("detail.startError")}
               error={startProcess.error}
               onRetry={onStart}
             />
@@ -426,17 +467,23 @@ export function AudioDetailPage() {
       {isProcessing && (
         <div className="space-y-2 rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 p-6">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Processing</span>
-            <span className="text-xs text-slate-500 dark:text-slate-400">live</span>
+            <span className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              {t("detail.processing")}
+            </span>
+            <span className="text-xs text-slate-500 dark:text-slate-400">{t("detail.live")}</span>
           </div>
           <ProgressBar value={task.progress} className="mt-1" />
-          <p className="text-sm text-slate-700 dark:text-slate-300">{task.current_step ?? "Starting..."}</p>
+          <p className="text-sm text-slate-700 dark:text-slate-300">
+            {task.current_step ?? t("detail.starting")}
+          </p>
         </div>
       )}
 
       {isFailed && (
         <div className="space-y-3 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 p-6">
-          <p className="text-sm font-semibold text-red-700 dark:text-red-300">Processing failed</p>
+          <p className="text-sm font-semibold text-red-700 dark:text-red-300">
+            {t("detail.processingFailed")}
+          </p>
           {task.error_message && (
             <pre className="overflow-x-auto rounded bg-white p-3 text-xs text-red-700 dark:text-red-300">
               {task.error_message}
@@ -448,11 +495,11 @@ export function AudioDetailPage() {
             disabled={startProcess.isPending}
             className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
           >
-            {startProcess.isPending ? "Retrying..." : "Retry"}
+            {startProcess.isPending ? t("detail.retrying") : t("detail.retry")}
           </button>
           {startProcess.isError && (
             <ErrorState
-              title="Retry failed"
+              title={t("detail.retryError")}
               error={startProcess.error}
               onRetry={onStart}
             />
@@ -466,7 +513,7 @@ export function AudioDetailPage() {
             {stemsQuery.isLoading && (
               <div
                 className="space-y-2 rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 p-4"
-                aria-label="Loading stems"
+                aria-label={t("detail.stems.loading")}
               >
                 <Skeleton width="w-1/3" />
                 <Skeleton width="w-2/3" />
@@ -475,15 +522,15 @@ export function AudioDetailPage() {
             )}
             {stemsQuery.isError && (
               <ErrorState
-                title="Failed to load stems"
+                title={t("detail.stems.error")}
                 error={stemsQuery.error}
                 onRetry={() => stemsQuery.refetch()}
               />
             )}
             {stemsQuery.data && stemsQuery.data.length === 0 && (
               <EmptyState
-                title="No stems produced"
-                description="The worker finished without producing any output files. This is unusual — try re-processing the task."
+                title={t("detail.stems.empty.title")}
+                description={t("detail.stems.empty.description")}
               />
             )}
             {stemsQuery.data && stemsQuery.data.length > 0 && (
@@ -501,7 +548,7 @@ export function AudioDetailPage() {
           {analysisQuery.isLoading && (
             <div
               className="space-y-3 rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 p-4"
-              aria-label="Loading music analysis"
+              aria-label={t("detail.analysis.loading")}
             >
               <Skeleton width="w-1/3" height="h-5" />
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -517,7 +564,7 @@ export function AudioDetailPage() {
           )}
           {analysisQuery.isError && (
             <ErrorState
-              title="Analysis is not available"
+              title={t("detail.analysis.error")}
               error={analysisQuery.error}
             />
           )}
@@ -532,19 +579,27 @@ export function AudioDetailPage() {
 
       <dl className="grid grid-cols-1 gap-4 rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 p-6 sm:grid-cols-2">
         <div>
-          <dt className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">ID</dt>
+          <dt className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            {t("detail.fields.id")}
+          </dt>
           <dd className="mt-1 text-sm text-slate-900 dark:text-slate-100">{task.id}</dd>
         </div>
         <div>
-          <dt className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Duration</dt>
+          <dt className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            {t("detail.fields.duration")}
+          </dt>
           <dd className="mt-1 text-sm text-slate-900 dark:text-slate-100">{formatDuration(task.duration)}</dd>
         </div>
         <div>
-          <dt className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Finished at</dt>
+          <dt className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            {t("detail.fields.finishedAt")}
+          </dt>
           <dd className="mt-1 text-sm text-slate-900 dark:text-slate-100">{formatTime(task.finished_at)}</dd>
         </div>
         <div>
-          <dt className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Status</dt>
+          <dt className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            {t("detail.fields.status")}
+          </dt>
           <dd className="mt-1 text-sm text-slate-900 dark:text-slate-100">{task.status}</dd>
         </div>
       </dl>
@@ -554,14 +609,14 @@ export function AudioDetailPage() {
           type="button"
           onClick={onDelete}
           disabled={remove.isPending}
-          className="rounded-md border border-red-200 dark:border-red-800 bg-white px-4 py-2 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:bg-red-950/30 disabled:opacity-50"
+          className="rounded-md border border-red-200 dark:border-red-800 bg-white px-4 py-2 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 disabled:opacity-50"
         >
-          {remove.isPending ? "Deleting..." : "Delete task"}
+          {remove.isPending ? t("detail.deleting") : t("detail.delete")}
         </button>
       </div>
       {remove.isError && (
         <ErrorState
-          title="Delete failed"
+          title={t("detail.deleteError")}
           error={remove.error}
           onRetry={onDelete}
         />

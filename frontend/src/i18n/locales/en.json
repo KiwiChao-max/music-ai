@@ -1,0 +1,191 @@
+{
+  "app": {
+    "title": "music-ai",
+    "nav": {
+      "home": "Home",
+      "upload": "Upload",
+      "tasks": "Tasks",
+      "samples": "Samples"
+    }
+  },
+  "home": {
+    "title": "music-ai",
+    "tagline": "An AI-powered music processing playground. Upload an audio file, see the task appear in the list, and open the detail page to follow its progress.",
+    "cards": {
+      "upload": {
+        "title": "Upload audio",
+        "description": "Start a new processing task. The worker will separate stems, transcribe MIDI, and write a short commentary.",
+        "cta": "Upload"
+      },
+      "tasks": {
+        "title": "Your tasks",
+        "description": "Browse everything you've uploaded, see live progress, and reopen finished tasks for analysis.",
+        "cta": "View tasks"
+      }
+    }
+  },
+  "upload": {
+    "title": "Upload audio",
+    "subtitle": "Pick an audio file to create a new task. You'll be taken to the task page as soon as the upload completes.",
+    "dropLabel": "Click to choose an audio file",
+    "dropHelp": "Supports browser-readable audio files up to {{max}} MB",
+    "remove": "Remove",
+    "clear": "Clear",
+    "submit": "Upload",
+    "submitting": "Uploading...",
+    "error": {
+      "title": "Upload failed",
+      "type": "Only audio files are supported (MP3, WAV, FLAC, M4A, OGG, ...).",
+      "size": "File is too large (max {{max}} MB).",
+      "empty": "Choose a file first."
+    }
+  },
+  "tasks": {
+    "title": "Audio tasks",
+    "subtitle": "All uploaded audio files. Click a row to view details.",
+    "newUpload": "New upload",
+    "loading": "Loading tasks…",
+    "empty": {
+      "title": "No audio tasks yet",
+      "description": "Upload a short clip and we'll separate the stems, transcribe the MIDI, and write a quick commentary.",
+      "cta": "Upload your first file"
+    },
+    "error": "Failed to load tasks"
+  },
+  "detail": {
+    "back": "Back to list",
+    "backToList": "Back to tasks",
+    "loading": "Loading task…",
+    "notFound": {
+      "title": "Task not found",
+      "description": "No task with id #{{id}}. It may have been deleted, or the link is wrong."
+    },
+    "error": "Failed to load task",
+    "invalidId": "The URL contains an invalid task id: {{id}}",
+    "startProcessing": "Start processing",
+    "starting": "Starting…",
+    "retry": "Retry",
+    "retrying": "Retrying…",
+    "delete": "Delete task",
+    "deleting": "Deleting…",
+    "deleteError": "Delete failed",
+    "deleteConfirm": "Delete task #{{id}} ({{name}})?",
+    "retryError": "Retry failed",
+    "startError": "Failed to start processing",
+    "processing": "Processing",
+    "live": "live",
+    "readyToProcess": "The task is uploaded and ready to process.",
+    "processingFailed": "Processing failed",
+    "status": "Status:",
+    "finished": "Finished",
+    "fields": {
+      "id": "ID",
+      "duration": "Duration",
+      "finishedAt": "Finished at",
+      "status": "Status"
+    },
+    "stems": {
+      "loading": "Loading stems…",
+      "error": "Failed to load stems",
+      "empty": {
+        "title": "No stems produced",
+        "description": "The worker finished without producing any output files. This is unusual — try re-processing the task."
+      }
+    },
+    "drums": {
+      "title": "Drum parts (per-instrument MIDI)",
+      "subtitle": "Drop any of these into a DAW to edit a single component of the kit."
+    },
+    "samples": {
+      "title": "Sample-based drum player"
+    },
+    "analysis": {
+      "loading": "Loading music analysis…",
+      "error": "Analysis is not available for this task yet.",
+      "title": "AI Analysis",
+      "bpm": "BPM",
+      "key": "Key",
+      "notes": "Notes",
+      "duration": "Duration",
+      "analysisWindow": "analysis window",
+      "chordMap": "Chord Map",
+      "sections": "Sections",
+      "section": "Section {{label}}",
+      "density": "density {{value}}",
+      "instruments": "Detected instruments",
+      "dominant": "Dominant: {{name}}",
+      "instrumentSuggestions": "Instrument Suggestions",
+      "arrangementSuggestions": "Arrangement Suggestions",
+      "analysisNotes": "Analysis Notes",
+      "unknown": "Unknown",
+      "warning": "{{count}} warning",
+      "warningPlural": "{{count}} warnings",
+      "confidenceHigh": "high",
+      "confidenceMedium": "medium",
+      "confidenceLow": "low",
+      "commentary": {
+        "title": "Take on this track",
+        "empty": "The AI commentary will appear here once the analysis finishes.",
+        "generatedAt": "Generated {{when}}",
+        "model": "AI",
+        "modelPreview": "AI (preview)"
+      }
+    }
+  },
+  "samples": {
+    "title": "Sample libraries",
+    "subtitle": "Upload your own drum samples. The active library plays back generated drum MIDI in place of the default GM bank.",
+    "filenameHint": "are mapped to their GM percussion notes automatically.",
+    "active": "Active",
+    "yourLibraries": "Your libraries",
+    "noLibraries": "No sample libraries yet. Upload one above to get started.",
+    "new": "Upload a new library",
+    "name": "Library name",
+    "namePlaceholder": "My studio kit",
+    "description": "Description (optional)",
+    "descriptionPlaceholder": "Recorded 2025-08-12",
+    "files": "Drop multiple WAV / AIFF / FLAC files",
+    "orZip": "… or upload a single .zip archive",
+    "create": "Create library",
+    "creating": "Uploading…",
+    "activate": "Activate",
+    "delete": "Delete",
+    "stats": "{{count}} sample mapped · {{notes}} distinct GM notes",
+    "statsPlural": "{{count}} samples mapped · {{notes}} distinct GM notes",
+    "missing": "missing {{count}} note: {{notes}}",
+    "missingPlural": "missing {{count}} notes: {{notes}}",
+    "showAll": "Show all samples",
+    "loadError": "Failed to load libraries: {{message}}",
+    "filesSelected": "{{count}} file selected",
+    "filesSelectedPlural": "{{count}} files selected",
+    "noteFallback": "Note {{note}}",
+    "deleteConfirm": "Delete library \"{{name}}\"?"
+  },
+  "player": {
+    "audioPlayer": "Audio player",
+    "play": "Play",
+    "pause": "Pause",
+    "close": "Close player",
+    "volume": "Volume",
+    "switchToLight": "Switch to light theme",
+    "switchToDark": "Switch to dark theme",
+    "switchToEnglish": "Switch to English",
+    "switchToChinese": "Switch to Chinese"
+  },
+  "common": {
+    "retry": "Retry",
+    "loading": "Loading…",
+    "cancel": "Cancel",
+    "download": "Download",
+    "audio": "Audio",
+    "midi": "MIDI",
+    "rawMidi": "RAW MIDI",
+    "gmMidi": "GM MIDI",
+    "xgMidi": "XG MIDI",
+    "minutes": "{{count}} min",
+    "seconds": "{{count}} s"
+  },
+  "errors": {
+    "generic": "Something went wrong"
+  }
+}
