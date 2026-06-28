@@ -1,0 +1,229 @@
+"""Sample library REST endpoints.
+
+Libraries let users upload their own drum kits so the front-end can play
+back generated drum MIDI with their samples instead of the default GM
+bank. Each library has a name, an optional description, and a list of
+samples keyed by GM percussion note (35-81).
+
+Endpoints
+---------
+* ``GET    /api/instruments/libraries``        — list all libraries
+* ``POST   /api/instruments/libraries``        — upload a new library (multipart)
+* ``GET    /api/instruments/libraries/{id}``   — fetch one library with its files
+* ``POST   /api/instruments/libraries/{id}/activate`` — set the active library
+* ``DELETE /api/instruments/libraries/{id}``   — delete a library
+* ``GET    /api/instruments/active``           — currently active library (or 204)
+* ``GET    /api/instruments/libraries/{id}/files/{note}`` — stream a single
+  sample file by GM note, so the front-end can preload all samples for
+  custom-drum playback.
+"""
+from __future__ import annotations
+
+import io
+import logging
+import zipfile
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse, Response
+from sqlalchemy.orm import Session
+
+from app.config import settings
+from app.db.session import get_db
+from app.schemas.sample_library import (
+    LibraryInfo,
+    SampleFileInfo,
+)
+from app.services import sample_library_service
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/api/instruments", tags=["instruments"])
+
+_MAX_SAMPLES_PER_LIBRARY = 80
+_MAX_SAMPLE_BYTES = 5 * 1024 * 1024  # 5 MB per sample
+_MAX_TOTAL_BYTES = 80 * 1024 * 1024  # 80 MB total per upload
+
+
+@router.get("/active")
+def get_active_library(db: Session = Depends(get_db)) -> Response:
+    """Return the currently active library, or 204 if none is active."""
+    info = sample_library_service.SampleLibraryService().active_library(db)
+    if info is None:
+        return Response(status_code=204)
+    return _library_response(info)
+
+
+@router.get("/libraries", response_model=list[LibraryInfo])
+def list_libraries(db: Session = Depends(get_db)) -> list[LibraryInfo]:
+    return [
+        LibraryInfo.model_validate(info)
+        for info in sample_library_service.SampleLibraryService().list_libraries(db)
+    ]
+
+
+@router.get("/libraries/{library_id}", response_model=LibraryInfo)
+def get_library(library_id: int, db: Session = Depends(get_db)) -> LibraryInfo:
+    info = sample_library_service.SampleLibraryService().get_library(db, library_id)
+    if info is None:
+        raise HTTPException(status_code=404, detail="library not found")
+    return LibraryInfo.model_validate(info)
+
+
+@router.post("/libraries", response_model=LibraryInfo, status_code=201)
+async def create_library(
+    name: str = Form(...),
+    description: str | None = Form(default=None),
+    files: list[UploadFile] = File(default=[]),
+    zip_file: UploadFile | None = File(default=None),
+    db: Session = Depends(get_db),
+) -> LibraryInfo:
+    """Upload a new library.
+
+    Two upload modes are supported:
+
+    * ``files`` — multiple ``UploadFile`` form parts (drag-and-drop).
+    * ``zip_file`` — a single ``.zip`` archive whose members are the
+      samples. Useful for batch imports from a third-party pack.
+
+    Filenames are mapped to GM percussion notes by alias lookup
+    (kick.wav, snare.wav, closed_hat.wav, ...). Samples with no
+    recognised name are skipped.
+    """
+    service = sample_library_service.SampleLibraryService()
+    payload: list[tuple[str, bytes]] = []
+    total_bytes = 0
+
+    for upload in files or []:
+        if not upload.filename:
+            continue
+        content = await upload.read()
+        if len(content) > _MAX_SAMPLE_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"sample '{upload.filename}' exceeds {_MAX_SAMPLE_BYTES} bytes",
+            )
+        total_bytes += len(content)
+        if total_bytes > _MAX_TOTAL_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"total upload exceeds {_MAX_TOTAL_BYTES} bytes",
+            )
+        payload.append((upload.filename, content))
+        if len(payload) >= _MAX_SAMPLES_PER_LIBRARY:
+            break
+
+    if zip_file is not None and zip_file.filename:
+        zip_bytes = await zip_file.read()
+        if len(zip_bytes) > _MAX_TOTAL_BYTES:
+            raise HTTPException(status_code=413, detail="zip archive too large")
+        try:
+            with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+                for info in zf.infolist():
+                    if info.is_dir():
+                        continue
+                    if info.file_size > _MAX_SAMPLE_BYTES:
+                        logger.warning("skipping oversize sample: %s", info.filename)
+                        continue
+                    total_bytes += info.file_size
+                    if total_bytes > _MAX_TOTAL_BYTES:
+                        raise HTTPException(
+                            status_code=413,
+                            detail="zip contents exceed the upload size limit",
+                        )
+                    payload.append((info.filename, zf.read(info.filename)))
+                    if len(payload) >= _MAX_SAMPLES_PER_LIBRARY:
+                        break
+        except zipfile.BadZipFile as exc:
+            raise HTTPException(status_code=400, detail=f"invalid zip archive: {exc}") from exc
+
+    if not payload:
+        raise HTTPException(
+            status_code=400,
+            detail="no audio files provided (use `files` field or `zip_file`)",
+        )
+
+    try:
+        info = service.create_library(db, name=name, files=payload, description=description)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return LibraryInfo.model_validate(info)
+
+
+@router.post("/libraries/{library_id}/activate", response_model=LibraryInfo)
+def activate_library(library_id: int, db: Session = Depends(get_db)) -> LibraryInfo:
+    info = sample_library_service.SampleLibraryService().activate(db, library_id)
+    if info is None:
+        raise HTTPException(status_code=404, detail="library not found")
+    return LibraryInfo.model_validate(info)
+
+
+@router.delete("/libraries/{library_id}", status_code=204)
+def delete_library(library_id: int, db: Session = Depends(get_db)) -> Response:
+    deleted = sample_library_service.SampleLibraryService().delete_library(db, library_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="library not found")
+    return Response(status_code=204)
+
+
+@router.get("/libraries/{library_id}/files/{note}")
+def get_sample_file(
+    library_id: int,
+    note: int,
+    db: Session = Depends(get_db),
+) -> FileResponse:
+    """Stream a single sample file by GM note.
+
+    The front-end can preload all 18+ samples at once by issuing one
+    request per GM note. Returns 404 if the library or note is missing.
+    """
+    if note < 35 or note > 81:
+        raise HTTPException(status_code=400, detail="note must be in 35..81 (GM percussion)")
+    service = sample_library_service.SampleLibraryService()
+    info = service.get_library(db, library_id)
+    if info is None:
+        raise HTTPException(status_code=404, detail="library not found")
+    for sample in info.files:
+        if sample.midi_note == note:
+            full_path = service._root / sample.relative_path  # type: ignore[attr-defined]
+            if not full_path.is_file():
+                raise HTTPException(status_code=410, detail="sample file missing on disk")
+            media_type = _media_type_for(full_path)
+            return FileResponse(
+                path=full_path,
+                media_type=media_type,
+                filename=Path(sample.relative_path).name,
+            )
+    raise HTTPException(status_code=404, detail="no sample for that note in this library")
+
+
+def _media_type_for(path: Path) -> str:
+    suffix = path.suffix.lower()
+    return {
+        ".wav": "audio/wav",
+        ".flac": "audio/flac",
+        ".ogg": "audio/ogg",
+        ".mp3": "audio/mpeg",
+        ".m4a": "audio/mp4",
+        ".aif": "audio/aiff",
+        ".aiff": "audio/aiff",
+    }.get(suffix, "application/octet-stream")
+
+
+def _library_response(info) -> Response:  # pragma: no cover - tiny helper
+    import json
+
+    return Response(
+        content=json.dumps(LibraryInfo.model_validate(info).model_dump(), default=str),
+        media_type="application/json",
+    )
+
+
+# Re-export for convenience so other modules can import a single name.
+__all__ = ["router"]
+
+
+# Avoid a stale `settings` import warning when the file is imported by
+# Alembic env (no `sample_library_service` user). The `settings` import is
+# already pulled in transitively by the service module, so this is a no-op.
+_ = settings
