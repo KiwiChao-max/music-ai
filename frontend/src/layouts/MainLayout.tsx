@@ -23,6 +23,9 @@ export function MainLayout() {
             <NavLink to="/audio" className={navLinkClass}>
               Tasks
             </NavLink>
+            <NavLink to="/instruments" className={navLinkClass}>
+              Samples
+            </NavLink>
           </nav>
         </div>
       </header>

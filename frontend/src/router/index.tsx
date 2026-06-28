@@ -4,6 +4,7 @@ import { MainLayout } from "@/layouts/MainLayout";
 import { AudioDetailPage } from "@/pages/AudioDetailPage";
 import { AudioListPage } from "@/pages/AudioListPage";
 import { HomePage } from "@/pages/HomePage";
+import { SampleLibraryPage } from "@/pages/SampleLibraryPage";
 import { UploadPage } from "@/pages/UploadPage";
 
 export const router = createBrowserRouter([
@@ -15,6 +16,7 @@ export const router = createBrowserRouter([
       { path: "upload", element: <UploadPage /> },
       { path: "audio", element: <AudioListPage /> },
       { path: "audio/:id", element: <AudioDetailPage /> },
+      { path: "instruments", element: <SampleLibraryPage /> },
       { path: "*", element: <Navigate to="/" replace /> },
     ],
   },
