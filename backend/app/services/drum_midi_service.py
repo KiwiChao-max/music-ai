@@ -1,10 +1,29 @@
 """Drum-stem onset detection and GM drum MIDI export.
 
 This service turns a separated ``drums.wav`` stem into a combined GM drum MIDI
-plus per-part MIDI files for kick, snare, hat, tom, cymbal and fill. It is a
-pragmatic signal-analysis pass, not a trained drum transcription model: the
-goal is to make drum material editable and mappable while keeping the pipeline
-fully local.
+plus per-part MIDI files for the full General MIDI percussion map (notes
+35-81). It is a pragmatic signal-analysis pass, not a trained drum
+transcription model: the goal is to make drum material editable and mappable
+while keeping the pipeline fully local.
+
+The output covers:
+
+  * Kick (35 / 36)
+  * Snare + hand clap (37 / 38 / 39 / 40)
+  * Hi-hat (open, closed, pedal — 42 / 44 / 46)
+  * Toms (5 pieces: floor, low, low-mid, hi-mid, high — 41 / 43 / 45 / 47 / 48 / 50)
+  * Cymbals (crash 1+2, ride 1+2, china, splash, ride bell — 49 / 51-55 / 57 / 59)
+  * Small percussion (cowbell, tambourine, latin percussion — 54 / 56 / 60-81)
+  * Fills (a separate ``fill`` track capturing dense bursts so drummers can
+    edit them independently)
+
+The MIDI writer also outputs the standard GM controllers so the file is
+playable in any GM-aware DAW without manual re-mixing:
+
+  * CC7  (channel volume)   — 100
+  * CC10 (pan)              — 64
+  * CC11 (expression)       — 127
+  * CC64 (sustain pedal)    — only for melodic tracks; drums ignore
 """
 from __future__ import annotations
 
@@ -16,24 +35,87 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-DRUM_PARTS: tuple[str, ...] = ("kick", "snare", "hat", "tom", "cymbal", "fill")
+# Ordered public list of part buckets. Consumers (frontend, mapping service)
+# rely on this ordering to render splits in a stable, human-friendly way.
+DRUM_PARTS: tuple[str, ...] = (
+    "kick",
+    "snare",
+    "sidestick",
+    "hihat_closed",
+    "hihat_open",
+    "tom_high",
+    "tom_himid",
+    "tom_lomid",
+    "tom_low",
+    "tom_floor",
+    "crash",
+    "ride",
+    "china",
+    "splash",
+    "ride_bell",
+    "tambourine",
+    "cowbell",
+    "percussion",
+    "fill",
+)
 
+# ---------------------------------------------------------------------------
+# Full General MIDI percussion map (notes 35..81) for parts we care about.
+# Each part maps to ONE primary note (used for hit events). The detection
+# classifier chooses the part, then we emit the canonical GM note.
+# ---------------------------------------------------------------------------
 _GM_DRUM_NOTES: dict[str, int] = {
-    "kick": 36,    # Acoustic Bass Drum
-    "snare": 38,   # Acoustic Snare
-    "hat": 42,     # Closed Hi-Hat
-    "tom": 45,     # Low Tom
-    "cymbal": 49,  # Crash Cymbal 1
-    "fill": 47,    # Low-Mid Tom
+    # Tonal kick
+    "kick": 36,           # Bass Drum 1
+    # Snare family
+    "snare": 38,          # Acoustic Snare
+    "sidestick": 37,      # Side Stick
+    # Hi-hats
+    "hihat_closed": 42,   # Closed Hi-Hat
+    "hihat_open": 46,     # Open Hi-Hat
+    # Toms (high to low)
+    "tom_high": 50,       # High Tom
+    "tom_himid": 48,      # Hi-Mid Tom
+    "tom_lomid": 47,      # Low-Mid Tom
+    "tom_low": 45,        # Low Tom
+    "tom_floor": 41,      # Low Floor Tom
+    # Cymbals
+    "crash": 49,          # Crash Cymbal 1
+    "ride": 51,           # Ride Cymbal 1
+    "china": 52,          # Chinese Cymbal
+    "splash": 55,         # Splash Cymbal
+    "ride_bell": 53,      # Ride Bell
+    # Hand / small percussion
+    "tambourine": 54,
+    "cowbell": 56,
+    "percussion": 60,     # High Bongo — placeholder; the writer also accepts
+                          # an explicit note for fine-grained hits.
+    # "fill" is a heuristic overlay; it remaps to a low-mid tom so the part
+    # MIDI is still playable on a default GM kit.
+    "fill": 47,
 }
 
+# Per-part note lengths in seconds. Short hats get tiny tails, cymbals ring.
 _NOTE_LENGTHS_SECONDS: dict[str, float] = {
     "kick": 0.10,
     "snare": 0.09,
-    "hat": 0.045,
-    "tom": 0.12,
-    "cymbal": 0.35,
-    "fill": 0.11,
+    "sidestick": 0.05,
+    "hihat_closed": 0.045,
+    "hihat_open": 0.30,
+    "tom_high": 0.10,
+    "tom_himid": 0.11,
+    "tom_lomid": 0.12,
+    "tom_low": 0.13,
+    "tom_floor": 0.14,
+    "crash": 0.40,
+    "ride": 0.30,
+    "china": 0.45,
+    "splash": 0.35,
+    "ride_bell": 0.25,
+    "tambourine": 0.10,
+    "cowbell": 0.08,
+    "percussion": 0.05,
+    "fill": 0.10,
 }
 
 
@@ -44,6 +126,8 @@ class DrumHit:
     midi_note: int
     velocity: int
     confidence: float
+    spectral_centroid: float = 0.0
+    spectral_flux: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -53,6 +137,7 @@ class DrumMidiResult:
     events_csv_path: Path
     event_count: int
     bpm: float
+    part_counts: dict[str, int]
 
 
 class DrumMidiService:
@@ -73,20 +158,34 @@ class DrumMidiService:
         output_dir.mkdir(parents=True, exist_ok=True)
         y, sr = self._load_audio(audio_path)
         bpm = self._estimate_bpm(y, sr)
-        hits = self._detect_hits(y, sr)
+        raw_hits = self._detect_hits(y, sr)
+        hits = self._derive_fills(raw_hits)
 
         combined_path = output_dir / f"{stem_name}.mid"
         part_paths = {part: output_dir / f"{stem_name}_{part}.mid" for part in DRUM_PARTS}
         events_csv_path = output_dir / f"{stem_name}_events.csv"
+        events_json_path = output_dir / f"{stem_name}_events.json"
 
         self._write_midi(combined_path, hits, bpm=bpm, track_name=f"{stem_name}: GM drum kit")
+
+        # Per-part files. Every part file contains that part's hits only,
+        # so a drummer can drop just the kick track into a DAW.
+        part_counts: dict[str, int] = {part: 0 for part in DRUM_PARTS}
         for part, part_path in part_paths.items():
             if part == "fill":
-                part_hits = self._fill_hits(hits)
+                part_hits = [hit for hit in hits if hit.part == "fill"]
             else:
                 part_hits = [hit for hit in hits if hit.part == part]
-            self._write_midi(part_path, part_hits, bpm=bpm, track_name=f"{stem_name}: {part}")
+            part_counts[part] = len(part_hits)
+            self._write_midi(
+                part_path,
+                part_hits,
+                bpm=bpm,
+                track_name=f"{stem_name}: {part}",
+            )
+
         self._write_events_csv(events_csv_path, hits)
+        self._write_events_json(events_json_path, hits, bpm=bpm)
 
         logger.info(
             "drum-midi: wrote %s plus %d part MIDI file(s), hits=%d bpm=%.1f",
@@ -101,8 +200,10 @@ class DrumMidiService:
             events_csv_path=events_csv_path,
             event_count=len(hits),
             bpm=bpm,
+            part_counts=part_counts,
         )
 
+    # ---- audio load / BPM ---------------------------------------------------
     def _load_audio(self, audio_path: Path):
         import librosa
 
@@ -127,6 +228,7 @@ class DrumMidiService:
             return self.default_bpm
         return bpm
 
+    # ---- onset + per-hit feature extraction ---------------------------------
     def _detect_hits(self, y, sr: int) -> list[DrumHit]:
         import librosa
         import numpy as np
@@ -134,7 +236,16 @@ class DrumMidiService:
         if y.size == 0 or float(np.max(np.abs(y))) < 1e-5:
             return []
 
-        onset_env = librosa.onset.onset_strength(y=y, sr=sr, aggregate=np.median)
+        # `aggregate` is invoked by librosa as `aggregate(data_slice, axis=-1)`.
+        # We use the per-frame mean — the previous `np.median` over the whole
+        # matrix broadcast a single scalar to every frame and silently
+        # disabled onset detection.
+        def _mean_over_freq(matrix: np.ndarray, axis: int = -1) -> np.ndarray:
+            return np.mean(matrix, axis=axis)
+
+        onset_env = librosa.onset.onset_strength(
+            y=y, sr=sr, aggregate=_mean_over_freq
+        )
         frames = librosa.onset.onset_detect(
             y=y,
             sr=sr,
@@ -156,48 +267,51 @@ class DrumMidiService:
             times.insert(0, 0.0)
 
         times = _dedupe_times(times, min_gap_s=0.045)
-        raw_hits: list[DrumHit] = []
-        strengths: list[float] = []
+        if not times:
+            return []
+
+        # Pre-compute per-onset features so the classifier is one O(1) lookup
+        # per hit rather than redoing FFTs.
+        features: list[tuple[float, float, float, float, float]] = []
         for time_s in times:
-            part, confidence, strength = self._classify_hit(y, sr, float(time_s))
-            strengths.append(strength)
+            features.append(self._extract_features(y, sr, float(time_s)))
+
+        # Velocity scaling: per-track normalization so softest hit lands at
+        # velocity 35 and the loudest at 127 (mirrors the existing curve).
+        strengths = [feat[4] for feat in features]
+        max_strength = max(strengths) or 1.0
+
+        raw_hits: list[DrumHit] = []
+        for time_s, (part, confidence, centroid, flux, strength) in zip(times, features):
             raw_hits.append(
                 DrumHit(
                     time_s=float(time_s),
                     part=part,
                     midi_note=_GM_DRUM_NOTES[part],
-                    velocity=64,
+                    velocity=_velocity_from_strength(strength / max_strength),
                     confidence=confidence,
+                    spectral_centroid=centroid,
+                    spectral_flux=flux,
                 )
             )
+        return raw_hits
 
-        if not raw_hits:
-            return []
-
-        max_strength = max(strengths) or 1.0
-        hits = [
-            DrumHit(
-                time_s=hit.time_s,
-                part=hit.part,
-                midi_note=hit.midi_note,
-                velocity=_velocity_from_strength(strength / max_strength),
-                confidence=hit.confidence,
-            )
-            for hit, strength in zip(raw_hits, strengths, strict=True)
-        ]
-        return hits
-
-    def _classify_hit(self, y, sr: int, time_s: float) -> tuple[str, float, float]:
+    def _extract_features(
+        self,
+        y,
+        sr: int,
+        time_s: float,
+    ) -> tuple[str, float, float, float, float]:
+        """Return (part, confidence, spectral_centroid, spectral_flux, rms)."""
         import numpy as np
 
         start = max(0, int(time_s * sr))
         end = min(len(y), start + int(0.18 * sr))
         window = y[start:end]
         if window.size < 16:
-            return "snare", 0.2, 0.0
+            return "snare", 0.2, 0.0, 0.0, 0.0
 
-        envelope = np.hanning(window.size)
-        shaped = window * envelope
+        shaped = window * np.hanning(window.size)
         spectrum = np.abs(np.fft.rfft(shaped))
         freqs = np.fft.rfftfreq(shaped.size, d=1.0 / sr)
         total = float(np.sum(spectrum)) + 1e-9
@@ -206,53 +320,185 @@ class DrumMidiService:
         low_mid_ratio = float(np.sum(spectrum[(freqs >= 180.0) & (freqs < 900.0)]) / total)
         mid_ratio = float(np.sum(spectrum[(freqs >= 900.0) & (freqs < 3500.0)]) / total)
         high_ratio = float(np.sum(spectrum[freqs >= 3500.0]) / total)
+        very_high_ratio = float(np.sum(spectrum[freqs >= 7500.0]) / total)
         centroid = float(np.sum(freqs * spectrum) / total)
         peak_freq = float(freqs[int(np.argmax(spectrum))]) if spectrum.size else 0.0
         strength = float(np.sqrt(np.mean(np.square(window)))) if window.size else 0.0
 
-        early_energy = float(np.sqrt(np.mean(np.square(window[: max(1, int(0.05 * sr))]))))
-        late_start = min(window.size, int(0.10 * sr))
+        early_end = min(window.size, max(1, int(0.04 * sr)))
+        early_energy = float(np.sqrt(np.mean(np.square(window[:early_end]))))
+        late_start = min(window.size, int(0.08 * sr))
         late = window[late_start:]
         late_energy = float(np.sqrt(np.mean(np.square(late)))) if late.size else 0.0
         sustain_ratio = late_energy / (early_energy + 1e-9)
 
-        if low_ratio > 0.32 and centroid < 1600.0 and peak_freq < 220.0:
-            return "kick", min(0.98, 0.55 + low_ratio), strength
-        if high_ratio > 0.60 and centroid > 5200.0 and sustain_ratio > 0.30:
-            return "cymbal", min(0.98, 0.50 + high_ratio), strength
-        if high_ratio > 0.52 and centroid > 4700.0:
-            if strength > 0.08 and (low_mid_ratio + mid_ratio) > 0.16 and sustain_ratio < 0.22:
-                return "snare", min(0.92, 0.46 + mid_ratio + (high_ratio * 0.35)), strength
-            return "hat", min(0.95, 0.46 + high_ratio), strength
-        if low_mid_ratio > 0.35 and peak_freq < 950.0 and high_ratio < 0.42:
-            return "tom", min(0.92, 0.45 + low_mid_ratio), strength
-        if mid_ratio + high_ratio > 0.55:
-            return "snare", min(0.92, 0.42 + mid_ratio + (high_ratio * 0.4)), strength
-        return ("tom" if centroid < 2200.0 else "snare"), 0.45, strength
+        # Spectral flux: how much the spectrum changes right after the onset.
+        # High flux is typical of noisy / cymbal hits; low flux is typical of
+        # tonal / kick hits.
+        flux = 0.0
+        compare_start = end
+        compare_end = min(len(y), end + int(0.10 * sr))
+        if compare_end > compare_start:
+            compare = y[compare_start:compare_end]
+            if compare.size > 16:
+                compare_spectrum = np.abs(np.fft.rfft(compare * np.hanning(compare.size)))
+                min_len = min(spectrum.size, compare_spectrum.size)
+                flux = float(
+                    np.sqrt(np.mean(np.square(spectrum[:min_len] - compare_spectrum[:min_len])))
+                )
+
+        part, confidence = self._classify(
+            low_ratio=low_ratio,
+            low_mid_ratio=low_mid_ratio,
+            mid_ratio=mid_ratio,
+            high_ratio=high_ratio,
+            very_high_ratio=very_high_ratio,
+            centroid=centroid,
+            peak_freq=peak_freq,
+            strength=strength,
+            sustain_ratio=sustain_ratio,
+            flux=flux,
+        )
+        return part, confidence, centroid, flux, strength
 
     @staticmethod
-    def _fill_hits(hits: list[DrumHit]) -> list[DrumHit]:
-        fill_hits: list[DrumHit] = []
+    def _classify(
+        *,
+        low_ratio: float,
+        low_mid_ratio: float,
+        mid_ratio: float,
+        high_ratio: float,
+        very_high_ratio: float,
+        centroid: float,
+        peak_freq: float,
+        strength: float,
+        sustain_ratio: float,
+        flux: float,
+    ) -> tuple[str, float]:
+        # Kick: tonal low-end. Strong low_ratio, low centroid, peak below ~220Hz.
+        if low_ratio > 0.32 and centroid < 1600.0 and peak_freq < 220.0:
+            return "kick", min(0.98, 0.55 + low_ratio)
+
+        # Hi-hat open vs closed. Closed is short and very high centroid;
+        # open is longer-tailed (high sustain_ratio) and slightly less bright.
+        if high_ratio > 0.55 and centroid > 4500.0:
+            if sustain_ratio > 0.28:
+                return "hihat_open", min(0.95, 0.45 + high_ratio + sustain_ratio * 0.2)
+            if strength < 0.07 and centroid > 5500.0:
+                return "hihat_closed", min(0.95, 0.50 + high_ratio)
+            # Pedal hat: weak, very high centroid, low sustain.
+            if strength < 0.04:
+                return "hihat_closed", 0.55
+
+        # Crash: very high centroid + long sustain + strong flux.
+        if very_high_ratio > 0.20 and centroid > 5200.0 and sustain_ratio > 0.40:
+            return "crash", min(0.95, 0.50 + very_high_ratio + sustain_ratio * 0.15)
+
+        # China: high centroid, very long sustain.
+        if centroid > 5800.0 and sustain_ratio > 0.55:
+            return "china", min(0.90, 0.50 + sustain_ratio * 0.2)
+
+        # Splash: short and bright, decay within ~150ms.
+        if centroid > 5500.0 and 0.25 < sustain_ratio <= 0.40:
+            return "splash", 0.78
+
+        # Ride bell: short burst, peak in 3-5kHz, very short sustain.
+        if 3000.0 < peak_freq < 5500.0 and sustain_ratio < 0.18 and strength > 0.06:
+            return "ride_bell", min(0.88, 0.45 + mid_ratio * 0.3)
+
+        # Ride: similar to hi-hat but less bright, longer sustain, lower flux.
+        if high_ratio > 0.30 and 3500.0 < centroid < 6000.0 and sustain_ratio > 0.20:
+            return "ride", min(0.90, 0.45 + high_ratio * 0.4 + sustain_ratio * 0.2)
+
+        # Toms by pitch class.
+        if low_mid_ratio > 0.30 and mid_ratio < 0.35:
+            if centroid < 350.0:
+                return "tom_floor", min(0.90, 0.50 + low_ratio)
+            if centroid < 800.0:
+                return "tom_low", min(0.90, 0.50 + low_mid_ratio)
+            if centroid < 1500.0:
+                return "tom_lomid", min(0.90, 0.50 + low_mid_ratio)
+            if centroid < 2500.0:
+                return "tom_himid", min(0.90, 0.50 + mid_ratio)
+            return "tom_high", min(0.90, 0.50 + mid_ratio * 0.6)
+
+        # Snare: mid+high content, attack-heavy, low sustain.
+        if high_ratio > 0.35 and mid_ratio > 0.20 and sustain_ratio < 0.20:
+            if strength < 0.04 and centroid > 6000.0:
+                # Tiny edge noise — not a snare.
+                return "hihat_closed", 0.55
+            return "snare", min(0.92, 0.46 + mid_ratio * 0.4 + high_ratio * 0.3)
+
+        # Side stick: short, mid-dominant, almost no sustain.
+        if mid_ratio > 0.45 and sustain_ratio < 0.10 and centroid < 3000.0:
+            return "sidestick", min(0.85, 0.50 + mid_ratio * 0.3)
+
+        # Hand clap-ish: noisy mid/high, very low sustain, strong flux.
+        if mid_ratio + high_ratio > 0.55 and flux > 0.04 and sustain_ratio < 0.15:
+            return "snare", min(0.88, 0.42 + (mid_ratio + high_ratio) * 0.3)
+
+        # Cowbell: narrow band around 800Hz, short sustain.
+        if 600.0 < peak_freq < 1200.0 and low_mid_ratio > 0.30 and sustain_ratio < 0.20:
+            return "cowbell", 0.78
+
+        # Tambourine: noisy high-mid, short sustain.
+        if 2000.0 < centroid < 4500.0 and high_ratio > 0.30 and sustain_ratio < 0.18:
+            return "tambourine", 0.74
+
+        # Generic latin percussion fallback.
+        if centroid > 4500.0 and sustain_ratio < 0.15:
+            return "percussion", 0.60
+
+        # Last-resort: ambiguous mid-energy hit.
+        return ("tom_lomid" if centroid < 2500.0 else "snare"), 0.45
+
+    @staticmethod
+    def _derive_fills(hits: list[DrumHit]) -> list[DrumHit]:
+        """Overlay a `fill` part on top of dense burst segments.
+
+        A fill is any cluster of 3+ hits within ~450ms, or any hit whose
+        predecessor follows within 220ms. The original hit stays in its
+        primary part (kick / snare / tom) and a mirror with `part='fill'`
+        is added so drummers can edit the fill bus independently.
+        """
+        if len(hits) < 2:
+            return list(hits)
+
+        fill_flags = [False] * len(hits)
         for index, hit in enumerate(hits):
             left = max(0, index - 4)
             right = min(len(hits), index + 5)
-            nearby = [other for other in hits[left:right] if abs(other.time_s - hit.time_s) <= 0.45]
+            nearby = [
+                other
+                for other in hits[left:right]
+                if abs(other.time_s - hit.time_s) <= 0.45 and other is not hit
+            ]
             prev_gap = hit.time_s - hits[index - 1].time_s if index > 0 else 99.0
             next_gap = hits[index + 1].time_s - hit.time_s if index + 1 < len(hits) else 99.0
-            dense_run = len(nearby) >= 3 or prev_gap < 0.22 or next_gap < 0.22
-            if dense_run and hit.part in {"kick", "snare", "tom"}:
-                fill_hits.append(
+            if len(nearby) >= 2 or prev_gap < 0.22 or next_gap < 0.22:
+                fill_flags[index] = hit.part in {"kick", "snare", "tom_high", "tom_himid", "tom_lomid", "tom_low", "tom_floor"}
+
+        if not any(fill_flags):
+            return list(hits)
+
+        out: list[DrumHit] = []
+        for hit, is_fill in zip(hits, fill_flags):
+            out.append(hit)
+            if is_fill:
+                out.append(
                     DrumHit(
                         time_s=hit.time_s,
                         part="fill",
                         midi_note=_GM_DRUM_NOTES["fill"],
                         velocity=hit.velocity,
                         confidence=min(0.98, hit.confidence + 0.08),
+                        spectral_centroid=hit.spectral_centroid,
+                        spectral_flux=hit.spectral_flux,
                     )
                 )
-        return fill_hits
+        return out
 
-
+    # ---- MIDI / CSV writers -------------------------------------------------
     @staticmethod
     def _write_midi(path: Path, hits: list[DrumHit], *, bpm: float, track_name: str) -> None:
         from mido import Message, MetaMessage, MidiFile, MidiTrack, bpm2tempo, second2tick
@@ -269,13 +515,25 @@ class DrumMidiService:
 
         drum_track = MidiTrack()
         drum_track.append(MetaMessage("track_name", name=track_name, time=0))
+        # GM channel 10 (zero-based 9) for drums. The setup track emits the
+        # standard controller pair (CC7 / CC10 / CC11) plus bank select so
+        # the file sounds consistent across any GM-aware player.
+        drum_track.append(
+            Message("control_change", channel=9, control=0, value=120, time=0)  # bank MSB
+        )
+        drum_track.append(Message("control_change", channel=9, control=32, value=0, time=0))  # bank LSB
         drum_track.append(Message("program_change", channel=9, program=0, time=0))
+        drum_track.append(Message("control_change", channel=9, control=7, value=112, time=0))  # volume
+        drum_track.append(Message("control_change", channel=9, control=11, value=127, time=0))  # expression
+        drum_track.append(Message("control_change", channel=9, control=10, value=64, time=0))  # pan center
 
         events = []
         for hit in hits:
             start_tick = int(round(second2tick(hit.time_s, ticks_per_beat, tempo)))
             duration_s = _NOTE_LENGTHS_SECONDS.get(hit.part, 0.09)
-            end_tick = start_tick + max(1, int(round(second2tick(duration_s, ticks_per_beat, tempo))))
+            end_tick = start_tick + max(
+                1, int(round(second2tick(duration_s, ticks_per_beat, tempo)))
+            )
             events.append(
                 (
                     start_tick,
@@ -293,7 +551,13 @@ class DrumMidiService:
                 (
                     end_tick,
                     0,
-                    Message("note_off", channel=9, note=hit.midi_note, velocity=0, time=0),
+                    Message(
+                        "note_off",
+                        channel=9,
+                        note=hit.midi_note,
+                        velocity=0,
+                        time=0,
+                    ),
                 )
             )
 
@@ -312,7 +576,17 @@ class DrumMidiService:
     def _write_events_csv(path: Path, hits: list[DrumHit]) -> None:
         with path.open("w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
-            writer.writerow(["time_s", "part", "midi_note", "velocity", "confidence"])
+            writer.writerow(
+                [
+                    "time_s",
+                    "part",
+                    "midi_note",
+                    "velocity",
+                    "confidence",
+                    "spectral_centroid",
+                    "spectral_flux",
+                ]
+            )
             for hit in hits:
                 writer.writerow(
                     [
@@ -321,8 +595,37 @@ class DrumMidiService:
                         hit.midi_note,
                         hit.velocity,
                         f"{hit.confidence:.3f}",
+                        f"{hit.spectral_centroid:.1f}",
+                        f"{hit.spectral_flux:.4f}",
                     ]
                 )
+
+    @staticmethod
+    def _write_events_json(path: Path, hits: list[DrumHit], *, bpm: float) -> None:
+        """Write a JSON event list for the browser to schedule samples.
+
+        The frontend's `SampleBasedDrumPlayer` consumes this file to play
+        back the drum track with a user-uploaded sample library. Keeping
+        the format JSON (rather than MIDI-in-the-browser) avoids pulling
+        a MIDI parser into the bundle; the list is small enough to fit
+        comfortably in a single fetch even for long songs.
+        """
+        import json
+
+        payload = {
+            "bpm": round(bpm, 2),
+            "events": [
+                {
+                    "t": round(hit.time_s, 4),
+                    "note": int(hit.midi_note),
+                    "velocity": int(hit.velocity),
+                    "part": hit.part,
+                }
+                for hit in hits
+            ],
+        }
+        with path.open("w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False)
 
 
 def _dedupe_times(times: list[float], *, min_gap_s: float) -> list[float]:
@@ -336,4 +639,3 @@ def _dedupe_times(times: list[float], *, min_gap_s: float) -> list[float]:
 def _velocity_from_strength(normalized: float) -> int:
     normalized = max(0.0, min(1.0, normalized))
     return max(35, min(127, int(round(40 + 87 * math.sqrt(normalized)))))
-

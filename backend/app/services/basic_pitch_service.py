@@ -1,4 +1,4 @@
-﻿"""Audio-to-MIDI service with Basic Pitch first and a local fallback.
+"""Audio-to-MIDI service with Basic Pitch first and a local fallback.
 
 Basic Pitch remains the preferred polyphonic transcription engine. In local
 Python 3.12 environments it can be unavailable because its TensorFlow range is
@@ -162,8 +162,10 @@ class BasicPitchService:
         return BasicPitchResult(midi_path=midi_path, notes_csv_path=notes_csv_path, note_count=note_count)
 
     @staticmethod
-    def _write_midi(note_events, midi_path: Path) -> None:
+    def _write_midi(note_events, midi_path: Path, *, stem_name: str = "librosa transcription") -> None:
         from mido import Message, MetaMessage, MidiFile, MidiTrack, bpm2tempo, second2tick
+
+        from app.services.midi_cc import gm_setup_messages, pitch_bend_message
 
         ticks_per_beat = 480
         tempo = bpm2tempo(120)
@@ -176,15 +178,61 @@ class BasicPitchService:
         midi.tracks.append(meta_track)
 
         note_track = MidiTrack()
-        note_track.append(MetaMessage("track_name", name="librosa transcription", time=0))
-        note_track.append(Message("program_change", channel=0, program=0, time=0))
+        note_track.append(MetaMessage("track_name", name=stem_name, time=0))
+        # Channel 0 for the default Acoustic Grand Piano program. The setup
+        # messages write the full GM control set (volume/expression/pan) so
+        # the file plays back identically in any GM-aware DAW.
+        for message in gm_setup_messages(
+            channel=0,
+            program=0,
+            volume=100,
+            expression=127,
+            pan=64,
+        ):
+            note_track.append(message)
 
         events = []
         for start, end, pitch, velocity in note_events:
             start_tick = int(round(second2tick(float(start), ticks_per_beat, tempo)))
-            end_tick = max(start_tick + 1, int(round(second2tick(float(end), ticks_per_beat, tempo))))
-            events.append((start_tick, 1, Message("note_on", channel=0, note=int(pitch), velocity=int(velocity), time=0)))
-            events.append((end_tick, 0, Message("note_off", channel=0, note=int(pitch), velocity=0, time=0)))
+            end_tick = max(
+                start_tick + 1, int(round(second2tick(float(end), ticks_per_beat, tempo)))
+            )
+            # note_on, note_off, plus a pitch-bend zero (defensive: some
+            # players retain the last bend value, so we explicitly reset it
+            # at the start of each note).
+            events.append(
+                (
+                    start_tick,
+                    0,
+                    pitch_bend_message(0, 0),
+                )
+            )
+            events.append(
+                (
+                    start_tick,
+                    1,
+                    Message(
+                        "note_on",
+                        channel=0,
+                        note=int(pitch),
+                        velocity=int(velocity),
+                        time=0,
+                    ),
+                )
+            )
+            events.append(
+                (
+                    end_tick,
+                    2,
+                    Message(
+                        "note_off",
+                        channel=0,
+                        note=int(pitch),
+                        velocity=0,
+                        time=0,
+                    ),
+                )
+            )
 
         last_tick = 0
         for tick, _order, message in sorted(events, key=lambda item: (item[0], item[1])):
