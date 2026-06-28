@@ -72,8 +72,12 @@ def test_decode_rejects_wrong_token_type() -> None:
 
 def test_decode_rejects_tampered_signature() -> None:
     token = auth_service.create_token("1", token_type="access")
-    # Flip the last char to break the signature
-    tampered = token[:-1] + ("A" if token[-1] != "A" else "B")
+    # Replace a section of the signature with a clearly different blob.
+    # Flipping the last char happens to be a valid base64url swap ~1/64
+    # of the time, so nuke the whole signature segment.
+    head, _, sig = token.rpartition(".")
+    tampered = f"{head}.{sig[:-8]}AAAAAAAA"
+    assert tampered != token
     with pytest.raises(ValueError):
         auth_service.decode_token(tampered, expected_type="access")
 
