@@ -51,6 +51,11 @@ export interface MusicSection {
   suggestion: string;
 }
 
+export interface DetectedInstrument {
+  instrument: string;
+  probability: number;
+}
+
 export interface MusicAnalysis {
   bpm: number | null;
   bpm_confidence: number;
@@ -65,4 +70,6 @@ export interface MusicAnalysis {
   instrumentation: string[];
   arrangement: string[];
   warnings: string[];
+  detected_instruments?: DetectedInstrument[];
+  dominant_instrument?: string;
 }
