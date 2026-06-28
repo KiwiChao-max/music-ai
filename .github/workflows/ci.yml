@@ -1,0 +1,82 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Don't run more than one of these in parallel on the same branch.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: backend · pytest
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      # CI runs in dev mode with auth disabled so the existing tests
+      # (and the suite's in-memory SQLite) keep working without a token
+      # dance. Production deployments must set these explicitly.
+      APP_ENV: test
+      AUTH_REQUIRED: "false"
+      DATABASE_URL: sqlite:///./ci_test.db
+      REDIS_URL: redis://localhost:6379/0
+      JWT_SECRET: ci-jwt-secret-do-not-use-in-prod
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Both runtime and test requirements.
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+      - name: Run pytest
+        env:
+          # Tell passlib to use the bundled pure-python bcrypt backend
+          # (the native extension is fragile on the GitHub runner).
+          PASSLIB_BCRYPT_FORCE_BACKEND: pure-python
+        run: pytest -q --tb=short --maxfail=3
+
+  frontend:
+    name: frontend · tsc + build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Type-check
+        run: npx tsc --noEmit
+      - name: Build
+        # `npm run build` runs `tsc -b && vite build` so we get both
+        # type errors and bundle errors in one step.
+        run: npm run build
