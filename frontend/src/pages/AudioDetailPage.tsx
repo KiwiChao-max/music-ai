@@ -1,8 +1,11 @@
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 
 import { ProgressBar } from "@/components/ProgressBar";
+import { SampleBasedDrumPlayer } from "@/components/SampleBasedDrumPlayer";
 import { StemList } from "@/components/StemPlayer";
 import { StatusBadge } from "@/components/StatusBadge";
+import { instrumentsApi, type SampleLibraryInfo } from "@/api/instruments";
 import {
   useAudioTask,
   useDeleteAudio,
@@ -10,7 +13,7 @@ import {
   useStartProcess,
   useStems,
 } from "@/hooks/useAudioTasks";
-import type { MusicAnalysis } from "@/types/audio";
+import type { DetectedInstrument, MusicAnalysis, StemInfo } from "@/types/audio";
 
 const POLL_MS = 1500;
 
@@ -93,6 +96,13 @@ function AnalysisPanel({ analysis }: { analysis: MusicAnalysis }) {
         </div>
       )}
 
+      {(analysis.detected_instruments?.length ?? 0) > 0 && (
+        <DetectedInstrumentsPanel
+          items={analysis.detected_instruments ?? []}
+          dominant={analysis.dominant_instrument ?? null}
+        />
+      )}
+
       {analysis.sections.length > 0 && (
         <div className="rounded-lg border border-slate-200 bg-white p-4">
           <h3 className="text-sm font-semibold text-slate-900">Sections</h3>
@@ -144,6 +154,121 @@ function AdviceList({ title, items }: { title: string; items: string[] }) {
   );
 }
 
+function formatInstrumentName(name: string): string {
+  return name
+    .split("_")
+    .map((token) => token.charAt(0).toUpperCase() + token.slice(1))
+    .join(" ");
+}
+
+function DetectedInstrumentsPanel({
+  items,
+  dominant,
+}: {
+  items: DetectedInstrument[];
+  dominant: string | null;
+}) {
+  // Render high-to-low so the dominant instrument sits on top.
+  const sorted = [...items].sort((a, b) => b.probability - a.probability);
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-4">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-sm font-semibold text-slate-900">
+          Detected instruments
+        </h3>
+        {dominant && (
+          <span className="rounded bg-indigo-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-indigo-700">
+            Dominant: {formatInstrumentName(dominant)}
+          </span>
+        )}
+      </div>
+      <ul className="mt-3 space-y-2">
+        {sorted.map((item) => (
+          <li key={item.instrument} className="space-y-1">
+            <div className="flex items-center justify-between text-xs text-slate-600">
+              <span className="font-medium text-slate-700">
+                {formatInstrumentName(item.instrument)}
+              </span>
+              <span className="font-mono">
+                {(item.probability * 100).toFixed(0)}%
+              </span>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+              <div
+                className="h-full bg-slate-700"
+                style={{ width: `${Math.max(2, item.probability * 100)}%` }}
+              />
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+const DRUM_PART_LABELS: Record<string, string> = {
+  kick: "Kick",
+  snare: "Snare",
+  sidestick: "Side Stick",
+  hihat_closed: "Closed Hi-Hat",
+  hihat_open: "Open Hi-Hat",
+  tom_high: "High Tom",
+  tom_himid: "Hi-Mid Tom",
+  tom_lomid: "Low-Mid Tom",
+  tom_low: "Low Tom",
+  tom_floor: "Floor Tom",
+  crash: "Crash",
+  ride: "Ride",
+  china: "China",
+  splash: "Splash",
+  ride_bell: "Ride Bell",
+  tambourine: "Tambourine",
+  cowbell: "Cowbell",
+  percussion: "Percussion",
+  fill: "Fills",
+};
+
+function DrumPartPanel({ stems }: { stems: StemInfo[] }) {
+  const parts = stems
+    .filter((s) => s.kind === "midi" && s.name.startsWith("drums_"))
+    .map((s) => {
+      const part = s.name.replace(/^drums_/, "");
+      return { part, stem: s };
+    })
+    .filter((entry) => entry.part in DRUM_PART_LABELS)
+    .sort((a, b) => a.part.localeCompare(b.part));
+  if (parts.length === 0) return null;
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-4">
+      <h3 className="text-sm font-semibold text-slate-900">
+        Drum parts (per-instrument MIDI)
+      </h3>
+      <p className="mt-1 text-xs text-slate-500">
+        Drop any of these into a DAW to edit a single component of the kit.
+      </p>
+      <ul className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+        {parts.map(({ part, stem }) => (
+          <li
+            key={part}
+            className="flex items-center justify-between rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs"
+          >
+            <span className="truncate text-slate-700">
+              {DRUM_PART_LABELS[part] ?? part}
+            </span>
+            <a
+              href={stem.url}
+              download={`${stem.name}.mid`}
+              className="rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700 hover:bg-slate-100"
+            >
+              .mid
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export function AudioDetailPage() {
   const { id } = useParams<{ id: string }>();
   const taskId = Number(id);
@@ -162,6 +287,11 @@ export function AudioDetailPage() {
   const remove = useDeleteAudio();
   const stemsQuery = useStems(taskId, task?.status === "FINISHED");
   const analysisQuery = useMusicAnalysis(taskId, task?.status === "FINISHED");
+  const activeLibraryQuery = useQuery<SampleLibraryInfo | null>({
+    queryKey: ["sample-libraries", "active"],
+    queryFn: instrumentsApi.active,
+    enabled: task?.status === "FINISHED",
+  });
 
   if (!Number.isFinite(taskId)) {
     return <p className="text-sm text-red-600">Invalid task id: {id}</p>;
@@ -301,6 +431,13 @@ export function AudioDetailPage() {
               <StemList stems={stemsQuery.data} />
             )}
           </section>
+
+          {stemsQuery.data && <DrumPartPanel stems={stemsQuery.data} />}
+
+          <SampleBasedDrumPlayer
+            eventsUrl={`/storage/outputs/task_${task.id}/drums_events.json`}
+            library={activeLibraryQuery.data ?? null}
+          />
 
           {analysisQuery.isLoading && (
             <p className="text-sm text-slate-500">Loading music analysis...</p>
