@@ -1,6 +1,7 @@
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
+import { CommentaryCard } from "@/components/CommentaryCard";
 import { ProgressBar } from "@/components/ProgressBar";
 import { SampleBasedDrumPlayer } from "@/components/SampleBasedDrumPlayer";
 import { StemList } from "@/components/StemPlayer";
@@ -454,7 +455,12 @@ export function AudioDetailPage() {
               Analysis is not available for this task yet.
             </p>
           )}
-          {analysisQuery.data && <AnalysisPanel analysis={analysisQuery.data} />}
+          {analysisQuery.data && (
+            <>
+              <CommentaryCard analysis={analysisQuery.data} />
+              <AnalysisPanel analysis={analysisQuery.data} />
+            </>
+          )}
         </>
       )}
 

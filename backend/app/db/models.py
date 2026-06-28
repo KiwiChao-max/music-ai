@@ -101,6 +101,17 @@ class AudioTask(Base):
         index=True,
     )
 
+    # ---- LLM commentary (Milestone 5+) ---------------------------------
+    # Filled in by the worker after the analysis step. Nullable so old
+    # tasks / failed runs keep working. The string is meant to be
+    # rendered as-is on the detail page; the LLM service is responsible
+    # for keeping it human-readable.
+    commentary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    commentary_model: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    commentary_generated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     __mapper_args__ = {"eager_defaults": True}
 
     def __repr__(self) -> str:  # pragma: no cover - debug helper
