@@ -16,6 +16,11 @@ five product-grade features described in [`FEATURES.md`](./FEATURES.md).
 - 4-stem Demucs separation, per-instrument Basic Pitch MIDI with full GM controllers (CC7/CC10/CC11/CC64, pitch bend), and a 19-part drum detector that emits per-part MIDI plus a JSON event list for the browser-side sample player.
 - A web-audio sample player that decodes user-uploaded drum samples and re-renders the detected hits through the active sample library.
 - Local fallback paths for development when Demucs or Basic Pitch cannot produce full-quality output.
+- **User accounts**: bcrypt + HS256 JWTs (access + refresh), per-user task ownership, per-user quotas (active tasks + upload bytes). Auth is **opt-in** via `AUTH_REQUIRED` so existing e2e keeps working; flip it on in any environment real users can reach.
+- **Live progress over WebSocket**: `WS /api/ws/tasks/{id}/progress` publishes a `snapshot` then relays every `task:{id}` pub/sub message from the worker. The frontend patches the React Query cache in place — no more "wait 1.5 s for the next poll".
+- **Health probes + metrics**: `GET /healthz` (liveness), `GET /readyz` (probes Postgres + Redis), `GET /metrics` (Prometheus exposition with a per-status task gauge).
+- **CI on every PR**: GitHub Actions runs the backend pytest suite, type-checks + builds the frontend, and runs the Playwright e2e flow against Postgres + Redis service containers.
+- **Production deployment docs**: see [`DEPLOY.md`](./DEPLOY.md) for the compose path and the bare-metal systemd + nginx path, plus a production hardening checklist.
 
 ## Architecture
 
@@ -99,7 +104,7 @@ With backend dependencies installed:
 
 ```bash
 cd backend
-.venv/bin/pytest                      # 62 tests covering services, repos, MIDI, drum detection, sample library
+.venv/bin/pytest                      # 134 tests covering services, repos, MIDI, drum detection, sample library, auth, WebSocket, health
 python -m compileall app scripts
 ```
 
