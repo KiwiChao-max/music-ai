@@ -92,3 +92,85 @@ class AudioTask(Base):
 
     def __repr__(self) -> str:  # pragma: no cover - debug helper
         return f"<AudioTask id={self.id} filename={self.filename!r} status={self.status}>"
+
+
+class SampleLibrary(Base):
+    """User-uploaded sample library used to render drum MIDI with custom kits.
+
+    One row per library. The library has a name and a root directory on
+    disk; individual samples live in `SampleFile` rows keyed by GM drum
+    note. A library is "active" when `is_active=True`; the worker / API
+    picks the most-recently-activated library by default.
+    """
+
+    __tablename__ = "sample_libraries"
+
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    # Provider label (e.g. "drum_kit", "soundfont") so the same table can
+    # hold different sample types in the future (SoundFont, SFZ, custom).
+    provider: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="drum_kit", server_default="drum_kit"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    __mapper_args__ = {"eager_defaults": True}
+
+    def __repr__(self) -> str:  # pragma: no cover - debug helper
+        return f"<SampleLibrary id={self.id} name={self.name!r} active={self.is_active}>"
+
+
+class SampleFile(Base):
+    """One sample in a library, keyed by GM drum note.
+
+    `midi_note` is the GM percussion note (35..81) this sample plays for.
+    Multiple samples can share a note (round-robin) but typically the
+    player picks one.
+    """
+
+    __tablename__ = "sample_files"
+
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
+    library_id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        # On-disk FK; we don't declare it as a SQLAlchemy ForeignKey because
+        # the SQLite test engine would need PRAGMA foreign_keys=ON to enforce
+        # it, and the model stays portable.
+        nullable=False,
+        index=True,
+    )
+    label: Mapped[str] = mapped_column(String(64), nullable=False)
+    midi_note: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    # Relative path under the library's storage directory.
+    file_path: Mapped[str] = mapped_column(String(1024), nullable=False)
+    # Default MIDI velocity offset added to the note's velocity on playback.
+    velocity_offset: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    # Optional extra round-robin slots; not modelled as separate rows because
+    # the player can pick the round-robin from `file_path` deterministically.
+
+    __mapper_args__ = {"eager_defaults": True}
+
+    def __repr__(self) -> str:  # pragma: no cover - debug helper
+        return f"<SampleFile id={self.id} library_id={self.library_id} note={self.midi_note}>"

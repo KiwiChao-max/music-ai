@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.api.audio import router as audio_router
+from app.api.instruments import router as instruments_router
 from app.api.tasks import router as tasks_router
 from app.config import settings
 
@@ -20,6 +21,7 @@ if settings.cors_origins:
 
 app.include_router(audio_router)
 app.include_router(tasks_router)
+app.include_router(instruments_router)
 
 settings.storage_dir.mkdir(parents=True, exist_ok=True)
 
