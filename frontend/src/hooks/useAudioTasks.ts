@@ -5,13 +5,19 @@ import type { AudioTask, MusicAnalysis, ProcessResponse, StemInfo } from "@/type
 
 const TASKS_KEY = ["audio-tasks"] as const;
 
+// Slow fallback poll for the list view: while any task is still
+// PROCESSING, refresh the list every 8 s in case a WebSocket update
+// was missed (e.g. WS temporarily down). The WebSocket patch path is
+// the primary live-update mechanism.
+const LIST_POLL_MS = 8000;
+
 export function useAudioTasks() {
   return useQuery({
     queryKey: TASKS_KEY,
     queryFn: audioApi.list,
     refetchInterval: (query) =>
       query.state.data?.some((task) => task.status === "PROCESSING")
-        ? 1500
+        ? LIST_POLL_MS
         : false,
   });
 }
