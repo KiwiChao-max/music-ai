@@ -91,13 +91,13 @@ export function SampleLibraryPage() {
   return (
     <section className="space-y-8">
       <header className="space-y-1">
-        <h1 className="text-2xl font-bold tracking-tight">Sample libraries</h1>
-        <p className="text-sm text-slate-600">
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Sample libraries</h1>
+        <p className="text-sm text-slate-600 dark:text-slate-400">
           Upload your own drum samples. The active library plays back
           generated drum MIDI in place of the default GM bank. Filenames
-          like <code className="rounded bg-slate-100 px-1">kick.wav</code>,{" "}
-          <code className="rounded bg-slate-100 px-1">snare.wav</code>,{" "}
-          <code className="rounded bg-slate-100 px-1">open_hat.wav</code> are
+          like <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">kick.wav</code>,{" "}
+          <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">snare.wav</code>,{" "}
+          <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">open_hat.wav</code> are
           mapped to their GM percussion notes automatically.
         </p>
       </header>
@@ -105,17 +105,17 @@ export function SampleLibraryPage() {
       <UploadCard />
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold tracking-tight">Your libraries</h2>
+        <h2 className="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">Your libraries</h2>
         {librariesQuery.isLoading && (
-          <p className="text-sm text-slate-500">Loading…</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">Loading…</p>
         )}
         {librariesQuery.isError && (
-          <p className="text-sm text-red-600">
+          <p className="text-sm text-red-600 dark:text-red-400">
             Failed to load libraries: {librariesQuery.error.message}
           </p>
         )}
         {libraries.length === 0 && !librariesQuery.isLoading && (
-          <p className="rounded-md border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-500">
+          <p className="rounded-md border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
             No sample libraries yet. Upload one above to get started.
           </p>
         )}
@@ -173,27 +173,27 @@ function UploadCard() {
   const canSubmit = name.trim().length > 0 && (pickedFiles.length > 0 || zipFile !== null);
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-6 space-y-4">
-      <h2 className="text-lg font-semibold tracking-tight">Upload a new library</h2>
+    <section className="rounded-lg border border-slate-200 bg-white p-6 space-y-4 dark:border-slate-800 dark:bg-slate-900">
+      <h2 className="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">Upload a new library</h2>
       <div className="grid gap-4 md:grid-cols-2">
         <label className="block text-sm">
-          <span className="font-medium text-slate-700">Library name</span>
+          <span className="font-medium text-slate-700 dark:text-slate-300">Library name</span>
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="My studio kit"
-            className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+            className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
           />
         </label>
         <label className="block text-sm">
-          <span className="font-medium text-slate-700">Description (optional)</span>
+          <span className="font-medium text-slate-700 dark:text-slate-300">Description (optional)</span>
           <input
             type="text"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Recorded 2025-08-12"
-            className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+            className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
           />
         </label>
       </div>
@@ -217,14 +217,14 @@ function UploadCard() {
         />
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       <div className="flex justify-end">
         <button
           type="button"
           onClick={() => create.mutate()}
           disabled={!canSubmit || create.isPending}
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
         >
           {create.isPending ? "Uploading…" : "Create library"}
         </button>
@@ -244,10 +244,10 @@ interface FilePickerProps {
 
 function FilePicker({ label, accept, multiple, files, onFiles, inputRef }: FilePickerProps) {
   return (
-    <label className="flex cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center transition-colors hover:border-slate-400 hover:bg-slate-100">
-      <span className="text-sm font-medium text-slate-700">{label}</span>
+    <label className="flex cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center transition-colors hover:border-slate-400 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:hover:border-slate-500 dark:hover:bg-slate-700">
+      <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{label}</span>
       {files.length > 0 && (
-        <span className="mt-1 text-xs text-slate-500">
+        <span className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           {files.length === 1 ? files[0].name : `${files.length} file(s) selected`}
         </span>
       )}
@@ -276,24 +276,26 @@ function LibraryCard({ library, isActive, onActivate, onDelete }: LibraryCardPro
 
   return (
     <li
-      className={`rounded-lg border bg-white p-5 space-y-3 ${
-        isActive ? "border-emerald-400 ring-2 ring-emerald-100" : "border-slate-200"
+      className={`rounded-lg border bg-white p-5 space-y-3 dark:bg-slate-900 ${
+        isActive
+          ? "border-emerald-400 ring-2 ring-emerald-100 dark:border-emerald-500 dark:ring-emerald-900/40"
+          : "border-slate-200 dark:border-slate-800"
       }`}
     >
       <header className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <h3 className="truncate text-base font-semibold text-slate-900">
+            <h3 className="truncate text-base font-semibold text-slate-900 dark:text-slate-100">
               {library.name}
             </h3>
             {isActive && (
-              <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+              <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
                 Active
               </span>
             )}
           </div>
           {library.description && (
-            <p className="text-sm text-slate-500">{library.description}</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">{library.description}</p>
           )}
         </div>
         <div className="flex shrink-0 gap-2">
@@ -301,7 +303,7 @@ function LibraryCard({ library, isActive, onActivate, onDelete }: LibraryCardPro
             <button
               type="button"
               onClick={onActivate}
-              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
             >
               Activate
             </button>
@@ -309,18 +311,18 @@ function LibraryCard({ library, isActive, onActivate, onDelete }: LibraryCardPro
           <button
             type="button"
             onClick={onDelete}
-            className="rounded-md border border-rose-200 bg-rose-50 px-3 py-1.5 text-sm font-medium text-rose-700 hover:bg-rose-100"
+            className="rounded-md border border-rose-200 bg-rose-50 px-3 py-1.5 text-sm font-medium text-rose-700 hover:bg-rose-100 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-900/60"
           >
             Delete
           </button>
         </div>
       </header>
 
-      <div className="text-xs text-slate-500">
+      <div className="text-xs text-slate-500 dark:text-slate-400">
         {library.files.length} sample
         {library.files.length === 1 ? "" : "s"} mapped · {grouped.size} distinct GM notes
         {missing.length > 0 && (
-          <span className="ml-1 text-amber-600">
+          <span className="ml-1 text-amber-600 dark:text-amber-400">
             · missing {missing.length} note
             {missing.length === 1 ? "" : "s"}: {missing.slice(0, 5).join(", ")}
             {missing.length > 5 ? "…" : ""}
@@ -330,20 +332,20 @@ function LibraryCard({ library, isActive, onActivate, onDelete }: LibraryCardPro
 
       {library.files.length > 0 && (
         <details className="text-sm">
-          <summary className="cursor-pointer text-slate-600 hover:text-slate-900">
+          <summary className="cursor-pointer text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100">
             Show all samples
           </summary>
           <ul className="mt-2 grid grid-cols-1 gap-1 text-xs sm:grid-cols-2 md:grid-cols-3">
             {[...grouped.entries()].map(([note, files]) => (
               <li
                 key={note}
-                className="flex items-center justify-between rounded border border-slate-100 bg-slate-50 px-2 py-1"
+                className="flex items-center justify-between rounded border border-slate-100 bg-slate-50 px-2 py-1 dark:border-slate-800 dark:bg-slate-800/60"
               >
-                <span className="font-mono text-slate-500">{note}</span>
-                <span className="truncate text-slate-700">
+                <span className="font-mono text-slate-500 dark:text-slate-400">{note}</span>
+                <span className="truncate text-slate-700 dark:text-slate-200">
                   {GM_DRUM_LABELS[note] ?? `Note ${note}`}
                 </span>
-                <span className="text-slate-400">
+                <span className="text-slate-400 dark:text-slate-500">
                   {files.length > 1 ? `×${files.length}` : ""}
                 </span>
               </li>

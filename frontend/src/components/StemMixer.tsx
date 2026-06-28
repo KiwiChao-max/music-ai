@@ -33,13 +33,17 @@ function StemWaveform({ url, reloadKey }: { url: string; reloadKey: string }) {
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return undefined;
+    const dark = document.documentElement.classList.contains("dark");
+    const waveColor = dark ? "#475569" : "#cbd5e1";
+    const progressColor = dark ? "#e2e8f0" : "#0f172a";
+    const cursorColor = dark ? "#e2e8f0" : "#0f172a";
     const ws = WaveSurfer.create({
       container,
       url,
       height: 36,
-      waveColor: "#cbd5e1",
-      progressColor: "#0f172a",
-      cursorColor: "#0f172a",
+      waveColor,
+      progressColor,
+      cursorColor,
       cursorWidth: 1,
       barWidth: 2,
       barGap: 1,
@@ -59,12 +63,12 @@ function StemWaveform({ url, reloadKey }: { url: string; reloadKey: string }) {
 
 function StemRow({ stem, isCurrent, isPlaying, onPlay }: StemRowProps) {
   return (
-    <li className="grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3">
+    <li className="grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
       <div className="flex w-32 shrink-0 flex-col gap-1">
-        <span className="truncate text-sm font-semibold capitalize text-slate-900">
+        <span className="truncate text-sm font-semibold capitalize text-slate-900 dark:text-slate-100">
           {stem.name}
         </span>
-        <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
           Audio
         </span>
       </div>
@@ -78,7 +82,7 @@ function StemRow({ stem, isCurrent, isPlaying, onPlay }: StemRowProps) {
           className={`inline-flex min-w-20 items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
             isCurrent && isPlaying
               ? "bg-emerald-600 text-white hover:bg-emerald-700"
-              : "bg-slate-900 text-white hover:bg-slate-800"
+              : "bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
           }`}
           aria-label={isCurrent && isPlaying ? `Pause ${stem.name}` : `Play ${stem.name}`}
         >
@@ -87,7 +91,7 @@ function StemRow({ stem, isCurrent, isPlaying, onPlay }: StemRowProps) {
         <a
           href={stem.url}
           download={`${stem.name}.wav`}
-          className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
         >
           Download
         </a>
@@ -163,8 +167,8 @@ export function StemMixer({ stems }: StemMixerProps) {
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-slate-900">Stem Mixer</h2>
-        <span className="text-xs text-slate-500">
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Stem Mixer</h2>
+        <span className="text-xs text-slate-500 dark:text-slate-400">
           {audioStems.length} audio · {midiStems.length} midi
         </span>
       </div>
@@ -188,28 +192,28 @@ export function StemMixer({ stems }: StemMixerProps) {
                     onPlay={() => onPlayAudio(stem)}
                   />
                 ) : (
-                  <div className="grid h-[68px] grid-cols-[auto_1fr_auto] items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3">
+                  <div className="grid h-[68px] grid-cols-[auto_1fr_auto] items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
                     <div className="w-32 shrink-0">
-                      <p className="truncate text-sm font-semibold capitalize text-slate-900">
+                      <p className="truncate text-sm font-semibold capitalize text-slate-900 dark:text-slate-100">
                         {stem.name}
                       </p>
-                      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                         Audio
                       </p>
                     </div>
-                    <div className="h-9 w-full animate-pulse rounded bg-slate-100" />
+                    <div className="h-9 w-full animate-pulse rounded bg-slate-100 dark:bg-slate-800" />
                     <div className="flex shrink-0 items-center gap-2">
                       <button
                         type="button"
                         onClick={() => onPlayAudio(stem)}
-                        className="inline-flex min-w-20 items-center justify-center rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800"
+                        className="inline-flex min-w-20 items-center justify-center rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
                       >
                         Play
                       </button>
                       <a
                         href={stem.url}
                         download={`${stem.name}.wav`}
-                        className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                        className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                       >
                         Download
                       </a>
@@ -223,21 +227,21 @@ export function StemMixer({ stems }: StemMixerProps) {
       )}
 
       {midiStems.length > 0 && (
-        <details className="rounded-lg border border-slate-200 bg-white px-4 py-3">
-          <summary className="cursor-pointer text-sm font-semibold text-slate-900">
+        <details className="rounded-lg border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
+          <summary className="cursor-pointer text-sm font-semibold text-slate-900 dark:text-slate-100">
             MIDI stems ({midiStems.length})
           </summary>
           <ul className="mt-3 space-y-1">
             {midiStems.map((stem) => (
               <li
                 key={stem.name}
-                className="flex items-center justify-between rounded border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm"
+                className="flex items-center justify-between rounded border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800"
               >
-                <span className="truncate text-slate-700">{stem.name}</span>
+                <span className="truncate text-slate-700 dark:text-slate-300">{stem.name}</span>
                 <a
                   href={stem.url}
                   download={`${stem.name}.mid`}
-                  className="text-xs font-semibold uppercase tracking-wide text-slate-600 hover:text-slate-900"
+                  className="text-xs font-semibold uppercase tracking-wide text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
                 >
                   .mid
                 </a>

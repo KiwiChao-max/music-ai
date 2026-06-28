@@ -1,5 +1,17 @@
 @import "tailwindcss";
 
+/*
+ * Tailwind v4 dark-mode variant.
+ *
+ * The default `dark:` variant is opt-in in v4 — without this line the
+ * `dark:bg-slate-900` classes below wouldn't compile. We use the
+ * class-based strategy: putting `dark` on <html> (or any ancestor)
+ * activates the dark variants for the whole subtree. This lets the
+ * theme be toggled at runtime, rather than only via the OS
+ * `prefers-color-scheme` media query.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;

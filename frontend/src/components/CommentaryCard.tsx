@@ -32,33 +32,33 @@ export function CommentaryCard({ analysis }: CommentaryCardProps) {
   const text = analysis.commentary;
   if (!text) {
     return (
-      <div
-        data-testid="commentary-empty"
-        className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500"
-      >
-        The AI commentary will appear here once the analysis finishes.
-      </div>
-    );
-  }
+    <div
+      data-testid="commentary-empty"
+      className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400"
+    >
+      The AI commentary will appear here once the analysis finishes.
+    </div>
+  );
+}
 
   const ts = formatTimestamp(analysis.commentary_generated_at);
 
   return (
     <section
       data-testid="commentary-card"
-      className="rounded-lg border border-indigo-100 bg-gradient-to-br from-indigo-50/60 to-white p-5"
+      className="rounded-lg border border-indigo-100 bg-gradient-to-br from-indigo-50/60 to-white p-5 dark:border-indigo-900/40 dark:from-indigo-950/20 dark:to-slate-900"
     >
       <header className="mb-2 flex items-center gap-2">
         <span className="inline-flex items-center rounded-full bg-indigo-600 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-white">
           {modelLabel(analysis.commentary_model)}
         </span>
-        <h3 className="text-sm font-semibold text-slate-700">
+        <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
           Take on this track
         </h3>
       </header>
-      <p className="text-sm leading-6 text-slate-800">{text}</p>
+      <p className="text-sm leading-6 text-slate-800 dark:text-slate-200">{text}</p>
       {ts && (
-        <p className="mt-3 text-xs text-slate-400">Generated {ts}</p>
+        <p className="mt-3 text-xs text-slate-400 dark:text-slate-500">Generated {ts}</p>
       )}
     </section>
   );

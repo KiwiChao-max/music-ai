@@ -53,49 +53,49 @@ function AnalysisPanel({ analysis }: { analysis: MusicAnalysis }) {
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold text-slate-900">AI Analysis</h2>
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">AI Analysis</h2>
         {analysis.warnings.length > 0 && (
-          <span className="rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
+          <span className="rounded bg-amber-100 dark:bg-amber-900/40 px-2 py-1 text-xs font-medium text-amber-800 dark:text-amber-200">
             {analysis.warnings.length} warning{analysis.warnings.length > 1 ? "s" : ""}
           </span>
         )}
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">BPM</p>
-          <p className="mt-1 text-2xl font-semibold text-slate-900">{analysis.bpm ?? "-"}</p>
-          <p className="text-xs text-slate-500">{confidenceLabel(analysis.bpm_confidence)}</p>
+        <div className="rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 p-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">BPM</p>
+          <p className="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">{analysis.bpm ?? "-"}</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">{confidenceLabel(analysis.bpm_confidence)}</p>
         </div>
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Key</p>
-          <p className="mt-1 text-lg font-semibold text-slate-900">{keyLabel}</p>
-          <p className="text-xs text-slate-500">{confidenceLabel(analysis.key_confidence)}</p>
+        <div className="rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 p-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Key</p>
+          <p className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100">{keyLabel}</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">{confidenceLabel(analysis.key_confidence)}</p>
         </div>
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Notes</p>
-          <p className="mt-1 text-2xl font-semibold text-slate-900">{analysis.note_count}</p>
-          <p className="text-xs text-slate-500">{analysis.pitch_range ?? "-"}</p>
+        <div className="rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 p-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Notes</p>
+          <p className="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">{analysis.note_count}</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">{analysis.pitch_range ?? "-"}</p>
         </div>
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Duration</p>
-          <p className="mt-1 text-2xl font-semibold text-slate-900">{analysis.duration.toFixed(1)}s</p>
-          <p className="text-xs text-slate-500">analysis window</p>
+        <div className="rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 p-4">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Duration</p>
+          <p className="mt-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">{analysis.duration.toFixed(1)}s</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">analysis window</p>
         </div>
       </div>
 
       {analysis.chords.length > 0 && (
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <h3 className="text-sm font-semibold text-slate-900">Chord Map</h3>
+        <div className="rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 p-4">
+          <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Chord Map</h3>
           <div className="mt-3 flex flex-wrap gap-2">
             {analysis.chords.map((chord) => (
               <span
                 key={`${chord.start}-${chord.end}-${chord.chord}`}
-                className="rounded border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-sm text-slate-700"
+                className="rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 px-2.5 py-1.5 text-sm text-slate-700 dark:text-slate-300"
                 title={`Confidence ${Math.round(chord.confidence * 100)}%`}
               >
-                <span className="font-semibold text-slate-900">{chord.chord}</span>{" "}
-                <span className="text-xs text-slate-500">{formatRange(chord.start, chord.end)}</span>
+                <span className="font-semibold text-slate-900 dark:text-slate-100">{chord.chord}</span>{" "}
+                <span className="text-xs text-slate-500 dark:text-slate-400">{formatRange(chord.start, chord.end)}</span>
               </span>
             ))}
           </div>
@@ -110,17 +110,17 @@ function AnalysisPanel({ analysis }: { analysis: MusicAnalysis }) {
       )}
 
       {analysis.sections.length > 0 && (
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <h3 className="text-sm font-semibold text-slate-900">Sections</h3>
+        <div className="rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 p-4">
+          <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Sections</h3>
           <div className="mt-3 space-y-2">
             {analysis.sections.map((section) => (
-              <div key={section.label} className="rounded border border-slate-200 bg-slate-50 p-3">
+              <div key={section.label} className="rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-3">
                 <div className="flex items-center justify-between gap-3">
-                  <span className="font-semibold text-slate-900">Section {section.label}</span>
-                  <span className="text-xs uppercase tracking-wide text-slate-500">{section.energy}</span>
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">Section {section.label}</span>
+                  <span className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">{section.energy}</span>
                 </div>
-                <p className="mt-1 text-xs text-slate-500">{formatRange(section.start, section.end)} · density {section.density}</p>
-                <p className="mt-2 text-sm text-slate-700">{section.suggestion}</p>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{formatRange(section.start, section.end)} · density {section.density}</p>
+                <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{section.suggestion}</p>
               </div>
             ))}
           </div>
@@ -133,9 +133,9 @@ function AnalysisPanel({ analysis }: { analysis: MusicAnalysis }) {
       </div>
 
       {analysis.warnings.length > 0 && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-          <h3 className="text-sm font-semibold text-amber-900">Analysis Notes</h3>
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-amber-900">
+        <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-4">
+          <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-200">Analysis Notes</h3>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-amber-900 dark:text-amber-200">
             {analysis.warnings.map((warning) => (
               <li key={warning}>{warning}</li>
             ))}
@@ -149,9 +149,9 @@ function AnalysisPanel({ analysis }: { analysis: MusicAnalysis }) {
 function AdviceList({ title, items }: { title: string; items: string[] }) {
   if (items.length === 0) return null;
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
-      <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
-      <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
+    <div className="rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 p-4">
+      <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{title}</h3>
+      <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700 dark:text-slate-300">
         {items.map((item) => (
           <li key={item}>{item}</li>
         ))}
@@ -177,13 +177,13 @@ function DetectedInstrumentsPanel({
   // Render high-to-low so the dominant instrument sits on top.
   const sorted = [...items].sort((a, b) => b.probability - a.probability);
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
+    <div className="rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 p-4">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold text-slate-900">
+        <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
           Detected instruments
         </h3>
         {dominant && (
-          <span className="rounded bg-indigo-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-indigo-700">
+          <span className="rounded bg-indigo-100 dark:bg-indigo-900/40 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-indigo-700 dark:text-indigo-300">
             Dominant: {formatInstrumentName(dominant)}
           </span>
         )}
@@ -191,17 +191,17 @@ function DetectedInstrumentsPanel({
       <ul className="mt-3 space-y-2">
         {sorted.map((item) => (
           <li key={item.instrument} className="space-y-1">
-            <div className="flex items-center justify-between text-xs text-slate-600">
-              <span className="font-medium text-slate-700">
+            <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
+              <span className="font-medium text-slate-700 dark:text-slate-300">
                 {formatInstrumentName(item.instrument)}
               </span>
               <span className="font-mono">
                 {(item.probability * 100).toFixed(0)}%
               </span>
             </div>
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
               <div
-                className="h-full bg-slate-700"
+                className="h-full bg-slate-700 dark:bg-slate-400"
                 style={{ width: `${Math.max(2, item.probability * 100)}%` }}
               />
             </div>
@@ -245,26 +245,26 @@ function DrumPartPanel({ stems }: { stems: StemInfo[] }) {
     .sort((a, b) => a.part.localeCompare(b.part));
   if (parts.length === 0) return null;
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
-      <h3 className="text-sm font-semibold text-slate-900">
+    <div className="rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 p-4">
+      <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
         Drum parts (per-instrument MIDI)
       </h3>
-      <p className="mt-1 text-xs text-slate-500">
+      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
         Drop any of these into a DAW to edit a single component of the kit.
       </p>
       <ul className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
         {parts.map(({ part, stem }) => (
           <li
             key={part}
-            className="flex items-center justify-between rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs"
+            className="flex items-center justify-between rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 px-2 py-1.5 text-xs"
           >
-            <span className="truncate text-slate-700">
+            <span className="truncate text-slate-700 dark:text-slate-300">
               {DRUM_PART_LABELS[part] ?? part}
             </span>
             <a
               href={stem.url}
               download={`${stem.name}.mid`}
-              className="rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700 hover:bg-slate-100"
+              className="rounded border border-slate-300 dark:border-slate-700 bg-white px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 dark:bg-slate-800"
             >
               .mid
             </a>
@@ -318,7 +318,7 @@ export function AudioDetailPage() {
           <Skeleton width="w-2/3" height="h-8" />
           <Skeleton width="w-1/3" height="h-5" />
         </div>
-        <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-6">
+        <div className="space-y-2 rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 p-6">
           <Skeleton width="w-1/4" height="h-4" />
           <Skeleton width="w-full" height="h-2" />
           <Skeleton width="w-1/2" height="h-4" />
@@ -336,7 +336,7 @@ export function AudioDetailPage() {
         />
         <Link
           to="/audio"
-          className="inline-block text-sm text-slate-600 underline hover:text-slate-900"
+          className="inline-block text-sm text-slate-600 dark:text-slate-400 underline hover:text-slate-900 dark:hover:text-slate-100 dark:text-slate-100"
         >
           Back to list
         </Link>
@@ -350,9 +350,9 @@ export function AudioDetailPage() {
         description={`No task with id #${taskId}. It may have been deleted, or the link is wrong.`}
         action={
           <Link
-            to="/audio"
-            className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800"
-          >
+          to="/audio"
+          className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
+        >
             Back to tasks
           </Link>
         }
@@ -382,20 +382,20 @@ export function AudioDetailPage() {
 
   return (
     <section className="max-w-3xl space-y-6">
-      <nav className="text-sm text-slate-500">
-        <Link to="/audio" className="hover:text-slate-900 hover:underline">
+      <nav className="text-sm text-slate-500 dark:text-slate-400">
+        <Link to="/audio" className="hover:text-slate-900 dark:hover:text-slate-100 dark:text-slate-100 hover:underline">
           Back to tasks
         </Link>
       </nav>
 
       <header className="space-y-3">
-        <h1 className="break-all text-3xl font-bold tracking-tight text-slate-900">
+        <h1 className="break-all text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
           {task.filename}
         </h1>
-        <div className="flex items-center gap-2 text-sm text-slate-600">
-          <span className="text-slate-500">Status:</span>
+        <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+          <span className="text-slate-500 dark:text-slate-400">Status:</span>
           {isFinished ? (
-            <span className="text-base font-semibold text-emerald-700">Finished</span>
+            <span className="text-base font-semibold text-emerald-700 dark:text-emerald-300">Finished</span>
           ) : (
             <StatusBadge status={task.status} />
           )}
@@ -403,13 +403,13 @@ export function AudioDetailPage() {
       </header>
 
       {isUploaded && (
-        <div className="rounded-lg border border-slate-200 bg-white p-6 text-center">
-          <p className="text-sm text-slate-600">The task is uploaded and ready to process.</p>
+        <div className="rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 p-6 text-center">
+          <p className="text-sm text-slate-600 dark:text-slate-400">The task is uploaded and ready to process.</p>
           <button
             type="button"
             onClick={onStart}
             disabled={startProcess.isPending}
-            className="mt-3 rounded-md bg-slate-900 px-5 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+            className="mt-3 rounded-md bg-slate-900 px-5 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
           >
             {startProcess.isPending ? "Starting..." : "Start processing"}
           </button>
@@ -424,21 +424,21 @@ export function AudioDetailPage() {
       )}
 
       {isProcessing && (
-        <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-6">
+        <div className="space-y-2 rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 p-6">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Processing</span>
-            <span className="text-xs text-slate-500">live</span>
+            <span className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Processing</span>
+            <span className="text-xs text-slate-500 dark:text-slate-400">live</span>
           </div>
           <ProgressBar value={task.progress} className="mt-1" />
-          <p className="text-sm text-slate-700">{task.current_step ?? "Starting..."}</p>
+          <p className="text-sm text-slate-700 dark:text-slate-300">{task.current_step ?? "Starting..."}</p>
         </div>
       )}
 
       {isFailed && (
-        <div className="space-y-3 rounded-lg border border-red-200 bg-red-50 p-6">
-          <p className="text-sm font-semibold text-red-700">Processing failed</p>
+        <div className="space-y-3 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 p-6">
+          <p className="text-sm font-semibold text-red-700 dark:text-red-300">Processing failed</p>
           {task.error_message && (
-            <pre className="overflow-x-auto rounded bg-white p-3 text-xs text-red-700">
+            <pre className="overflow-x-auto rounded bg-white p-3 text-xs text-red-700 dark:text-red-300">
               {task.error_message}
             </pre>
           )}
@@ -446,7 +446,7 @@ export function AudioDetailPage() {
             type="button"
             onClick={onStart}
             disabled={startProcess.isPending}
-            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
           >
             {startProcess.isPending ? "Retrying..." : "Retry"}
           </button>
@@ -465,7 +465,7 @@ export function AudioDetailPage() {
           <section className="space-y-3">
             {stemsQuery.isLoading && (
               <div
-                className="space-y-2 rounded-lg border border-slate-200 bg-white p-4"
+                className="space-y-2 rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 p-4"
                 aria-label="Loading stems"
               >
                 <Skeleton width="w-1/3" />
@@ -500,13 +500,13 @@ export function AudioDetailPage() {
 
           {analysisQuery.isLoading && (
             <div
-              className="space-y-3 rounded-lg border border-slate-200 bg-white p-4"
+              className="space-y-3 rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 p-4"
               aria-label="Loading music analysis"
             >
               <Skeleton width="w-1/3" height="h-5" />
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {Array.from({ length: 4 }).map((_, idx) => (
-                  <div key={idx} className="space-y-2 rounded-lg border border-slate-200 p-4">
+                  <div key={idx} className="space-y-2 rounded-lg border border-slate-200 dark:border-slate-800 p-4">
                     <Skeleton width="w-1/2" height="h-3" />
                     <Skeleton width="w-3/4" height="h-6" />
                     <Skeleton width="w-1/3" height="h-3" />
@@ -530,22 +530,22 @@ export function AudioDetailPage() {
         </>
       )}
 
-      <dl className="grid grid-cols-1 gap-4 rounded-lg border border-slate-200 bg-white p-6 sm:grid-cols-2">
+      <dl className="grid grid-cols-1 gap-4 rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 p-6 sm:grid-cols-2">
         <div>
-          <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">ID</dt>
-          <dd className="mt-1 text-sm text-slate-900">{task.id}</dd>
+          <dt className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">ID</dt>
+          <dd className="mt-1 text-sm text-slate-900 dark:text-slate-100">{task.id}</dd>
         </div>
         <div>
-          <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Duration</dt>
-          <dd className="mt-1 text-sm text-slate-900">{formatDuration(task.duration)}</dd>
+          <dt className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Duration</dt>
+          <dd className="mt-1 text-sm text-slate-900 dark:text-slate-100">{formatDuration(task.duration)}</dd>
         </div>
         <div>
-          <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Finished at</dt>
-          <dd className="mt-1 text-sm text-slate-900">{formatTime(task.finished_at)}</dd>
+          <dt className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Finished at</dt>
+          <dd className="mt-1 text-sm text-slate-900 dark:text-slate-100">{formatTime(task.finished_at)}</dd>
         </div>
         <div>
-          <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Status</dt>
-          <dd className="mt-1 text-sm text-slate-900">{task.status}</dd>
+          <dt className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Status</dt>
+          <dd className="mt-1 text-sm text-slate-900 dark:text-slate-100">{task.status}</dd>
         </div>
       </dl>
 
@@ -554,7 +554,7 @@ export function AudioDetailPage() {
           type="button"
           onClick={onDelete}
           disabled={remove.isPending}
-          className="rounded-md border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+          className="rounded-md border border-red-200 dark:border-red-800 bg-white px-4 py-2 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:bg-red-950/30 disabled:opacity-50"
         >
           {remove.isPending ? "Deleting..." : "Delete task"}
         </button>

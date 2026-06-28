@@ -12,14 +12,14 @@ export function AudioListPage() {
     <section className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="space-y-1">
-          <h1 className="text-2xl font-bold tracking-tight">Audio tasks</h1>
-          <p className="text-sm text-slate-600">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Audio tasks</h1>
+          <p className="text-sm text-slate-600 dark:text-slate-400">
             All uploaded audio files. Click a row to view details.
           </p>
         </div>
         <Link
           to="/upload"
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
         >
           New upload
         </Link>
@@ -30,7 +30,7 @@ export function AudioListPage() {
           {Array.from({ length: 3 }).map((_, idx) => (
             <li
               key={idx}
-              className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3"
+              className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900"
             >
               <Skeleton width="w-1/2" />
               <Skeleton width="w-20" height="h-5" />
@@ -48,7 +48,7 @@ export function AudioListPage() {
           action={
             <Link
               to="/upload"
-              className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800"
+              className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
             >
               Upload your first file
             </Link>
@@ -57,15 +57,15 @@ export function AudioListPage() {
       )}
 
       {tasks && tasks.length > 0 && (
-        <ul className="divide-y divide-slate-200 overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <ul className="divide-y divide-slate-200 overflow-hidden rounded-lg border border-slate-200 bg-white dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-900">
           {tasks.map((t) => (
             <li key={t.id}>
               <Link
                 to={`/audio/${t.id}`}
-                className="block px-4 py-3 transition-colors hover:bg-slate-50"
+                className="block px-4 py-3 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800"
               >
                 <div className="flex items-center justify-between gap-3">
-                  <p className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900">
+                  <p className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900 dark:text-slate-100">
                     #{t.id} · {t.filename}
                   </p>
                   <StatusBadge status={t.status} />
@@ -74,14 +74,14 @@ export function AudioListPage() {
                   <div className="mt-2">
                     <ProgressBar value={t.progress} />
                     {t.current_step && (
-                      <p className="mt-1 truncate text-xs text-slate-500">
+                      <p className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">
                         {t.current_step}
                       </p>
                     )}
                   </div>
                 )}
                 {t.status === "FAILED" && t.error_message && (
-                  <p className="mt-1 truncate text-xs text-red-600">
+                  <p className="mt-1 truncate text-xs text-red-600 dark:text-red-400">
                     {t.error_message}
                   </p>
                 )}
