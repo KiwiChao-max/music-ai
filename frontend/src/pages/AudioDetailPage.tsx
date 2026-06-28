@@ -13,9 +13,13 @@ import {
   useStartProcess,
   useStems,
 } from "@/hooks/useAudioTasks";
+import { useTaskProgress } from "@/hooks/useTaskProgress";
 import type { DetectedInstrument, MusicAnalysis, StemInfo } from "@/types/audio";
 
-const POLL_MS = 1500;
+// Slow fallback poll in case the WebSocket never connects (e.g. the
+// worker is on a different host that doesn't expose WS). The WS path
+// is the primary live-update mechanism.
+const POLL_MS = 5000;
 
 function formatDuration(seconds: number | null): string {
   if (seconds == null) return "-";
@@ -275,13 +279,16 @@ export function AudioDetailPage() {
   const navigate = useNavigate();
 
   // Derive the polling interval from the current task status. This is the
-  // single source of truth: while PROCESSING we poll, otherwise we don't.
-  // React Query re-evaluates the callback on every data change, so flipping
-  // the status automatically starts or stops polling.
+  // single source of truth: while PROCESSING we slow-poll as a safety net,
+  // otherwise we don't. The WebSocket is the primary live-update path.
   const { data: task, isLoading, isError, error } = useAudioTask(taskId, {
     refetchInterval: (current) =>
       current?.status === "PROCESSING" ? POLL_MS : false,
   });
+
+  // Live progress over WebSocket — patches the same query key as
+  // `useAudioTask` so the UI updates in real time without polling.
+  useTaskProgress(taskId, { enabled: task?.status === "PROCESSING" });
 
   const startProcess = useStartProcess();
   const remove = useDeleteAudio();
