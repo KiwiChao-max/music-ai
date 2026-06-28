@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CommentaryCard } from "@/components/CommentaryCard";
 import { ProgressBar } from "@/components/ProgressBar";
 import { SampleBasedDrumPlayer } from "@/components/SampleBasedDrumPlayer";
+import { Skeleton, EmptyState, ErrorState } from "@/components/States";
 import { StemList } from "@/components/StemPlayer";
 import { StatusBadge } from "@/components/StatusBadge";
 import { instrumentsApi, type SampleLibraryInfo } from "@/api/instruments";
@@ -282,7 +283,7 @@ export function AudioDetailPage() {
   // Derive the polling interval from the current task status. This is the
   // single source of truth: while PROCESSING we slow-poll as a safety net,
   // otherwise we don't. The WebSocket is the primary live-update path.
-  const { data: task, isLoading, isError, error } = useAudioTask(taskId, {
+  const { data: task, isLoading, isError, error, refetch } = useAudioTask(taskId, {
     refetchInterval: (current) =>
       current?.status === "PROCESSING" ? POLL_MS : false,
   });
@@ -302,28 +303,61 @@ export function AudioDetailPage() {
   });
 
   if (!Number.isFinite(taskId)) {
-    return <p className="text-sm text-red-600">Invalid task id: {id}</p>;
+    return (
+      <ErrorState
+        title="Invalid task id"
+        error={`The URL contains an invalid task id: ${id}`}
+      />
+    );
   }
   if (isLoading) {
-    return <p className="text-sm text-slate-500">Loading task #{taskId}...</p>;
+    return (
+      <section className="max-w-3xl space-y-6">
+        <Skeleton width="w-24" height="h-4" />
+        <div className="space-y-3">
+          <Skeleton width="w-2/3" height="h-8" />
+          <Skeleton width="w-1/3" height="h-5" />
+        </div>
+        <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-6">
+          <Skeleton width="w-1/4" height="h-4" />
+          <Skeleton width="w-full" height="h-2" />
+          <Skeleton width="w-1/2" height="h-4" />
+        </div>
+      </section>
+    );
   }
   if (isError) {
     return (
-      <div className="space-y-3">
-        <p className="text-sm text-red-600">
-          Failed to load: {error.message}
-        </p>
+      <section className="max-w-3xl space-y-4">
+        <ErrorState
+          title="Failed to load task"
+          error={error}
+          onRetry={() => refetch()}
+        />
         <Link
           to="/audio"
           className="inline-block text-sm text-slate-600 underline hover:text-slate-900"
         >
           Back to list
         </Link>
-      </div>
+      </section>
     );
   }
   if (!task) {
-    return <p className="text-sm text-slate-500">Task not found.</p>;
+    return (
+      <EmptyState
+        title="Task not found"
+        description={`No task with id #${taskId}. It may have been deleted, or the link is wrong.`}
+        action={
+          <Link
+            to="/audio"
+            className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800"
+          >
+            Back to tasks
+          </Link>
+        }
+      />
+    );
   }
 
   const onDelete = () => {
@@ -380,9 +414,11 @@ export function AudioDetailPage() {
             {startProcess.isPending ? "Starting..." : "Start processing"}
           </button>
           {startProcess.isError && (
-            <p className="mt-3 text-sm text-red-600">
-              Failed to start: {startProcess.error.message}
-            </p>
+            <ErrorState
+              title="Failed to start processing"
+              error={startProcess.error}
+              onRetry={onStart}
+            />
           )}
         </div>
       )}
@@ -415,9 +451,11 @@ export function AudioDetailPage() {
             {startProcess.isPending ? "Retrying..." : "Retry"}
           </button>
           {startProcess.isError && (
-            <p className="text-sm text-red-700">
-              Retry failed: {startProcess.error.message}
-            </p>
+            <ErrorState
+              title="Retry failed"
+              error={startProcess.error}
+              onRetry={onStart}
+            />
           )}
         </div>
       )}
@@ -426,14 +464,28 @@ export function AudioDetailPage() {
         <>
           <section className="space-y-3">
             <h2 className="text-lg font-semibold text-slate-900">Output Files</h2>
-            {stemsQuery.isLoading && <p className="text-sm text-slate-500">Loading stems...</p>}
+            {stemsQuery.isLoading && (
+              <div
+                className="space-y-2 rounded-lg border border-slate-200 bg-white p-4"
+                aria-label="Loading stems"
+              >
+                <Skeleton width="w-1/3" />
+                <Skeleton width="w-2/3" />
+                <Skeleton width="w-1/2" />
+              </div>
+            )}
             {stemsQuery.isError && (
-              <p className="text-sm text-red-600">
-                Failed to load stems: {stemsQuery.error.message}
-              </p>
+              <ErrorState
+                title="Failed to load stems"
+                error={stemsQuery.error}
+                onRetry={() => stemsQuery.refetch()}
+              />
             )}
             {stemsQuery.data && stemsQuery.data.length === 0 && (
-              <p className="text-sm text-slate-500">No stems produced.</p>
+              <EmptyState
+                title="No stems produced"
+                description="The worker finished without producing any output files. This is unusual — try re-processing the task."
+              />
             )}
             {stemsQuery.data && stemsQuery.data.length > 0 && (
               <StemList stems={stemsQuery.data} />
@@ -448,12 +500,27 @@ export function AudioDetailPage() {
           />
 
           {analysisQuery.isLoading && (
-            <p className="text-sm text-slate-500">Loading music analysis...</p>
+            <div
+              className="space-y-3 rounded-lg border border-slate-200 bg-white p-4"
+              aria-label="Loading music analysis"
+            >
+              <Skeleton width="w-1/3" height="h-5" />
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {Array.from({ length: 4 }).map((_, idx) => (
+                  <div key={idx} className="space-y-2 rounded-lg border border-slate-200 p-4">
+                    <Skeleton width="w-1/2" height="h-3" />
+                    <Skeleton width="w-3/4" height="h-6" />
+                    <Skeleton width="w-1/3" height="h-3" />
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
           {analysisQuery.isError && (
-            <p className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-              Analysis is not available for this task yet.
-            </p>
+            <ErrorState
+              title="Analysis is not available"
+              error={analysisQuery.error}
+            />
           )}
           {analysisQuery.data && (
             <>
@@ -494,9 +561,11 @@ export function AudioDetailPage() {
         </button>
       </div>
       {remove.isError && (
-        <p className="text-right text-sm text-red-600">
-          Delete failed: {remove.error.message}
-        </p>
+        <ErrorState
+          title="Delete failed"
+          error={remove.error}
+          onRetry={onDelete}
+        />
       )}
     </section>
   );
