@@ -5,6 +5,7 @@ import { RouterProvider } from "react-router-dom";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { PlayerProvider } from "@/contexts/PlayerContext";
+import "@/i18n";
 import { router } from "@/router";
 import "./index.css";
 

@@ -10,6 +10,7 @@
  * in via a CSS transition when the first track starts.
  */
 import { useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import WaveSurfer from "wavesurfer.js";
 
 import { formatTime, usePlayer } from "@/contexts/PlayerContext";
@@ -100,6 +101,7 @@ function Waveform({
 }
 
 export function PlayerBar() {
+  const { t } = useTranslation();
   const {
     current,
     isPlaying,
@@ -118,7 +120,7 @@ export function PlayerBar() {
   return (
     <div
       role="region"
-      aria-label="Audio player"
+      aria-label={t("player.audioPlayer")}
       className="sticky bottom-0 left-0 right-0 z-30 border-t border-slate-200 bg-white shadow-[0_-4px_12px_rgba(15,23,42,0.06)] dark:border-slate-800 dark:bg-slate-900 dark:shadow-[0_-4px_12px_rgba(0,0,0,0.4)]"
     >
       <div className="mx-auto flex w-full max-w-5xl items-center gap-4 px-6 py-3">
@@ -185,7 +187,7 @@ export function PlayerBar() {
             )}
           </button>
 
-          <label className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400" title="Volume">
+          <label className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400" title={t("player.volume")}>
             <svg
               xmlns="http://www.w3.org/2000/svg"
               width="14"
@@ -209,7 +211,7 @@ export function PlayerBar() {
               value={volume}
               onChange={(e) => setVolume(Number(e.target.value))}
               className="h-1 w-20 cursor-pointer accent-slate-900 dark:accent-slate-100"
-              aria-label="Volume"
+              aria-label={t("player.volume")}
             />
           </label>
 
@@ -217,8 +219,8 @@ export function PlayerBar() {
             type="button"
             onClick={stop}
             className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
-            aria-label="Close player"
-            title="Close player"
+            aria-label={t("player.close")}
+            title={t("player.close")}
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"

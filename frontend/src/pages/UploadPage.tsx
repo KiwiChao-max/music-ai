@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 
 import { useUploadAudio } from "@/hooks/useAudioTasks";
 import { MAX_UPLOAD_BYTES, validateAudioFile } from "@/utils/upload";
@@ -12,6 +13,7 @@ export function UploadPage() {
   const [picked, setPicked] = useState<File | null>(null);
   const upload = useUploadAudio();
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0] ?? null;
@@ -38,10 +40,11 @@ export function UploadPage() {
   return (
     <section className="max-w-2xl space-y-6">
       <header className="space-y-1">
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">Upload audio</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+          {t("upload.title")}
+        </h1>
         <p className="text-sm text-slate-600 dark:text-slate-400">
-          Pick an audio file to create a new task. You'll be taken to the task
-          page as soon as the upload completes.
+          {t("upload.subtitle")}
         </p>
       </header>
 
@@ -54,10 +57,10 @@ export function UploadPage() {
           className="flex cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center transition-colors hover:border-slate-400 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:hover:border-slate-500 dark:hover:bg-slate-700"
         >
           <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
-            Click to choose an audio file
+            {t("upload.dropLabel")}
           </span>
           <span className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            Supports browser-readable audio files up to {maxMB} MB
+            {t("upload.dropHelp", { max: maxMB })}
           </span>
           <input
             id="file"
@@ -84,14 +87,14 @@ export function UploadPage() {
               onClick={onReset}
               className="text-sm text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
             >
-              Remove
+              {t("upload.remove")}
             </button>
           </div>
         )}
 
         {upload.isError && (
           <ErrorState
-            title="Upload failed"
+            title={t("upload.error.title")}
             error={upload.error}
             onRetry={() => upload.mutate(picked!)}
           />
@@ -107,14 +110,14 @@ export function UploadPage() {
             disabled={!picked || upload.isPending}
             className="rounded-md px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 disabled:opacity-50 dark:text-slate-300 dark:hover:text-slate-100"
           >
-            Clear
+            {t("upload.clear")}
           </button>
           <button
             type="submit"
             disabled={!picked || Boolean(validationError) || upload.isPending}
             className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
           >
-            {upload.isPending ? "Uploading..." : "Upload"}
+            {upload.isPending ? t("upload.submitting") : t("upload.submit")}
           </button>
         </div>
       </form>
