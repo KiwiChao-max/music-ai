@@ -72,4 +72,10 @@ export interface MusicAnalysis {
   warnings: string[];
   detected_instruments?: DetectedInstrument[];
   dominant_instrument?: string;
+  // LLM commentary fields, attached by the API when the worker has
+  // finished the analysis step. May all be null if LLM is disabled
+  // or the LLM call failed.
+  commentary?: string | null;
+  commentary_model?: string | null;
+  commentary_generated_at?: string | null;
 }

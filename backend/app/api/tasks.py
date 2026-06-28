@@ -201,4 +201,43 @@ def get_task_analysis(
     analysis = music_analysis_service.read_analysis(Path(task.output_dir))
     if analysis is None:
         raise HTTPException(status_code=404, detail="analysis not found")
-    return MusicAnalysisResponse.model_validate(analysis)
+    # Attach the LLM commentary if the worker produced one. The two live
+    # side by side so the UI can show "the AI's take" without a second
+    # round-trip.
+    payload = dict(analysis)
+    payload["commentary"] = task.commentary
+    payload["commentary_model"] = task.commentary_model
+    payload["commentary_generated_at"] = (
+        task.commentary_generated_at.isoformat()
+        if task.commentary_generated_at
+        else None
+    )
+    return MusicAnalysisResponse.model_validate(payload)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/tasks/{id}/commentary
+# ---------------------------------------------------------------------------
+@router.get("/{task_id}/commentary")
+def get_task_commentary(
+    task_id: int, db: Session = Depends(get_db)
+) -> dict:
+    """Return just the LLM commentary (and metadata) for a task.
+
+    Kept as its own endpoint so the detail page can fetch commentary
+    lazily (only when the user scrolls to it) without re-downloading
+    the whole analysis JSON.
+    """
+    task = task_service.get_task(db, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="task not found")
+    return {
+        "task_id": task.id,
+        "commentary": task.commentary,
+        "commentary_model": task.commentary_model,
+        "commentary_generated_at": (
+            task.commentary_generated_at.isoformat()
+            if task.commentary_generated_at
+            else None
+        ),
+    }

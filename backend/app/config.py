@@ -94,6 +94,24 @@ class Settings(BaseSettings):
     bootstrap_admin_password: str = "admin1234"
     bootstrap_admin_full_name: str = "Bootstrap Admin"
 
+    # ---- LLM (commentary) -------------------------------------------------
+    # When `llm_api_key` is empty, the worker falls back to `MockLlm` which
+    # produces a deterministic commentary built from the analysis fields.
+    # That means the UI is always populated, even in environments that
+    # don't want to spend money on LLM calls.
+    #
+    # `llm_base_url` is the provider's root (no `/chat/completions`),
+    # so any OpenAI-compatible endpoint works — OpenAI, Together,
+    # DeepSeek, OpenRouter, or a local llama.cpp server.
+    llm_api_key: str = ""
+    llm_base_url: str = "https://api.openai.com/v1"
+    llm_model: str = "gpt-4o-mini"
+    llm_timeout_seconds: float = 30.0
+    # If false, the worker skips the LLM step entirely (no commentary is
+    # generated, the column stays null). Useful for unit tests and for
+    # deployments that don't want the LLM cost.
+    llm_enabled: bool = True
+
     # ---- celery / redis ----------------------------------------------------
     # The Celery broker (queue transport) and result backend share the same
     # Redis instance by default. Override `celery_broker_url` /

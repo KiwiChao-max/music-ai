@@ -28,6 +28,7 @@ from app.services import (
     drum_midi_service,
     file_service,
     instrument_classifier_service,
+    llm_service,
     midi_mapping_service,
     music_analysis_service,
     task_service,
@@ -235,6 +236,9 @@ def _run_pipeline(
     analysis_path = _analyze_music(output_dir, detection=detection)
     logger.info("task %s: analysis written to %s", task.id, analysis_path)
 
+    _report(db, task, 98, "Writing commentary...")
+    _generate_commentary(db, task, output_dir)
+
     _report(db, task, 100, "Done")
 
     if not stems:
@@ -282,6 +286,43 @@ def _analyze_music(
     with analysis_path.open("w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
     return analysis_path
+
+
+def _generate_commentary(
+    db, task, output_dir: Path
+) -> None:
+    """Read `analysis.json` and ask the LLM service for a commentary.
+
+    Best-effort: a failure here logs a warning and leaves the
+    `commentary` column null. The pipeline must never fail because the
+    LLM step hiccuped — the user still gets a perfectly useful
+    analysis. The commentary can always be regenerated later via the
+    admin endpoint.
+    """
+    if not settings.llm_enabled:
+        return
+    analysis_path = output_dir / "analysis.json"
+    if not analysis_path.is_file():
+        logger.warning("commentary: analysis.json missing for task %s", task.id)
+        return
+    import json
+    try:
+        with analysis_path.open("r", encoding="utf-8") as f:
+            analysis = json.load(f)
+        result = llm_service.generate_commentary(
+            analysis, filename=task.filename
+        )
+    except Exception as exc:  # noqa: BLE001 - LLM step must never fail the pipeline
+        logger.warning("commentary: llm step failed for task %s: %s", task.id, exc)
+        return
+
+    from datetime import datetime, timezone
+
+    task.commentary = result.text
+    task.commentary_model = result.model
+    task.commentary_generated_at = datetime.now(timezone.utc)
+    db.commit()
+    logger.info("task %s: commentary generated (%s)", task.id, result.model)
 
 
 def process_task(task_id: int) -> None:

@@ -109,3 +109,15 @@ class MusicAnalysisResponse(BaseModel):
     instrumentation: list[str] = []
     arrangement: list[str] = []
     warnings: list[str] = []
+
+    # Optional fields attached by the API layer (not part of the raw
+    # analysis.json written by the worker). `model_config` below
+    # disables "ignore extra" so the LLM step can grow over time
+    # without forcing a schema bump.
+    commentary: str | None = None
+    commentary_model: str | None = None
+    commentary_generated_at: str | None = None
+    detected_instruments: list[list] | None = None
+    dominant_instrument: str | None = None
+
+    model_config = ConfigDict(extra="ignore")
