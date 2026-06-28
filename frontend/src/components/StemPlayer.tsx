@@ -1,11 +1,10 @@
-import { useEffect, useRef, useState } from "react";
-
+import { usePlayer } from "@/contexts/PlayerContext";
 import type { StemInfo } from "@/types/audio";
 
 interface StemRowProps {
   stem: StemInfo;
   isPlaying: boolean;
-  onTogglePlay: () => void;
+  onPlay: () => void;
 }
 
 function downloadName(stem: StemInfo): string {
@@ -18,7 +17,7 @@ function midiProfileLabel(stem: StemInfo): string {
   return "RAW MIDI";
 }
 
-function StemRow({ stem, isPlaying, onTogglePlay }: StemRowProps) {
+function StemRow({ stem, isPlaying, onPlay }: StemRowProps) {
   const isMidi = stem.kind === "midi";
 
   return (
@@ -38,8 +37,12 @@ function StemRow({ stem, isPlaying, onTogglePlay }: StemRowProps) {
       {!isMidi && (
         <button
           type="button"
-          onClick={onTogglePlay}
-          className="inline-flex min-w-20 items-center justify-center rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800"
+          onClick={onPlay}
+          className={`inline-flex min-w-20 items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+            isPlaying
+              ? "bg-emerald-600 text-white hover:bg-emerald-700"
+              : "bg-slate-900 text-white hover:bg-slate-800"
+          }`}
           aria-label={isPlaying ? `Pause ${stem.name}` : `Play ${stem.name}`}
         >
           {isPlaying ? "Pause" : "Play"}
@@ -62,76 +65,32 @@ interface StemListProps {
 }
 
 export function StemList({ stems }: StemListProps) {
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  // `currentName` = which stem is loaded. `paused` reflects the actual
-  // play/pause state of the <audio> element. Keeping these as two separate
-  // state values lets us render the right button label for every transition
-  // (play → pause → play again) without the previous "Play flash" bug that
-  // happened when `onPause` itself cleared the active stem.
-  const [currentName, setCurrentName] = useState<string | null>(null);
-  const [paused, setPaused] = useState(true);
+  // Hand playback off to the global player so it survives navigation
+  // and shows up in the persistent transport bar.
+  const { current, isPlaying, play, pause } = usePlayer();
 
-  const togglePlay = (stem: StemInfo) => {
+  const onPlay = (stem: StemInfo) => {
     if (stem.kind !== "audio") return;
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    if (currentName === stem.name) {
-      if (audio.paused) {
-        audio.play().catch(() => {
-          // Autoplay can be blocked until the user clicks again.
-        });
-      } else {
-        audio.pause();
-      }
-      return;
+    if (current?.url === stem.url && isPlaying) {
+      pause();
+    } else {
+      play({ url: stem.url, title: stem.name, kind: "audio" });
     }
-
-    // Switching to a different stem. Pause the current one, set the new
-    // stem *first* (so React state is in sync before `pause()` triggers an
-    // async onPause event), then start the new playback.
-    audio.pause();
-    setCurrentName(stem.name);
-    setPaused(false);
-    audio.src = stem.url;
-    audio.currentTime = 0;
-    audio.play().catch(() => {
-      // User gesture is satisfied since this is a click handler.
-    });
   };
 
-  useEffect(() => {
-    audioRef.current?.pause();
-    setCurrentName(null);
-    setPaused(true);
-  }, [stems]);
-
   return (
-    <>
-      <audio
-        ref={audioRef}
-        onPlay={() => setPaused(false)}
-        onPause={() => setPaused(true)}
-        onEnded={() => {
-          setPaused(true);
-          setCurrentName(null);
-        }}
-        preload="none"
-        className="hidden"
-      />
-      <ul className="space-y-2">
-        {stems.map((stem) => {
-          const isCurrent = currentName === stem.name;
-          return (
-            <StemRow
-              key={stem.name}
-              stem={stem}
-              isPlaying={isCurrent && !paused}
-              onTogglePlay={() => togglePlay(stem)}
-            />
-          );
-        })}
-      </ul>
-    </>
+    <ul className="space-y-2">
+      {stems.map((stem) => {
+        const isCurrent = current?.url === stem.url;
+        return (
+          <StemRow
+            key={stem.name}
+            stem={stem}
+            isPlaying={isCurrent && isPlaying}
+            onPlay={() => onPlay(stem)}
+          />
+        );
+      })}
+    </ul>
   );
 }
