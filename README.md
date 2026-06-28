@@ -1,15 +1,20 @@
 # music-ai
 
 AI-powered music processing app: upload an audio file, process it in a Celery
-worker, then inspect separated stems, generated MIDI files and rule-based music
-analysis in the web UI.
+worker, then inspect separated stems, per-instrument MIDI files, GM-mapped
+drum kits and rule-based music analysis in the web UI. The pipeline covers the
+core audio-AI loop end-to-end (source separation → transcription → drum
+splitting → GM/CC MIDI → user-supplied sample playback) and ships with the
+five product-grade features described in [`FEATURES.md`](./FEATURES.md).
 
 ## What Works Now
 
-- FastAPI backend with upload, task list/detail, processing, status, stems and analysis endpoints.
+- FastAPI backend with upload, task list/detail, processing, status, stems, analysis and sample-library endpoints.
 - Celery worker backed by Redis for long-running audio jobs.
 - PostgreSQL schema managed by Alembic migrations.
-- React/Vite frontend for uploading files, following progress and downloading outputs.
+- React/Vite frontend for uploading files, following progress, downloading outputs, browsing drum parts and managing sample libraries.
+- 4-stem Demucs separation, per-instrument Basic Pitch MIDI with full GM controllers (CC7/CC10/CC11/CC64, pitch bend), and a 19-part drum detector that emits per-part MIDI plus a JSON event list for the browser-side sample player.
+- A web-audio sample player that decodes user-uploaded drum samples and re-renders the detected hits through the active sample library.
 - Local fallback paths for development when Demucs or Basic Pitch cannot produce full-quality output.
 
 ## Architecture
@@ -23,8 +28,13 @@ Processing flow:
 
 1. `POST /api/audio/upload` stores the audio under `storage/uploads/<task_id>/`.
 2. `POST /api/tasks/{task_id}/process` queues a Celery job.
-3. The worker writes stems, MIDI and `analysis.json` under `storage/outputs/task_<task_id>/`.
-4. The frontend polls task status, then loads `/stems` and `/analysis`.
+3. The worker:
+   - runs Demucs → 4 stems (vocals / drums / bass / other)
+   - runs the instrument classifier on `other` → per-instrument stems
+   - runs Basic Pitch → per-instrument MIDI with full GM controllers
+   - runs the drum detector → 19 per-part MIDI files + `drums_events.json`
+   - writes `analysis.json` (BPM, key, chords, sections, detected instruments)
+4. The frontend polls task status, then loads `/stems`, `/analysis`, and (when an active sample library is set) decodes `drums_events.json` plus the library's samples through the Web Audio API.
 
 ## Quick Start With Docker
 
@@ -88,14 +98,16 @@ npm run dev
 With backend dependencies installed:
 
 ```bash
-python -m compileall backend/app scripts
+cd backend
+.venv/bin/pytest                      # 62 tests covering services, repos, MIDI, drum detection, sample library
+python -m compileall app scripts
 ```
 
 With frontend dependencies installed:
 
 ```bash
 cd frontend
-npm run build
+npm run build                         # type-checks the whole TS tree
 ```
 
 Useful runtime checks:
@@ -115,11 +127,22 @@ manual backend process first.
 Copy `.env.example` to `.env` and adjust as needed.
 
 - `DATABASE_URL` overrides individual `DB_*` settings.
-- `STORAGE_DIR` is the preferred single root for uploads and outputs.
+- `STORAGE_DIR` is the preferred single root for uploads, outputs and sample libraries.
 - `UPLOAD_DIR` and `OUTPUT_DIR` can override the derived storage subfolders.
-- `MAX_UPLOAD_BYTES` defaults to `209715200` (200 MB).
+- `SAMPLE_LIBRARY_DIR` is the per-library upload root; defaults to `<STORAGE_DIR>/sample-libraries`.
+- `MAX_UPLOAD_BYTES` defaults to `209715200` (200 MB). Sample library uploads are capped at 5 MB per file / 80 MB total.
 - `REDIS_URL` feeds Celery broker/result defaults.
 - `CORS_ORIGINS` is a comma-separated list for browser clients.
+
+## API Highlights
+
+- `GET  /api/audio/tasks` / `/api/audio/tasks/{id}` — task list & detail.
+- `POST /api/audio/upload` — multipart upload.
+- `POST /api/tasks/{id}/process` — enqueue the pipeline.
+- `GET  /api/tasks/{id}/stems` / `/analysis` — outputs.
+- `GET  /api/instruments/libraries` / `POST /api/instruments/libraries` / `POST /api/instruments/libraries/{id}/activate` — sample library CRUD (multi-file or zip upload, filename aliasing to GM notes).
+- `GET  /api/instruments/active` — currently active library.
+- `GET  /api/instruments/libraries/{id}/files/{note}` — fetch a single sample.
 
 ## Current Gaps
 
@@ -127,3 +150,5 @@ Copy `.env.example` to `.env` and adjust as needed.
 - There is no auth, quota system or per-user task ownership yet.
 - Uploaded files are stored locally; production needs object storage or a managed persistent volume strategy.
 - Analysis is deterministic and local; `llm_service.py` is still a placeholder for a future LLM commentary pass.
+
+See [`FEATURES.md`](./FEATURES.md) for the full product-level feature breakdown.
