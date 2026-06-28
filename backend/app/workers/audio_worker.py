@@ -25,6 +25,7 @@ from app.services import (
     demucs_service,
     drum_midi_service,
     file_service,
+    instrument_classifier_service,
     midi_mapping_service,
     music_analysis_service,
     task_service,
@@ -39,6 +40,9 @@ _BASIC_PITCH = basic_pitch_service.BasicPitchService()
 _DRUM_MIDI = drum_midi_service.DrumMidiService()
 _MIDI_MAPPING = midi_mapping_service.MidiMappingService()
 _MUSIC_ANALYSIS = music_analysis_service.MusicAnalysisService()
+_INSTRUMENT_CLASSIFIER = instrument_classifier_service.InstrumentClassifierService(
+    basic_pitch_service=_BASIC_PITCH,
+)
 
 _PLACEHOLDER_STEMS: tuple[str, ...] = demucs_service.EXPECTED_STEMS
 _MELODIC_STEMS: tuple[str, ...] = ("bass", "other", "vocals")
@@ -171,6 +175,14 @@ def _run_pipeline(
     _report(db, task, 30, "Separating stems...")
     stems = _separate_stems(audio_path, output_dir)
 
+    _report(db, task, 50, "Splitting instruments...")
+    detection = _split_instruments(audio_path, output_dir, stems)
+    logger.info(
+        "task %s: instrument detection %s",
+        task.id,
+        {k: round(v, 3) for k, v in detection.probabilities.items()},
+    )
+
     _report(db, task, 72, "Transcribing to MIDI...")
     midi_paths = _transcribe_stems_or_mix(audio_path, output_dir, stems)
     logger.info("task %s: wrote %d midi file(s)", task.id, len(midi_paths))
@@ -188,13 +200,56 @@ def _run_pipeline(
     )
 
     _report(db, task, 94, "Analyzing music...")
-    analysis_path = _analyze_music(output_dir)
+    analysis_path = _analyze_music(output_dir, detection=detection)
     logger.info("task %s: analysis written to %s", task.id, analysis_path)
 
     _report(db, task, 100, "Done")
 
     if not stems:
         _emit_placeholder_stems(output_dir)
+
+
+def _split_instruments(
+    audio_path: Path,
+    output_dir: Path,
+    stems: dict[str, Path],
+) -> instrument_classifier_service.InstrumentDetection:
+    """Use the instrument classifier on the "other" stem.
+
+    Falls back to the full mix if Demucs didn't produce a separate "other"
+    (placeholder stem fallback) — the resulting split will be less clean
+    but still gives the user a per-instrument view.
+    """
+    target = stems.get("other")
+    if target is None or not target.is_file() or target.stat().st_size <= 1024:
+        target = audio_path
+    try:
+        return _INSTRUMENT_CLASSIFIER.split_instrument_stem(target, output_dir)
+    except Exception as exc:  # noqa: BLE001 - downstream steps must still run
+        logger.warning("instrument-classifier failed; continuing without split: %s", exc)
+        return instrument_classifier_service.InstrumentDetection(
+            probabilities={name: 0.0 for name in instrument_classifier_service.INSTRUMENTS},
+            dominant="other_melodic",
+            total_frames=0,
+        )
+
+
+def _analyze_music(
+    output_dir: Path,
+    *,
+    detection: instrument_classifier_service.InstrumentDetection,
+) -> Path:
+    analysis_path = _MUSIC_ANALYSIS.analyze_and_write(output_dir)
+    # Attach instrument detection to the JSON so the frontend can render
+    # the per-instrument breakdown without a second round-trip.
+    import json
+    with analysis_path.open("r", encoding="utf-8") as f:
+        data = json.load(f)
+    data["detected_instruments"] = list(detection.probabilities.items())
+    data["dominant_instrument"] = detection.dominant
+    with analysis_path.open("w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    return analysis_path
 
 
 def process_task(task_id: int) -> None:
