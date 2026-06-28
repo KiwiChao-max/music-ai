@@ -5,7 +5,7 @@ import { CommentaryCard } from "@/components/CommentaryCard";
 import { ProgressBar } from "@/components/ProgressBar";
 import { SampleBasedDrumPlayer } from "@/components/SampleBasedDrumPlayer";
 import { Skeleton, EmptyState, ErrorState } from "@/components/States";
-import { StemList } from "@/components/StemPlayer";
+import { StemMixer } from "@/components/StemMixer";
 import { StatusBadge } from "@/components/StatusBadge";
 import { instrumentsApi, type SampleLibraryInfo } from "@/api/instruments";
 import {
@@ -463,7 +463,6 @@ export function AudioDetailPage() {
       {isFinished && (
         <>
           <section className="space-y-3">
-            <h2 className="text-lg font-semibold text-slate-900">Output Files</h2>
             {stemsQuery.isLoading && (
               <div
                 className="space-y-2 rounded-lg border border-slate-200 bg-white p-4"
@@ -488,7 +487,7 @@ export function AudioDetailPage() {
               />
             )}
             {stemsQuery.data && stemsQuery.data.length > 0 && (
-              <StemList stems={stemsQuery.data} />
+              <StemMixer stems={stemsQuery.data} />
             )}
           </section>
 
