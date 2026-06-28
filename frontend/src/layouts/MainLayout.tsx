@@ -1,5 +1,7 @@
 import { NavLink, Outlet } from "react-router-dom";
 
+import { PlayerBar } from "@/components/PlayerBar";
+
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   `px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
     isActive
@@ -29,9 +31,10 @@ export function MainLayout() {
           </nav>
         </div>
       </header>
-      <main className="flex-1 mx-auto w-full max-w-5xl px-6 py-8">
+      <main className="flex-1 mx-auto w-full max-w-5xl px-6 py-8 pb-32">
         <Outlet />
       </main>
+      <PlayerBar />
     </div>
   );
 }
