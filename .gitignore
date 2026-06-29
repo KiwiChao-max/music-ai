@@ -15,6 +15,10 @@ storage/
 uploads/
 outputs/
 
+# Test fixtures and runtime outputs that accidentally land in backend/
+# (numeric task_id directories are written by some test fixtures)
+backend/[0-9]*/
+
 # Environment-specific
 .env.local
 .env.*.local

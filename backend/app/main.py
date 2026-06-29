@@ -1,6 +1,8 @@
 """FastAPI application entry point."""
 from __future__ import annotations
 
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -13,6 +15,8 @@ from app.api.instruments import router as instruments_router
 from app.api.tasks import router as tasks_router
 from app.api.ws import router as ws_router
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="music-ai", version="0.1.0")
 
