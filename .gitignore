@@ -37,5 +37,8 @@ Thumbs.db
 # Logs
 *.log
 
+# Local dev runtime artifacts (PIDs, log output for start_all_local.sh)
+scripts/local/logs/
+
 # Docker
 docker-compose.override.yml
