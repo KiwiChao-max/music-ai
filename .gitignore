@@ -1,7 +1,13 @@
 # Dependencies
 node_modules/
 backend/.venv/
+.venv/
+.venv310/
 .env
+
+# Local pip helper scripts (used during initial dep install)
+pip_install*.bat
+pip_install*.log
 
 # Build outputs
 dist/
