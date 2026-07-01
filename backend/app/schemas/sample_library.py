@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class SampleFileInfo(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
+    id: int | None = None
     label: str
     midi_note: int = Field(ge=35, le=81)
     relative_path: str

@@ -1,6 +1,7 @@
 import { api } from "./axios";
 
 export interface SampleFileInfo {
+  id?: number;
   label: string;
   midi_note: number;
   relative_path: string;
@@ -109,6 +110,34 @@ export const instrumentsApi = {
   remove: async (libraryId: number): Promise<void> => {
     await api.delete(`/instruments/libraries/${libraryId}`);
   },
+  updateSample: (libraryId: number, sampleId: number, params: { midi_note?: number; label?: string }): Promise<SampleLibraryInfo> => {
+    const form = new FormData();
+    if (params.midi_note !== undefined) {
+      form.append("midi_note", String(params.midi_note));
+    }
+    if (params.label !== undefined) {
+      form.append("label", params.label);
+    }
+    return api
+      .patch<SampleLibraryInfo>(`/instruments/libraries/${libraryId}/samples/${sampleId}`, form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+      .then((r) => r.data);
+  },
+  addSample: (libraryId: number, file: File, midiNote?: number): Promise<SampleLibraryInfo> => {
+    const form = new FormData();
+    form.append("file", file);
+    if (midiNote !== undefined) {
+      form.append("midi_note", String(midiNote));
+    }
+    return api
+      .post<SampleLibraryInfo>(`/instruments/libraries/${libraryId}/samples`, form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+      .then((r) => r.data);
+  },
+  removeSample: (libraryId: number, sampleId: number): Promise<SampleLibraryInfo> =>
+    api.delete<SampleLibraryInfo>(`/instruments/libraries/${libraryId}/samples/${sampleId}`).then((r) => r.data),
   sampleUrl: (libraryId: number, note: number) =>
     `/api/instruments/libraries/${libraryId}/files/${note}`,
   classify: (file: File): Promise<SampleClassification> => {

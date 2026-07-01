@@ -166,6 +166,96 @@ def delete_library(library_id: int, db: Session = Depends(get_db)) -> Response:
     return Response(status_code=204)
 
 
+@router.patch("/libraries/{library_id}/samples/{sample_id}", response_model=LibraryInfo)
+def update_sample(
+    library_id: int,
+    sample_id: int,
+    midi_note: int | None = Form(default=None),
+    label: str | None = Form(default=None),
+    db: Session = Depends(get_db),
+) -> LibraryInfo:
+    """Update a sample's MIDI note or label.
+
+    Use this to manually correct auto-classified samples or rename them.
+    """
+    service = sample_library_service.SampleLibraryService()
+    info = service.get_library(db, library_id)
+    if info is None:
+        raise HTTPException(status_code=404, detail="library not found")
+
+    if midi_note is not None:
+        try:
+            result = service.update_sample_note(db, library_id, sample_id, midi_note)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if result is None:
+            raise HTTPException(status_code=404, detail="sample not found")
+        info = result
+
+    if label is not None:
+        try:
+            result = service.update_sample_label(db, library_id, sample_id, label)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if result is None:
+            raise HTTPException(status_code=404, detail="sample not found")
+        info = result
+
+    return LibraryInfo.model_validate(info)
+
+
+@router.post("/libraries/{library_id}/samples", response_model=LibraryInfo, status_code=201)
+async def add_sample(
+    library_id: int,
+    file: UploadFile = File(...),
+    midi_note: int | None = Form(default=None),
+    db: Session = Depends(get_db),
+) -> LibraryInfo:
+    """Add a single sample to an existing library.
+
+    If `midi_note` is not provided, the service will try to detect it from
+    the filename first, then fall back to audio content classification.
+    """
+    service = sample_library_service.SampleLibraryService()
+    content = await file.read()
+
+    if len(content) > _MAX_SAMPLE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"sample exceeds {_MAX_SAMPLE_BYTES} bytes",
+        )
+
+    try:
+        result = service.add_sample_to_library(
+            db,
+            library_id=library_id,
+            filename=file.filename or "sample.wav",
+            content=content,
+            midi_note=midi_note,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if result is None:
+        raise HTTPException(status_code=404, detail="library not found")
+
+    return LibraryInfo.model_validate(result)
+
+
+@router.delete("/libraries/{library_id}/samples/{sample_id}", response_model=LibraryInfo)
+def remove_sample(
+    library_id: int,
+    sample_id: int,
+    db: Session = Depends(get_db),
+) -> LibraryInfo:
+    """Remove a single sample from a library."""
+    service = sample_library_service.SampleLibraryService()
+    result = service.remove_sample_from_library(db, library_id, sample_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="library or sample not found")
+    return LibraryInfo.model_validate(result)
+
+
 @router.get("/libraries/{library_id}/files/{note}")
 def get_sample_file(
     library_id: int,

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   instrumentsApi,
+  type DrumTypeInfo,
   type SampleClassification,
   type SampleFileInfo,
   type SampleLibraryInfo,
@@ -63,9 +64,13 @@ const GM_DRUM_LABELS: Record<number, string> = {
 
 const QUERY_KEY = ["sample-libraries"] as const;
 
+type TabKey = "samples" | "soundfonts";
+
 export function SampleLibraryPage() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState<TabKey>("samples");
+
   const librariesQuery = useQuery({
     queryKey: QUERY_KEY,
     queryFn: instrumentsApi.list,
@@ -73,6 +78,10 @@ export function SampleLibraryPage() {
   const activeQuery = useQuery({
     queryKey: [...QUERY_KEY, "active"],
     queryFn: instrumentsApi.active,
+  });
+  const drumTypesQuery = useQuery({
+    queryKey: ["drum-types"],
+    queryFn: instrumentsApi.listDrumTypes,
   });
 
   const activate = useMutation({
@@ -90,6 +99,15 @@ export function SampleLibraryPage() {
 
   const activeId = activeQuery.data?.id ?? null;
   const libraries = librariesQuery.data ?? [];
+  const drumTypes = drumTypesQuery.data ?? [];
+  const refreshLibraries = () => queryClient.invalidateQueries({ queryKey: QUERY_KEY });
+
+  const tabClass = (key: TabKey) =>
+    `px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+      activeTab === key
+        ? "border-slate-900 text-slate-900 dark:border-slate-100 dark:text-slate-100"
+        : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+    }`;
 
   return (
     <section className="space-y-8">
@@ -98,49 +116,64 @@ export function SampleLibraryPage() {
           {t("samples.title")}
         </h1>
         <p className="text-sm text-slate-600 dark:text-slate-400">
-          {t("samples.subtitle")}{" "}
-          <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">kick.wav</code>,{" "}
-          <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">snare.wav</code>,{" "}
-          <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">open_hat.wav</code>{" "}
-          {t("samples.filenameHint")}
+          {t("samples.subtitle")}
         </p>
       </header>
 
-      <UploadCard />
+      <div className="border-b border-slate-200 dark:border-slate-800">
+        <nav className="flex gap-1">
+          <button type="button" className={tabClass("samples")} onClick={() => setActiveTab("samples")}>
+            {t("samples.tabDrumKits")}
+          </button>
+          <button type="button" className={tabClass("soundfonts")} onClick={() => setActiveTab("soundfonts")}>
+            {t("samples.tabSoundfonts")}
+          </button>
+        </nav>
+      </div>
 
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">
-          {t("samples.yourLibraries")}
-        </h2>
-        {librariesQuery.isLoading && (
-          <p className="text-sm text-slate-500 dark:text-slate-400">{t("common.loading")}</p>
-        )}
-        {librariesQuery.isError && (
-          <p className="text-sm text-red-600 dark:text-red-400">
-            {t("samples.loadError", { message: librariesQuery.error.message })}
-          </p>
-        )}
-        {libraries.length === 0 && !librariesQuery.isLoading && (
-          <p className="rounded-md border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
-            {t("samples.noLibraries")}
-          </p>
-        )}
-        <ul className="space-y-3">
-          {libraries.map((library) => (
-            <LibraryCard
-              key={library.id}
-              library={library}
-              isActive={activeId === library.id}
-              onActivate={() => activate.mutate(library.id)}
-              onDelete={() => {
-                if (confirm(t("samples.deleteConfirm", { name: library.name }))) {
-                  remove.mutate(library.id);
-                }
-              }}
-            />
-          ))}
-        </ul>
-      </section>
+      {activeTab === "samples" && (
+        <>
+          <UploadCard />
+
+          <section className="space-y-3">
+            <h2 className="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">
+              {t("samples.yourLibraries")}
+            </h2>
+            {librariesQuery.isLoading && (
+              <p className="text-sm text-slate-500 dark:text-slate-400">{t("common.loading")}</p>
+            )}
+            {librariesQuery.isError && (
+              <p className="text-sm text-red-600 dark:text-red-400">
+                {t("samples.loadError", { message: librariesQuery.error.message })}
+              </p>
+            )}
+            {libraries.length === 0 && !librariesQuery.isLoading && (
+              <p className="rounded-md border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
+                {t("samples.noLibraries")}
+              </p>
+            )}
+            <ul className="space-y-3">
+              {libraries.map((library) => (
+                <LibraryCard
+                  key={library.id}
+                  library={library}
+                  isActive={activeId === library.id}
+                  onActivate={() => activate.mutate(library.id)}
+                  onDelete={() => {
+                    if (confirm(t("samples.deleteConfirm", { name: library.name }))) {
+                      remove.mutate(library.id);
+                    }
+                  }}
+                  onUpdated={refreshLibraries}
+                  drumTypes={drumTypes}
+                />
+              ))}
+            </ul>
+          </section>
+        </>
+      )}
+
+      {activeTab === "soundfonts" && <SoundFontPanel />}
     </section>
   );
 }
@@ -366,12 +399,49 @@ interface LibraryCardProps {
   isActive: boolean;
   onActivate: () => void;
   onDelete: () => void;
+  onUpdated: () => void;
+  drumTypes: DrumTypeInfo[];
 }
 
-function LibraryCard({ library, isActive, onActivate, onDelete }: LibraryCardProps) {
+function LibraryCard({ library, isActive, onActivate, onDelete, onUpdated, drumTypes }: LibraryCardProps) {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState(false);
   const grouped = useMemo(() => groupByNote(library.files), [library.files]);
   const missing = useMemo(() => findMissingNotes(library.files), [library.files]);
+
+  const updateSample = useMutation({
+    mutationFn: (params: { sampleId: number; midi_note?: number; label?: string }) =>
+      instrumentsApi.updateSample(library.id, params.sampleId, {
+        midi_note: params.midi_note,
+        label: params.label,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEY });
+      onUpdated();
+    },
+  });
+
+  const removeSample = useMutation({
+    mutationFn: (sampleId: number) => instrumentsApi.removeSample(library.id, sampleId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEY });
+      onUpdated();
+    },
+  });
+
+  const handleNoteChange = (sampleId: number, newNote: number) => {
+    updateSample.mutate({ sampleId, midi_note: newNote });
+  };
+
+  const drumNoteOptions = useMemo(() => {
+    return drumTypes.length > 0
+      ? drumTypes.map((d) => ({ value: d.midi_note, label: `${d.midi_note} - ${d.label}` }))
+      : Object.entries(GM_DRUM_LABELS).map(([note, label]) => ({
+          value: Number(note),
+          label: `${note} - ${label}`,
+        }));
+  }, [drumTypes]);
 
   return (
     <li
@@ -398,6 +468,19 @@ function LibraryCard({ library, isActive, onActivate, onDelete }: LibraryCardPro
           )}
         </div>
         <div className="flex shrink-0 gap-2">
+          {library.files.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setEditing(!editing)}
+              className={`rounded-md border px-3 py-1.5 text-sm font-medium ${
+                editing
+                  ? "border-slate-500 bg-slate-200 text-slate-900 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+                  : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+              }`}
+            >
+              {editing ? t("common.cancel") : t("samples.edit")}
+            </button>
+          )}
           {!isActive && (
             <button
               type="button"
@@ -434,26 +517,65 @@ function LibraryCard({ library, isActive, onActivate, onDelete }: LibraryCardPro
       </div>
 
       {library.files.length > 0 && (
-        <details className="text-sm">
+        <details className="text-sm" open={editing}>
           <summary className="cursor-pointer text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100">
             {t("samples.showAll")}
           </summary>
-          <ul className="mt-2 grid grid-cols-1 gap-1 text-xs sm:grid-cols-2 md:grid-cols-3">
-            {[...grouped.entries()].map(([note, files]) => (
-              <li
-                key={note}
-                className="flex items-center justify-between rounded border border-slate-100 bg-slate-50 px-2 py-1 dark:border-slate-800 dark:bg-slate-800/60"
-              >
-                <span className="font-mono text-slate-500 dark:text-slate-400">{note}</span>
-                <span className="truncate text-slate-700 dark:text-slate-200">
-                  {GM_DRUM_LABELS[note] ?? t("samples.noteFallback", { note })}
-                </span>
-                <span className="text-slate-400 dark:text-slate-500">
-                  {files.length > 1 ? `×${files.length}` : ""}
-                </span>
-              </li>
-            ))}
-          </ul>
+          {editing ? (
+            <ul className="mt-2 space-y-2 text-xs">
+              {library.files.map((sample) => (
+                <li
+                  key={sample.id ?? sample.relative_path}
+                  className="flex items-center gap-2 rounded border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-800/60"
+                >
+                  <select
+                    value={sample.midi_note}
+                    onChange={(e) => handleNoteChange(sample.id!, Number(e.target.value))}
+                    disabled={updateSample.isPending}
+                    className="flex-1 rounded border border-slate-300 bg-white px-2 py-1 text-xs focus:border-slate-500 focus:outline-none dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+                  >
+                    {drumNoteOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="w-24 truncate text-slate-600 dark:text-slate-300">
+                    {sample.label}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (confirm(t("samples.deleteSampleConfirm", { name: sample.label }))) {
+                        removeSample.mutate(sample.id!);
+                      }
+                    }}
+                    disabled={removeSample.isPending}
+                    className="shrink-0 rounded border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-100 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-900/60"
+                  >
+                    {t("samples.deleteSample")}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <ul className="mt-2 grid grid-cols-1 gap-1 text-xs sm:grid-cols-2 md:grid-cols-3">
+              {[...grouped.entries()].map(([note, files]) => (
+                <li
+                  key={note}
+                  className="flex items-center justify-between rounded border border-slate-100 bg-slate-50 px-2 py-1 dark:border-slate-800 dark:bg-slate-800/60"
+                >
+                  <span className="font-mono text-slate-500 dark:text-slate-400">{note}</span>
+                  <span className="truncate text-slate-700 dark:text-slate-200">
+                    {GM_DRUM_LABELS[note] ?? t("samples.noteFallback", { note })}
+                  </span>
+                  <span className="text-slate-400 dark:text-slate-500">
+                    {files.length > 1 ? `×${files.length}` : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </details>
       )}
     </li>
@@ -477,4 +599,241 @@ const CORE_DRUMS: number[] = [36, 38, 42, 46, 49, 51];
 function findMissingNotes(files: SampleFileInfo[]): number[] {
   const present = new Set(files.map((f) => f.midi_note));
   return CORE_DRUMS.filter((note) => !present.has(note));
+}
+
+function SoundFontPanel() {
+  const { t } = useTranslation();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const csvInputRef = useRef<HTMLInputElement | null>(null);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [sf2File, setSf2File] = useState<File | null>(null);
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [imported, setImported] = useState<{
+    name: string;
+    preset_count: number;
+    presets: Array<{ bank_msb: number; bank_lsb: number; program: number; name: string; category?: string; instrument_type?: string }>;
+  } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"sf2" | "csv" | "gm">("gm");
+
+  const gmInstrumentsQuery = useQuery({
+    queryKey: ["gm-instruments"],
+    queryFn: instrumentsApi.listGmInstruments,
+  });
+
+  const importSf2 = useMutation({
+    mutationFn: () => instrumentsApi.importSoundFont(sf2File!, name.trim(), description.trim() || undefined),
+    onSuccess: (result) => {
+      setImported(result);
+      setError(null);
+    },
+    onError: (err) => setError(err.message),
+  });
+
+  const importCsv = useMutation({
+    mutationFn: () => instrumentsApi.importPresetTable(csvFile!, name.trim()),
+    onSuccess: (result) => {
+      setImported(result);
+      setError(null);
+    },
+    onError: (err) => setError(err.message),
+  });
+
+  const tabClass = (key: "sf2" | "csv" | "gm") =>
+    `px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+      activeTab === key
+        ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
+        : "text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-slate-800"
+    }`;
+
+  const canImportSf2 = name.trim().length > 0 && sf2File !== null;
+  const canImportCsv = name.trim().length > 0 && csvFile !== null;
+
+  return (
+    <section className="space-y-6">
+      <div className="rounded-lg border border-slate-200 bg-white p-6 space-y-4 dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">
+            {t("samples.soundfontTitle")}
+          </h2>
+          <div className="flex gap-1">
+            <button type="button" className={tabClass("gm")} onClick={() => setActiveTab("gm")}>
+              {t("samples.gmList")}
+            </button>
+            <button type="button" className={tabClass("sf2")} onClick={() => setActiveTab("sf2")}>
+              SF2
+            </button>
+            <button type="button" className={tabClass("csv")} onClick={() => setActiveTab("csv")}>
+              CSV
+            </button>
+          </div>
+        </div>
+
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          {t("samples.soundfontHint")}
+        </p>
+
+        {activeTab === "gm" && (
+          <div className="space-y-2">
+            <h3 className="text-sm font-medium text-slate-700 dark:text-slate-200">
+              {t("samples.gmInstrumentList")}
+            </h3>
+            {gmInstrumentsQuery.isLoading && (
+              <p className="text-sm text-slate-500 dark:text-slate-400">{t("common.loading")}</p>
+            )}
+            {gmInstrumentsQuery.data && (
+              <div className="max-h-96 overflow-y-auto rounded border border-slate-200 dark:border-slate-700">
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-slate-50 dark:bg-slate-800">
+                    <tr className="text-left text-slate-600 dark:text-slate-300">
+                      <th className="px-3 py-2 font-medium w-16">#</th>
+                      <th className="px-3 py-2 font-medium">{t("samples.instrumentName")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {gmInstrumentsQuery.data.map((inst) => (
+                      <tr key={inst.program} className="border-t border-slate-100 dark:border-slate-800">
+                        <td className="px-3 py-1.5 font-mono text-slate-500 dark:text-slate-400">
+                          {inst.program}
+                        </td>
+                        <td className="px-3 py-1.5 text-slate-700 dark:text-slate-200">
+                          {inst.name}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === "sf2" && (
+          <div className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="block text-sm">
+                <span className="font-medium text-slate-700 dark:text-slate-300">{t("samples.name")}</span>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder={t("samples.soundfontNamePlaceholder")}
+                  className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="font-medium text-slate-700 dark:text-slate-300">{t("samples.description")}</span>
+                <input
+                  type="text"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder={t("samples.descriptionPlaceholder")}
+                  className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                />
+              </label>
+            </div>
+
+            <FilePicker
+              label={t("samples.uploadSf2")}
+              accept=".sf2,application/x-soundfont"
+              multiple={false}
+              files={sf2File ? [sf2File] : []}
+              onFiles={(files) => setSf2File(files[0] ?? null)}
+              inputRef={fileInputRef}
+            />
+
+            {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => importSf2.mutate()}
+                disabled={!canImportSf2 || importSf2.isPending}
+                className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
+              >
+                {importSf2.isPending ? t("samples.importing") : t("samples.import")}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {activeTab === "csv" && (
+          <div className="space-y-4">
+            <label className="block text-sm">
+              <span className="font-medium text-slate-700 dark:text-slate-300">{t("samples.name")}</span>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={t("samples.presetTableNamePlaceholder")}
+                className="mt-1 block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+              />
+            </label>
+
+            <FilePicker
+              label={t("samples.uploadCsv")}
+              accept=".csv,text/csv"
+              multiple={false}
+              files={csvFile ? [csvFile] : []}
+              onFiles={(files) => setCsvFile(files[0] ?? null)}
+              inputRef={csvInputRef}
+            />
+
+            <div className="rounded border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+              <p className="font-medium mb-1">{t("samples.csvFormat")}:</p>
+              <code className="block whitespace-pre-wrap">
+                bank_msb,bank_lsb,program,name,category,instrument_type
+              </code>
+            </div>
+
+            {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => importCsv.mutate()}
+                disabled={!canImportCsv || importCsv.isPending}
+                className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
+              >
+                {importCsv.isPending ? t("samples.importing") : t("samples.import")}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {imported && (
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-800 dark:bg-emerald-950/30">
+            <h3 className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">
+              {t("samples.importSuccess", { name: imported.name, count: imported.preset_count })}
+            </h3>
+            <div className="mt-2 max-h-64 overflow-y-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-emerald-700 dark:text-emerald-400">
+                    <th className="px-2 py-1 font-medium">Bank</th>
+                    <th className="px-2 py-1 font-medium">Prog</th>
+                    <th className="px-2 py-1 font-medium">{t("samples.instrumentName")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {imported.presets.map((p, i) => (
+                    <tr key={i} className="border-t border-emerald-100 dark:border-emerald-900">
+                      <td className="px-2 py-1 font-mono text-emerald-600 dark:text-emerald-400">
+                        {p.bank_msb}:{p.bank_lsb}
+                      </td>
+                      <td className="px-2 py-1 font-mono text-emerald-600 dark:text-emerald-400">
+                        {p.program}
+                      </td>
+                      <td className="px-2 py-1 text-emerald-800 dark:text-emerald-200">{p.name}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
+  );
 }

@@ -245,6 +245,154 @@ class SampleLibraryService:
             return None
         return self.get_library(db, library.id)
 
+    def update_sample_note(
+        self, db: Session, library_id: int, sample_file_id: int, new_midi_note: int
+    ) -> LibraryInfo | None:
+        """Update the MIDI note assignment for a sample file in a library."""
+        if new_midi_note < 35 or new_midi_note > 81:
+            raise ValueError("midi_note must be in 35..81 (GM percussion)")
+
+        library = db.get(SampleLibrary, library_id)
+        if library is None:
+            return None
+
+        sample_file = db.scalars(
+            select(SampleFile).where(
+                SampleFile.id == sample_file_id,
+                SampleFile.library_id == library_id,
+            )
+        ).first()
+        if sample_file is None:
+            return None
+
+        sample_file.midi_note = new_midi_note
+        db.commit()
+        logger.info(
+            "sample-library: updated note for sample id=%d in library id=%d: %d -> %d",
+            sample_file_id,
+            library_id,
+            sample_file.midi_note,
+            new_midi_note,
+        )
+        return self.get_library(db, library_id)
+
+    def update_sample_label(
+        self, db: Session, library_id: int, sample_file_id: int, new_label: str
+    ) -> LibraryInfo | None:
+        """Update the display label for a sample file."""
+        library = db.get(SampleLibrary, library_id)
+        if library is None:
+            return None
+
+        sample_file = db.scalars(
+            select(SampleFile).where(
+                SampleFile.id == sample_file_id,
+                SampleFile.library_id == library_id,
+            )
+        ).first()
+        if sample_file is None:
+            return None
+
+        safe_label = new_label.strip()[:64]
+        if not safe_label:
+            raise ValueError("label cannot be empty")
+
+        sample_file.label = safe_label
+        db.commit()
+        return self.get_library(db, library_id)
+
+    def add_sample_to_library(
+        self,
+        db: Session,
+        library_id: int,
+        filename: str,
+        content: bytes,
+        midi_note: int | None = None,
+    ) -> LibraryInfo | None:
+        """Add a single sample to an existing library."""
+        if midi_note is not None and (midi_note < 35 or midi_note > 81):
+            raise ValueError("midi_note must be in 35..81 (GM percussion)")
+
+        library = db.get(SampleLibrary, library_id)
+        if library is None:
+            return None
+
+        safe_name = _safe_filename(filename)
+        if not safe_name:
+            raise ValueError("invalid audio file")
+
+        library_dir = self._root / str(library_id)
+        library_dir.mkdir(parents=True, exist_ok=True)
+
+        note = midi_note or _resolve_note_from_name(safe_name)
+        if note is None:
+            classification = self._classifier_service.classify_bytes(content, safe_name)
+            if classification is not None:
+                note = classification.midi_note
+            else:
+                raise ValueError("could not determine MIDI note for sample")
+
+        target = library_dir / safe_name
+        target.write_bytes(content)
+
+        sample_file = SampleFile(
+            library_id=library_id,
+            label=Path(safe_name).stem,
+            midi_note=note,
+            file_path=str(target.relative_to(self._root)),
+            velocity_offset=0,
+        )
+        db.add(sample_file)
+        db.commit()
+
+        logger.info(
+            "sample-library: added sample %s to library id=%d (note=%d)",
+            safe_name,
+            library_id,
+            note,
+        )
+        return self.get_library(db, library_id)
+
+    def remove_sample_from_library(
+        self, db: Session, library_id: int, sample_file_id: int
+    ) -> LibraryInfo | None:
+        """Remove a sample from a library."""
+        library = db.get(SampleLibrary, library_id)
+        if library is None:
+            return None
+
+        sample_file = db.scalars(
+            select(SampleFile).where(
+                SampleFile.id == sample_file_id,
+                SampleFile.library_id == library_id,
+            )
+        ).first()
+        if sample_file is None:
+            return None
+
+        file_path = self._root / sample_file.file_path
+        if file_path.is_file():
+            file_path.unlink(missing_ok=True)
+
+        db.delete(sample_file)
+        db.commit()
+
+        remaining = db.scalars(
+            select(SampleFile).where(SampleFile.library_id == library_id)
+        ).all()
+        if not remaining:
+            logger.warning(
+                "sample-library: library id=%d has no samples left after removal",
+                library_id,
+            )
+
+        logger.info(
+            "sample-library: removed sample id=%d from library id=%d",
+            sample_file_id,
+            library_id,
+        )
+        return self.get_library(db, library_id)
+
     # ---- internal helpers --------------------------------------------------
     def _to_info(self, library: SampleLibrary, files: list[SampleFile]) -> LibraryInfo:
         return LibraryInfo(
@@ -257,6 +405,7 @@ class SampleLibraryService:
             updated_at=library.updated_at.isoformat() if library.updated_at else "",
             files=tuple(
                 SampleFileInfo(
+                    id=sample_file.id,
                     label=sample_file.label,
                     midi_note=sample_file.midi_note,
                     relative_path=sample_file.file_path,
