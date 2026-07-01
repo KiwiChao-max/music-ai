@@ -16,6 +16,15 @@ class SampleFileInfo(BaseModel):
     velocity_offset: int = 0
 
 
+class UpdateLibrary(BaseModel):
+    name: str | None = None
+    description: str | None = None
+
+
+class BatchRemoveSamples(BaseModel):
+    sample_ids: list[int]
+
+
 class LibraryInfo(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

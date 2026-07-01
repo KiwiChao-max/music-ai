@@ -238,3 +238,94 @@ def test_update_sample_note_changes_mapping(
     assert exported is not None
     assert 38 in exported["mapping"]
     assert 36 not in exported["mapping"]
+
+
+def test_update_library_name(
+    db_session: Session, storage_dir: Path
+) -> None:
+    service = SampleLibraryService(root=storage_dir / "sample-libraries")
+    lib = service.create_library(
+        db_session, name="Old Name", files=[("kick.wav", b"k")]
+    )
+    db_session.commit()
+
+    updated = service.update_library(db_session, lib.id, name="New Name")
+    assert updated is not None
+    assert updated.name == "New Name"
+
+
+def test_update_library_description(
+    db_session: Session, storage_dir: Path
+) -> None:
+    service = SampleLibraryService(root=storage_dir / "sample-libraries")
+    lib = service.create_library(
+        db_session, name="Test", files=[("kick.wav", b"k")], description="Old desc"
+    )
+    db_session.commit()
+
+    updated = service.update_library(db_session, lib.id, description="New desc")
+    assert updated is not None
+    assert updated.description == "New desc"
+
+
+def test_update_library_empty_name_raises(
+    db_session: Session, storage_dir: Path
+) -> None:
+    service = SampleLibraryService(root=storage_dir / "sample-libraries")
+    lib = service.create_library(
+        db_session, name="Test", files=[("kick.wav", b"k")]
+    )
+    db_session.commit()
+
+    with pytest.raises(ValueError, match="name cannot be empty"):
+        service.update_library(db_session, lib.id, name="   ")
+
+
+def test_update_library_missing_returns_none(
+    db_session: Session, storage_dir: Path
+) -> None:
+    service = SampleLibraryService(root=storage_dir / "sample-libraries")
+    assert service.update_library(db_session, 999, name="Test") is None
+
+
+def test_batch_remove_samples(
+    db_session: Session, storage_dir: Path
+) -> None:
+    service = SampleLibraryService(root=storage_dir / "sample-libraries")
+    lib = service.create_library(
+        db_session,
+        name="Batch Test",
+        files=[
+            ("kick.wav", b"k"),
+            ("snare.wav", b"s"),
+            ("hat_closed.wav", b"h"),
+        ],
+    )
+    db_session.commit()
+
+    sample_ids = [sf.id for sf in lib.files[:2]]
+    updated = service.batch_remove_samples(db_session, lib.id, sample_ids)
+    assert updated is not None
+    assert len(updated.files) == 1
+    assert updated.files[0].midi_note == 42
+
+
+def test_batch_remove_empty_list(
+    db_session: Session, storage_dir: Path
+) -> None:
+    service = SampleLibraryService(root=storage_dir / "sample-libraries")
+    lib = service.create_library(
+        db_session, name="Batch Empty", files=[("kick.wav", b"k")]
+    )
+    db_session.commit()
+
+    updated = service.batch_remove_samples(db_session, lib.id, [])
+    assert updated is not None
+    assert len(updated.files) == 1
+
+
+def test_batch_remove_missing_library(
+    db_session: Session, storage_dir: Path
+) -> None:
+    service = SampleLibraryService(root=storage_dir / "sample-libraries")
+    assert service.batch_remove_samples(db_session, 999, [1, 2]) is None

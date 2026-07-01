@@ -31,8 +31,10 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db.session import get_db
 from app.schemas.sample_library import (
+    BatchRemoveSamples,
     LibraryInfo,
     SampleFileInfo,
+    UpdateLibrary,
 )
 from app.services import sample_library_service
 
@@ -158,6 +160,27 @@ def activate_library(library_id: int, db: Session = Depends(get_db)) -> LibraryI
     return LibraryInfo.model_validate(info)
 
 
+@router.patch("/libraries/{library_id}", response_model=LibraryInfo)
+def update_library(
+    library_id: int,
+    payload: UpdateLibrary,
+    db: Session = Depends(get_db),
+) -> LibraryInfo:
+    """Update a sample library's name and/or description."""
+    try:
+        updated = sample_library_service.SampleLibraryService().update_library(
+            db,
+            library_id,
+            name=payload.name,
+            description=payload.description,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if updated is None:
+        raise HTTPException(status_code=404, detail="library not found")
+    return updated
+
+
 @router.delete("/libraries/{library_id}", status_code=204)
 def delete_library(library_id: int, db: Session = Depends(get_db)) -> Response:
     deleted = sample_library_service.SampleLibraryService().delete_library(db, library_id)
@@ -261,6 +284,20 @@ async def add_sample(
     if result is None:
         raise HTTPException(status_code=404, detail="library not found")
 
+    return LibraryInfo.model_validate(result)
+
+
+@router.delete("/libraries/{library_id}/samples/batch", response_model=LibraryInfo)
+def batch_remove_samples(
+    library_id: int,
+    payload: BatchRemoveSamples,
+    db: Session = Depends(get_db),
+) -> LibraryInfo:
+    """Remove multiple samples from a library at once."""
+    service = sample_library_service.SampleLibraryService()
+    result = service.batch_remove_samples(db, library_id, payload.sample_ids)
+    if result is None:
+        raise HTTPException(status_code=404, detail="library not found")
     return LibraryInfo.model_validate(result)
 
 

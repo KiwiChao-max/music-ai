@@ -246,6 +246,41 @@ class SampleLibraryService:
             return None
         return self.get_library(db, library.id)
 
+    def update_library(
+        self,
+        db: Session,
+        library_id: int,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+    ) -> LibraryInfo | None:
+        """Update a library's name and/or description."""
+        library = db.get(SampleLibrary, library_id)
+        if library is None:
+            return None
+
+        changed = False
+        if name is not None:
+            stripped = name.strip()
+            if not stripped:
+                raise ValueError("name cannot be empty")
+            if library.name != stripped:
+                library.name = stripped
+                changed = True
+
+        if description is not None:
+            new_desc = description.strip() if description else None
+            if library.description != new_desc:
+                library.description = new_desc
+                changed = True
+
+        if changed:
+            db.commit()
+            db.refresh(library)
+            logger.info("sample-library: updated id=%d", library_id)
+
+        return self.get_library(db, library_id)
+
     def update_sample_note(
         self, db: Session, library_id: int, sample_file_id: int, new_midi_note: int
     ) -> LibraryInfo | None:
@@ -390,6 +425,41 @@ class SampleLibraryService:
         logger.info(
             "sample-library: removed sample id=%d from library id=%d",
             sample_file_id,
+            library_id,
+        )
+        return self.get_library(db, library_id)
+
+    def batch_remove_samples(
+        self, db: Session, library_id: int, sample_ids: list[int]
+    ) -> LibraryInfo | None:
+        """Remove multiple samples from a library at once."""
+        library = db.get(SampleLibrary, library_id)
+        if library is None:
+            return None
+
+        if not sample_ids:
+            return self.get_library(db, library_id)
+
+        sample_files = db.scalars(
+            select(SampleFile).where(
+                SampleFile.library_id == library_id,
+                SampleFile.id.in_(sample_ids),
+            )
+        ).all()
+
+        removed_count = 0
+        for sf in sample_files:
+            file_path = self._root / sf.file_path
+            if file_path.is_file():
+                file_path.unlink(missing_ok=True)
+            db.delete(sf)
+            removed_count += 1
+
+        db.commit()
+
+        logger.info(
+            "sample-library: batch removed %d samples from library id=%d",
+            removed_count,
             library_id,
         )
         return self.get_library(db, library_id)

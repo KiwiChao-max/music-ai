@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -407,8 +407,55 @@ function LibraryCard({ library, isActive, onActivate, onDelete, onUpdated, drumT
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
+  const [editingLibrary, setEditingLibrary] = useState(false);
+  const [editName, setEditName] = useState(library.name);
+  const [editDesc, setEditDesc] = useState(library.description ?? "");
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const bufferCacheRef = useRef<Map<number, AudioBuffer>>(new Map());
   const grouped = useMemo(() => groupByNote(library.files), [library.files]);
   const missing = useMemo(() => findMissingNotes(library.files), [library.files]);
+
+  const ensureAudioContext = useCallback(() => {
+    if (!audioCtxRef.current) {
+      audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    return audioCtxRef.current;
+  }, []);
+
+  const playSample = useCallback(
+    async (note: number) => {
+      try {
+        const ctx = ensureAudioContext();
+        const cached = bufferCacheRef.current.get(note);
+        if (cached) {
+          const src = ctx.createBufferSource();
+          src.buffer = cached;
+          const gain = ctx.createGain();
+          gain.gain.value = 0.5;
+          src.connect(gain);
+          gain.connect(ctx.destination);
+          src.start();
+          return;
+        }
+        const url = instrumentsApi.sampleUrl(library.id, note);
+        const resp = await fetch(url);
+        const arrayBuffer = await resp.arrayBuffer();
+        const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+        bufferCacheRef.current.set(note, audioBuffer);
+        const src = ctx.createBufferSource();
+        src.buffer = audioBuffer;
+        const gain = ctx.createGain();
+        gain.gain.value = 0.5;
+        src.connect(gain);
+        gain.connect(ctx.destination);
+        src.start();
+      } catch (err) {
+        console.error("Failed to play sample", err);
+      }
+    },
+    [library.id, ensureAudioContext]
+  );
 
   const updateSample = useMutation({
     mutationFn: (params: { sampleId: number; midi_note?: number; label?: string }) =>
@@ -430,8 +477,61 @@ function LibraryCard({ library, isActive, onActivate, onDelete, onUpdated, drumT
     },
   });
 
+  const batchRemove = useMutation({
+    mutationFn: (ids: number[]) => instrumentsApi.batchRemoveSamples(library.id, ids),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEY });
+      onUpdated();
+      setSelectedIds(new Set());
+    },
+  });
+
+  const updateLibrary = useMutation({
+    mutationFn: (params: { name?: string; description?: string }) =>
+      instrumentsApi.update(library.id, params),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEY });
+      onUpdated();
+      setEditingLibrary(false);
+    },
+  });
+
   const handleNoteChange = (sampleId: number, newNote: number) => {
     updateSample.mutate({ sampleId, midi_note: newNote });
+  };
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    setSelectedIds(new Set(library.files.filter((f) => f.id !== undefined).map((f) => f.id!)));
+  };
+
+  const clearSelection = () => {
+    setSelectedIds(new Set());
+  };
+
+  const handleBatchDelete = () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(t("samples.batchDeleteConfirm", { count: selectedIds.size }))) return;
+    batchRemove.mutate(Array.from(selectedIds));
+  };
+
+  const handleSaveLibrary = () => {
+    if (!editName.trim()) return;
+    updateLibrary.mutate({
+      name: editName.trim(),
+      description: editDesc.trim() || undefined,
+    });
   };
 
   const drumNoteOptions = useMemo(() => {
@@ -452,26 +552,82 @@ function LibraryCard({ library, isActive, onActivate, onDelete, onUpdated, drumT
       }`}
     >
       <header className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <h3 className="truncate text-base font-semibold text-slate-900 dark:text-slate-100">
-              {library.name}
-            </h3>
-            {isActive && (
-              <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
-                {t("samples.active")}
-              </span>
-            )}
-          </div>
-          {library.description && (
-            <p className="text-sm text-slate-500 dark:text-slate-400">{library.description}</p>
+        <div className="min-w-0 flex-1">
+          {editingLibrary ? (
+            <div className="space-y-2">
+              <input
+                type="text"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-base font-semibold focus:border-slate-500 focus:outline-none dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+              />
+              <input
+                type="text"
+                value={editDesc}
+                onChange={(e) => setEditDesc(e.target.value)}
+                placeholder={t("samples.descriptionPlaceholder")}
+                className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-sm focus:border-slate-500 focus:outline-none dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+              />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleSaveLibrary}
+                  disabled={updateLibrary.isPending || !editName.trim()}
+                  className="rounded-md bg-emerald-600 px-3 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  {t("common.save")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditName(library.name);
+                    setEditDesc(library.description ?? "");
+                    setEditingLibrary(false);
+                  }}
+                  className="rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                >
+                  {t("common.cancel")}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-start gap-2">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <h3 className="truncate text-base font-semibold text-slate-900 dark:text-slate-100">
+                    {library.name}
+                  </h3>
+                  {isActive && (
+                    <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                      {t("samples.active")}
+                    </span>
+                  )}
+                </div>
+                {library.description && (
+                  <p className="text-sm text-slate-500 dark:text-slate-400">{library.description}</p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingLibrary(true)}
+                className="shrink-0 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                title={t("samples.editLibrary")}
+              >
+                ✎
+              </button>
+            </div>
           )}
         </div>
         <div className="flex shrink-0 gap-2">
           {library.files.length > 0 && (
             <button
               type="button"
-              onClick={() => setEditing(!editing)}
+              onClick={() => {
+                setEditing(!editing);
+                if (editing) {
+                  setSelectedIds(new Set());
+                }
+              }}
               className={`rounded-md border px-3 py-1.5 text-sm font-medium ${
                 editing
                   ? "border-slate-500 bg-slate-200 text-slate-900 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
@@ -529,51 +685,103 @@ function LibraryCard({ library, isActive, onActivate, onDelete, onUpdated, drumT
             {t("samples.showAll")}
           </summary>
           {editing ? (
-            <ul className="mt-2 space-y-2 text-xs">
-              {library.files.map((sample) => (
-                <li
-                  key={sample.id ?? sample.relative_path}
-                  className="flex items-center gap-2 rounded border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-800/60"
-                >
-                  <select
-                    value={sample.midi_note}
-                    onChange={(e) => handleNoteChange(sample.id!, Number(e.target.value))}
-                    disabled={updateSample.isPending}
-                    className="flex-1 rounded border border-slate-300 bg-white px-2 py-1 text-xs focus:border-slate-500 focus:outline-none dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
-                  >
-                    {drumNoteOptions.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="w-24 truncate text-slate-600 dark:text-slate-300">
-                    {sample.label}
-                  </span>
+            <div className="mt-2 space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <div className="flex gap-2">
                   <button
                     type="button"
-                    onClick={() => {
-                      if (confirm(t("samples.deleteSampleConfirm", { name: sample.label }))) {
-                        removeSample.mutate(sample.id!);
-                      }
-                    }}
-                    disabled={removeSample.isPending}
-                    className="shrink-0 rounded border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-100 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-900/60"
+                    onClick={selectAll}
+                    className="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                   >
-                    {t("samples.deleteSample")}
+                    {t("samples.selectAll")}
                   </button>
-                </li>
-              ))}
-            </ul>
+                  <button
+                    type="button"
+                    onClick={clearSelection}
+                    className="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                  >
+                    {t("samples.clearSelection")}
+                  </button>
+                </div>
+                {selectedIds.size > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleBatchDelete}
+                    disabled={batchRemove.isPending}
+                    className="rounded border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-100 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-900/60"
+                  >
+                    {t("samples.batchDelete")} ({selectedIds.size})
+                  </button>
+                )}
+              </div>
+              <ul className="mt-2 space-y-2">
+                {library.files.map((sample) => (
+                  <li
+                    key={sample.id ?? sample.relative_path}
+                    className="flex items-center gap-2 rounded border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-800/60"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={sample.id !== undefined && selectedIds.has(sample.id)}
+                      onChange={() => sample.id !== undefined && toggleSelect(sample.id)}
+                      className="h-3 w-3"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => playSample(sample.midi_note)}
+                      className="shrink-0 rounded border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
+                      title={t("samples.preview")}
+                    >
+                      ▶
+                    </button>
+                    <select
+                      value={sample.midi_note}
+                      onChange={(e) => handleNoteChange(sample.id!, Number(e.target.value))}
+                      disabled={updateSample.isPending}
+                      className="flex-1 rounded border border-slate-300 bg-white px-2 py-1 text-xs focus:border-slate-500 focus:outline-none dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+                    >
+                      {drumNoteOptions.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="w-24 truncate text-slate-600 dark:text-slate-300">
+                      {sample.label}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (confirm(t("samples.deleteSampleConfirm", { name: sample.label }))) {
+                          removeSample.mutate(sample.id!);
+                        }
+                      }}
+                      disabled={removeSample.isPending}
+                      className="shrink-0 rounded border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] text-rose-700 hover:bg-rose-100 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-900/60"
+                    >
+                      {t("samples.deleteSample")}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
           ) : (
             <ul className="mt-2 grid grid-cols-1 gap-1 text-xs sm:grid-cols-2 md:grid-cols-3">
               {[...grouped.entries()].map(([note, files]) => (
                 <li
                   key={note}
-                  className="flex items-center justify-between rounded border border-slate-100 bg-slate-50 px-2 py-1 dark:border-slate-800 dark:bg-slate-800/60"
+                  className="flex items-center justify-between gap-2 rounded border border-slate-100 bg-slate-50 px-2 py-1 dark:border-slate-800 dark:bg-slate-800/60"
                 >
+                  <button
+                    type="button"
+                    onClick={() => playSample(note)}
+                    className="shrink-0 text-slate-500 hover:text-emerald-600 dark:text-slate-400 dark:hover:text-emerald-400"
+                    title={t("samples.preview")}
+                  >
+                    ▶
+                  </button>
                   <span className="font-mono text-slate-500 dark:text-slate-400">{note}</span>
-                  <span className="truncate text-slate-700 dark:text-slate-200">
+                  <span className="flex-1 truncate text-slate-700 dark:text-slate-200">
                     {GM_DRUM_LABELS[note] ?? t("samples.noteFallback", { note })}
                   </span>
                   <span className="text-slate-400 dark:text-slate-500">
@@ -620,11 +828,27 @@ function SoundFontPanel() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"list" | "sf2" | "csv" | "gm">("list");
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterType, setFilterType] = useState<"all" | "sf2" | "preset_table">("all");
+  const [presetSearch, setPresetSearch] = useState("");
+  const [gmSearch, setGmSearch] = useState("");
 
   const sfQuery = useQuery({
     queryKey: ["soundfonts"],
     queryFn: instrumentsApi.listSoundFonts,
   });
+
+  const filteredSoundfonts = useMemo(() => {
+    if (!sfQuery.data) return [];
+    return sfQuery.data.filter((sf) => {
+      if (filterType !== "all" && sf.type !== filterType) return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        if (!sf.name.toLowerCase().includes(q)) return false;
+      }
+      return true;
+    });
+  }, [sfQuery.data, searchQuery, filterType]);
 
   const detailQuery = useQuery({
     queryKey: ["soundfonts", selectedId],
@@ -636,6 +860,24 @@ function SoundFontPanel() {
     queryKey: ["gm-instruments"],
     queryFn: instrumentsApi.listGmInstruments,
   });
+
+  const filteredPresets = useMemo(() => {
+    if (!detailQuery.data?.presets) return [];
+    if (!presetSearch.trim()) return detailQuery.data.presets;
+    const q = presetSearch.toLowerCase();
+    return detailQuery.data.presets.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        (p.category && p.category.toLowerCase().includes(q))
+    );
+  }, [detailQuery.data?.presets, presetSearch]);
+
+  const filteredGmInstruments = useMemo(() => {
+    if (!gmInstrumentsQuery.data) return [];
+    if (!gmSearch.trim()) return gmInstrumentsQuery.data;
+    const q = gmSearch.toLowerCase();
+    return gmInstrumentsQuery.data.filter((g) => g.name.toLowerCase().includes(q));
+  }, [gmInstrumentsQuery.data, gmSearch]);
 
   const importSf2 = useMutation({
     mutationFn: () => instrumentsApi.importSoundFont(sf2File!, name.trim(), description.trim() || undefined),
@@ -716,17 +958,40 @@ function SoundFontPanel() {
 
         {activeTab === "list" && (
           <div className="space-y-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={t("samples.searchSoundfont")}
+                className="flex-1 rounded border border-slate-300 bg-white px-3 py-1.5 text-sm focus:border-slate-500 focus:outline-none dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+              />
+              <select
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value as "all" | "sf2" | "preset_table")}
+                className="rounded border border-slate-300 bg-white px-3 py-1.5 text-sm focus:border-slate-500 focus:outline-none dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+              >
+                <option value="all">{t("samples.filterAll")}</option>
+                <option value="sf2">SF2</option>
+                <option value="preset_table">CSV</option>
+              </select>
+            </div>
             {sfQuery.isLoading && (
               <p className="text-sm text-slate-500 dark:text-slate-400">{t("common.loading")}</p>
+            )}
+            {filteredSoundfonts.length === 0 && sfQuery.data && sfQuery.data.length > 0 && (
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {t("samples.noMatchSoundfont")}
+              </p>
             )}
             {sfQuery.data?.length === 0 && (
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 {t("samples.noSoundfonts")}
               </p>
             )}
-            {sfQuery.data && sfQuery.data.length > 0 && (
+            {filteredSoundfonts.length > 0 && (
               <div className="space-y-2">
-                {sfQuery.data.map((sf) => (
+                {filteredSoundfonts.map((sf) => (
                   <div
                     key={sf.id}
                     className={`rounded border p-3 cursor-pointer transition-colors ${
@@ -783,7 +1048,15 @@ function SoundFontPanel() {
                       </div>
                     </div>
                     {selectedId === sf.id && detailQuery.data?.presets && (
-                      <div className="mt-3 max-h-64 overflow-y-auto rounded border border-slate-200 dark:border-slate-700">
+                      <div className="mt-3 space-y-2">
+                        <input
+                          type="text"
+                          value={presetSearch}
+                          onChange={(e) => setPresetSearch(e.target.value)}
+                          placeholder={t("samples.searchPreset")}
+                          className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs focus:border-slate-500 focus:outline-none dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+                        />
+                        <div className="max-h-64 overflow-y-auto rounded border border-slate-200 dark:border-slate-700">
                         <table className="w-full text-xs">
                           <thead className="sticky top-0 bg-slate-50 dark:bg-slate-800">
                             <tr className="text-left text-slate-600 dark:text-slate-300">
@@ -793,7 +1066,7 @@ function SoundFontPanel() {
                             </tr>
                           </thead>
                           <tbody>
-                            {detailQuery.data.presets.map((p, i) => (
+                            {filteredPresets.map((p, i) => (
                               <tr key={i} className="border-t border-slate-100 dark:border-slate-800">
                                 <td className="px-2 py-1 font-mono text-slate-500 dark:text-slate-400">
                                   {p.bank_msb}:{p.bank_lsb}/{p.program}
@@ -804,8 +1077,16 @@ function SoundFontPanel() {
                                 </td>
                               </tr>
                             ))}
+                            {filteredPresets.length === 0 && (
+                              <tr>
+                                <td colSpan={3} className="px-2 py-3 text-center text-slate-500 dark:text-slate-400">
+                                  {t("samples.noMatchPreset")}
+                                </td>
+                              </tr>
+                            )}
                           </tbody>
                         </table>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -820,6 +1101,13 @@ function SoundFontPanel() {
             <h3 className="text-sm font-medium text-slate-700 dark:text-slate-200">
               {t("samples.gmInstrumentList")}
             </h3>
+            <input
+              type="text"
+              value={gmSearch}
+              onChange={(e) => setGmSearch(e.target.value)}
+              placeholder={t("samples.searchGm")}
+              className="w-full rounded border border-slate-300 bg-white px-3 py-1.5 text-sm focus:border-slate-500 focus:outline-none dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+            />
             {gmInstrumentsQuery.isLoading && (
               <p className="text-sm text-slate-500 dark:text-slate-400">{t("common.loading")}</p>
             )}
@@ -833,7 +1121,7 @@ function SoundFontPanel() {
                     </tr>
                   </thead>
                   <tbody>
-                    {gmInstrumentsQuery.data.map((inst) => (
+                    {filteredGmInstruments.map((inst) => (
                       <tr key={inst.program} className="border-t border-slate-100 dark:border-slate-800">
                         <td className="px-3 py-1.5 font-mono text-slate-500 dark:text-slate-400">
                           {inst.program}
@@ -843,6 +1131,13 @@ function SoundFontPanel() {
                         </td>
                       </tr>
                     ))}
+                    {filteredGmInstruments.length === 0 && (
+                      <tr>
+                        <td colSpan={2} className="px-3 py-4 text-center text-slate-500 dark:text-slate-400">
+                          {t("samples.noMatchGm")}
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>

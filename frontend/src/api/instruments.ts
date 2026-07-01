@@ -138,6 +138,16 @@ export const instrumentsApi = {
   remove: async (libraryId: number): Promise<void> => {
     await api.delete(`/instruments/libraries/${libraryId}`);
   },
+  update: (libraryId: number, params: { name?: string; description?: string }): Promise<SampleLibraryInfo> =>
+    api
+      .patch<SampleLibraryInfo>(`/instruments/libraries/${libraryId}`, params)
+      .then((r) => r.data),
+  batchRemoveSamples: (libraryId: number, sampleIds: number[]): Promise<SampleLibraryInfo> =>
+    api
+      .delete<SampleLibraryInfo>(`/instruments/libraries/${libraryId}/samples/batch`, {
+        data: { sample_ids: sampleIds },
+      })
+      .then((r) => r.data),
   updateSample: (libraryId: number, sampleId: number, params: { midi_note?: number; label?: string }): Promise<SampleLibraryInfo> => {
     const form = new FormData();
     if (params.midi_note !== undefined) {
