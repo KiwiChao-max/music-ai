@@ -18,6 +18,49 @@ export interface SampleLibraryInfo {
   files: SampleFileInfo[];
 }
 
+export interface SampleClassification {
+  filename: string | undefined;
+  drum_type: string;
+  drum_type_label: string;
+  midi_note: number;
+  confidence: number;
+  features: Record<string, number>;
+}
+
+export interface DrumTypeInfo {
+  drum_type: string;
+  midi_note: number;
+  label: string;
+}
+
+export interface GmInstrumentInfo {
+  program: number;
+  name: string;
+}
+
+export interface PresetInfo {
+  bank_msb: number;
+  bank_lsb: number;
+  program: number;
+  name: string;
+  category?: string;
+  instrument_type?: string;
+}
+
+export interface PresetTableImportResult {
+  name: string;
+  preset_count: number;
+  presets: PresetInfo[];
+}
+
+export interface SoundFontImportResult {
+  name: string;
+  description: string | null;
+  file_path: string;
+  preset_count: number;
+  presets: PresetInfo[];
+}
+
 export const instrumentsApi = {
   list: () =>
     api.get<SampleLibraryInfo[]>("/instruments/libraries").then((r) => r.data),
@@ -68,4 +111,40 @@ export const instrumentsApi = {
   },
   sampleUrl: (libraryId: number, note: number) =>
     `/api/instruments/libraries/${libraryId}/files/${note}`,
+  classify: (file: File): Promise<SampleClassification> => {
+    const form = new FormData();
+    form.append("file", file);
+    return api
+      .post<SampleClassification>("/instruments/classify", form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+      .then((r) => r.data);
+  },
+  listDrumTypes: () =>
+    api.get<DrumTypeInfo[]>("/instruments/drum-types").then((r) => r.data),
+  listGmInstruments: () =>
+    api.get<GmInstrumentInfo[]>("/instruments/gm-instruments").then((r) => r.data),
+  importPresetTable: (file: File, name: string): Promise<PresetTableImportResult> => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("name", name);
+    return api
+      .post<PresetTableImportResult>("/instruments/preset-table/import", form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+      .then((r) => r.data);
+  },
+  importSoundFont: (file: File, name: string, description?: string): Promise<SoundFontImportResult> => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("name", name);
+    if (description) {
+      form.append("description", description);
+    }
+    return api
+      .post<SoundFontImportResult>("/instruments/soundfont/import", form, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+      .then((r) => r.data);
+  },
 };

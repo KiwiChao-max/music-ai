@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   instrumentsApi,
+  type SampleClassification,
   type SampleFileInfo,
   type SampleLibraryInfo,
 } from "@/api/instruments";
@@ -154,6 +155,36 @@ function UploadCard() {
   const [pickedFiles, setPickedFiles] = useState<File[]>([]);
   const [zipFile, setZipFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [classifications, setClassifications] = useState<Map<File, SampleClassification>>(new Map());
+
+  const classifyFiles = useMutation({
+    mutationFn: async (files: File[]) => {
+      const results: Map<File, SampleClassification> = new Map();
+      for (const file of files) {
+        try {
+          const result = await instrumentsApi.classify(file);
+          results.set(file, result);
+        } catch {
+          continue;
+        }
+      }
+      return results;
+    },
+    onSuccess: (results) => {
+      const newClassifications = new Map(classifications);
+      for (const [file, result] of results) {
+        newClassifications.set(file, result);
+      }
+      setClassifications(newClassifications);
+    },
+  });
+
+  const handleFilesChange = (files: File[]) => {
+    setPickedFiles(files);
+    if (files.length > 0) {
+      classifyFiles.mutate(files);
+    }
+  };
 
   const create = useMutation({
     mutationFn: () =>
@@ -169,6 +200,7 @@ function UploadCard() {
       setDescription("");
       setPickedFiles([]);
       setZipFile(null);
+      setClassifications(new Map());
       if (fileInputRef.current) fileInputRef.current.value = "";
       if (zipInputRef.current) zipInputRef.current.value = "";
       setError(null);
@@ -178,11 +210,20 @@ function UploadCard() {
 
   const canSubmit = name.trim().length > 0 && (pickedFiles.length > 0 || zipFile !== null);
 
+  const getConfidenceColor = (confidence: number) => {
+    if (confidence >= 0.8) return "text-emerald-600 dark:text-emerald-400";
+    if (confidence >= 0.6) return "text-amber-600 dark:text-amber-400";
+    return "text-rose-600 dark:text-rose-400";
+  };
+
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-6 space-y-4 dark:border-slate-800 dark:bg-slate-900">
       <h2 className="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">
         {t("samples.new")}
       </h2>
+      <p className="text-xs text-slate-500 dark:text-slate-400">
+        {t("samples.autoDetectHint")}
+      </p>
       <div className="grid gap-4 md:grid-cols-2">
         <label className="block text-sm">
           <span className="font-medium text-slate-700 dark:text-slate-300">{t("samples.name")}</span>
@@ -212,7 +253,7 @@ function UploadCard() {
           accept="audio/*"
           multiple
           files={pickedFiles}
-          onFiles={setPickedFiles}
+          onFiles={handleFilesChange}
           inputRef={fileInputRef}
         />
         <FilePicker
@@ -224,6 +265,52 @@ function UploadCard() {
           inputRef={zipInputRef}
         />
       </div>
+
+      {pickedFiles.length > 0 && classifyFiles.isPending && (
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          {t("samples.classifying")}
+        </p>
+      )}
+
+      {pickedFiles.length > 0 && !classifyFiles.isPending && (
+        <section className="rounded border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
+          <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">
+            {t("samples.classificationPreview")}
+          </h3>
+          <ul className="space-y-2 text-xs">
+            {pickedFiles.map((file, index) => {
+              const classification = classifications.get(file);
+              return (
+                <li
+                  key={index}
+                  className="flex items-center justify-between gap-4 rounded bg-white px-3 py-2 dark:bg-slate-700"
+                >
+                  <span className="truncate text-slate-700 dark:text-slate-200">
+                    {file.name}
+                  </span>
+                  {classification ? (
+                    <>
+                      <span className="font-medium text-slate-900 dark:text-slate-100">
+                        {classification.drum_type_label}
+                      </span>
+                      <span className="font-mono text-slate-500 dark:text-slate-400">
+                        #{classification.midi_note}
+                      </span>
+                      <span className={`font-mono ${getConfidenceColor(classification.confidence)}`}>
+                        {(classification.confidence * 100).toFixed(0)}%
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-slate-400 dark:text-slate-500">
+                      {t("samples.classificationPending")}
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
 
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 

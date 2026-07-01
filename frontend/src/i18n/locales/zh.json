@@ -159,7 +159,11 @@
     "filesSelected": "已选 {{count}} 个文件",
     "filesSelectedPlural": "已选 {{count}} 个文件",
     "noteFallback": "音符 {{note}}",
-    "deleteConfirm": "确定要删除采样库\"{{name}}\"吗?"
+    "deleteConfirm": "确定要删除采样库\"{{name}}\"吗?",
+    "autoDetectHint": "系统会自动识别采样类型并映射到正确的 GM 打击乐音符。",
+    "classifying": "正在分析采样类型…",
+    "classificationPreview": "分类预览",
+    "classificationPending": "等待分析…"
   },
   "player": {
     "audioPlayer": "音频播放器",

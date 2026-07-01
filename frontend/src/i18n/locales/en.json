@@ -159,7 +159,11 @@
     "filesSelected": "{{count}} file selected",
     "filesSelectedPlural": "{{count}} files selected",
     "noteFallback": "Note {{note}}",
-    "deleteConfirm": "Delete library \"{{name}}\"?"
+    "deleteConfirm": "Delete library \"{{name}}\"?",
+    "autoDetectHint": "Samples are automatically classified and mapped to the correct GM percussion notes.",
+    "classifying": "Analyzing sample types…",
+    "classificationPreview": "Classification Preview",
+    "classificationPending": "Pending…"
   },
   "player": {
     "audioPlayer": "Audio player",

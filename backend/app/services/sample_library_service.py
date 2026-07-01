@@ -93,6 +93,14 @@ class SampleLibraryService:
 
     def __init__(self, root: Path | None = None) -> None:
         self._root = root or Path(settings.storage_dir) / "sample-libraries"
+        self._classifier = None
+
+    @property
+    def _classifier_service(self):
+        if self._classifier is None:
+            from app.services.sample_classifier_service import SampleClassifierService
+            self._classifier = SampleClassifierService()
+        return self._classifier
 
     # ---- public API --------------------------------------------------------
     def create_library(
@@ -126,10 +134,23 @@ class SampleLibraryService:
             safe_name = _safe_filename(original_name)
             if not safe_name:
                 continue
+            
             note = _resolve_note_from_name(safe_name)
+            
             if note is None:
-                # Skip non-drum samples; the model only models drum notes.
-                continue
+                classification = self._classifier_service.classify_bytes(content, safe_name)
+                if classification is not None:
+                    note = classification.midi_note
+                    logger.info(
+                        "sample-library: auto-classified %s as %s (note=%d, confidence=%.2f)",
+                        safe_name,
+                        classification.drum_type,
+                        note,
+                        classification.confidence,
+                    )
+                else:
+                    continue
+            
             target = library_dir / safe_name
             target.write_bytes(content)
             sample_files.append(
@@ -143,13 +164,12 @@ class SampleLibraryService:
             )
 
         if not sample_files:
-            # Nothing mappable — roll back the library row to keep the
-            # on-disk state and DB in sync.
             db.expunge(library)
             shutil.rmtree(library_dir, ignore_errors=True)
             raise ValueError(
-                "no samples with recognizable drum names "
-                "(expected e.g. kick.wav, snare.wav, hihat_closed.wav)"
+                "no samples could be mapped to GM drum notes. "
+                "Try samples with recognizable names (kick.wav, snare.wav) "
+                "or ensure your samples are valid audio files."
             )
 
         db.add_all(sample_files)

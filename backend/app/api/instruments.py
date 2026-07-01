@@ -219,6 +219,140 @@ def _library_response(info) -> Response:  # pragma: no cover - tiny helper
     )
 
 
+# ---------------------------------------------------------------------------
+# Sample Classification API
+# ---------------------------------------------------------------------------
+@router.post("/classify")
+async def classify_sample(
+    file: UploadFile = File(...),
+) -> dict:
+    """Classify a single audio sample using spectral analysis.
+
+    Returns the detected drum type, GM MIDI note, confidence score,
+    and extracted features. Useful for previewing classification before
+    uploading a full library.
+    """
+    from app.services.sample_classifier_service import SampleClassifierService
+
+    content = await file.read()
+    classifier = SampleClassifierService()
+    result = classifier.classify_bytes(content, file.filename or "sample.wav")
+
+    if result is None:
+        raise HTTPException(status_code=400, detail="could not classify sample")
+
+    return {
+        "filename": file.filename,
+        "drum_type": result.drum_type,
+        "drum_type_label": classifier.get_drum_type_label(result.drum_type),
+        "midi_note": result.midi_note,
+        "confidence": round(result.confidence, 4),
+        "features": {k: round(v, 4) for k, v in result.features.items()},
+    }
+
+
+@router.get("/drum-types")
+def list_drum_types() -> list[dict]:
+    """Return all supported drum types with their GM notes and labels."""
+    from app.services.sample_classifier_service import SampleClassifierService
+
+    classifier = SampleClassifierService()
+    return [
+        {
+            "drum_type": drum_type,
+            "midi_note": midi_note,
+            "label": label,
+        }
+        for drum_type, midi_note, label in classifier.get_all_drum_types()
+    ]
+
+
+# ---------------------------------------------------------------------------
+# SoundFont & Preset Table API
+# ---------------------------------------------------------------------------
+@router.get("/gm-instruments")
+def list_gm_instruments() -> list[dict]:
+    """Return all GM program numbers with their standard instrument names."""
+    from app.services.soundfont_service import SoundFontService
+
+    service = SoundFontService()
+    return [
+        {"program": program, "name": name}
+        for program, name in service.list_gm_instruments()
+    ]
+
+
+@router.post("/preset-table/import")
+async def import_preset_table(
+    file: UploadFile = File(...),
+    name: str = Form(...),
+) -> dict:
+    """Import a preset table from a CSV file.
+
+    Expected CSV columns:
+      - bank_msb (optional, default 0)
+      - bank_lsb (optional, default 0)
+      - program (required, 0-127)
+      - name (required, preset name)
+      - category (optional)
+      - instrument_type (optional: piano, guitar, bass, strings, etc.)
+    """
+    from app.services.soundfont_service import SoundFontService
+
+    content = await file.read()
+    service = SoundFontService()
+    presets = service.import_preset_table(content, name)
+
+    return {
+        "name": name,
+        "preset_count": len(presets),
+        "presets": [
+            {
+                "bank_msb": p.bank_msb,
+                "bank_lsb": p.bank_lsb,
+                "program": p.program,
+                "name": p.name,
+                "category": p.category,
+                "instrument_type": p.instrument_type,
+            }
+            for p in presets
+        ],
+    }
+
+
+@router.post("/soundfont/import")
+async def import_soundfont(
+    file: UploadFile = File(...),
+    name: str = Form(...),
+    description: str | None = Form(default=None),
+) -> dict:
+    """Import a SoundFont 2 (.sf2) file and extract its presets."""
+    from app.services.soundfont_service import SoundFontService
+
+    content = await file.read()
+    service = SoundFontService()
+    sf_info = service.import_soundfont(name, content, description)
+
+    if sf_info is None:
+        raise HTTPException(status_code=400, detail="could not parse SoundFont file")
+
+    return {
+        "name": sf_info.name,
+        "description": sf_info.description,
+        "file_path": sf_info.file_path,
+        "preset_count": sf_info.preset_count,
+        "presets": [
+            {
+                "bank_msb": p.bank_msb,
+                "bank_lsb": p.bank_lsb,
+                "program": p.program,
+                "name": p.name,
+            }
+            for p in sf_info.presets
+        ],
+    }
+
+
 # Re-export for convenience so other modules can import a single name.
 __all__ = ["router"]
 
