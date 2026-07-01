@@ -46,5 +46,12 @@ Thumbs.db
 # Local dev runtime artifacts (PIDs, log output for start_all_local.sh)
 scripts/local/logs/
 
+# SQLite broker and dev databases
+celery_broker.sqlite
+*.db
+
+# Redis dump
+dump.rdb
+
 # Docker
 docker-compose.override.yml
