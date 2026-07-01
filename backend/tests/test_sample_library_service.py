@@ -180,3 +180,61 @@ def test_list_libraries_returns_all_libraries_with_files(
     by_id = {library.id: library for library in listed}
     assert {sample.midi_note for sample in by_id[a.id].files} == {36}
     assert {sample.midi_note for sample in by_id[b.id].files} == {38}
+
+
+def test_export_library_returns_mapping(
+    db_session: Session, storage_dir: Path
+) -> None:
+    service = SampleLibraryService(root=storage_dir / "sample-libraries")
+    lib = service.create_library(
+        db_session,
+        name="Export Test",
+        files=[
+            ("kick.wav", b"k"),
+            ("snare.wav", b"s"),
+            ("hat_closed.wav", b"h"),
+        ],
+        description="For export",
+    )
+    db_session.commit()
+
+    exported = service.export_library(db_session, lib.id)
+    assert exported is not None
+    assert exported["version"] == 1
+    assert exported["name"] == "Export Test"
+    assert exported["description"] == "For export"
+    assert exported["format"] == "gm_percussion_mapping"
+    assert exported["note_range"] == [35, 81]
+    assert exported["sample_count"] == 3
+    assert 36 in exported["mapping"]
+    assert 38 in exported["mapping"]
+    assert 42 in exported["mapping"]
+    assert exported["mapping"][36]["label"] == "kick"
+    assert exported["mapping"][38]["label"] == "snare"
+
+
+def test_export_library_returns_none_for_missing(
+    db_session: Session, storage_dir: Path
+) -> None:
+    service = SampleLibraryService(root=storage_dir / "sample-libraries")
+    assert service.export_library(db_session, 999) is None
+
+
+def test_update_sample_note_changes_mapping(
+    db_session: Session, storage_dir: Path
+) -> None:
+    service = SampleLibraryService(root=storage_dir / "sample-libraries")
+    lib = service.create_library(
+        db_session, name="Update Test", files=[("kick.wav", b"k")]
+    )
+    db_session.commit()
+
+    sample = lib.files[0]
+    updated = service.update_sample_note(db_session, lib.id, sample.id, 38)
+    assert updated is not None
+    assert updated.files[0].midi_note == 38
+
+    exported = service.export_library(db_session, lib.id)
+    assert exported is not None
+    assert 38 in exported["mapping"]
+    assert 36 not in exported["mapping"]

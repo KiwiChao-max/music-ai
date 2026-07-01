@@ -163,3 +163,116 @@ def test_preset_info_is_frozen() -> None:
     p = PresetInfo(bank_msb=0, bank_lsb=0, program=0, name="Test")
     with pytest.raises(AttributeError):
         p.name = "mutated"  # type: ignore[misc]
+
+
+# ---- database CRUD tests --------------------------------------------------
+
+def test_save_and_list_soundfonts(db_session, storage_dir: Path) -> None:
+    service = SoundFontService(storage_dir=storage_dir / "sf")
+    presets = [
+        PresetInfo(bank_msb=0, bank_lsb=0, program=0, name="Piano 1", category="piano", instrument_type="piano"),
+        PresetInfo(bank_msb=0, bank_lsb=0, program=1, name="Bright Piano", category="piano", instrument_type="piano"),
+    ]
+    saved = service.save_soundfont_to_db(
+        db_session,
+        name="Test SF",
+        description="A test soundfont",
+        sf_type="sf2",
+        file_path=None,
+        presets=presets,
+    )
+    assert saved["id"] is not None
+    assert saved["name"] == "Test SF"
+    assert saved["preset_count"] == 2
+
+    listed = service.list_soundfonts(db_session)
+    assert len(listed) == 1
+    assert listed[0]["id"] == saved["id"]
+
+
+def test_get_soundfont_includes_presets(db_session, storage_dir: Path) -> None:
+    service = SoundFontService(storage_dir=storage_dir / "sf")
+    presets = [
+        PresetInfo(bank_msb=0, bank_lsb=0, program=5, name="EP", category="keyboard"),
+    ]
+    saved = service.save_soundfont_to_db(
+        db_session,
+        name="Keyboard SF",
+        description=None,
+        sf_type="preset_table",
+        file_path=None,
+        presets=presets,
+    )
+
+    detailed = service.get_soundfont(db_session, saved["id"])
+    assert detailed is not None
+    assert detailed["type"] == "preset_table"
+    assert len(detailed["presets"]) == 1
+    assert detailed["presets"][0]["program"] == 5
+    assert detailed["presets"][0]["name"] == "EP"
+
+
+def test_get_soundfont_returns_none_for_missing(db_session, storage_dir: Path) -> None:
+    service = SoundFontService(storage_dir=storage_dir / "sf")
+    assert service.get_soundfont(db_session, 999) is None
+
+
+def test_activate_soundfont(db_session, storage_dir: Path) -> None:
+    service = SoundFontService(storage_dir=storage_dir / "sf")
+    sf1 = service.save_soundfont_to_db(
+        db_session, name="SF1", description=None, sf_type="sf2", file_path=None,
+        presets=[PresetInfo(bank_msb=0, bank_lsb=0, program=0, name="A")],
+    )
+    sf2 = service.save_soundfont_to_db(
+        db_session, name="SF2", description=None, sf_type="sf2", file_path=None,
+        presets=[PresetInfo(bank_msb=0, bank_lsb=0, program=1, name="B")],
+    )
+
+    activated = service.activate_soundfont(db_session, sf1["id"])
+    assert activated is not None
+    assert activated["is_active"] is True
+
+    active = service.get_active_soundfont(db_session)
+    assert active is not None
+    assert active["id"] == sf1["id"]
+
+    service.activate_soundfont(db_session, sf2["id"])
+    active2 = service.get_active_soundfont(db_session)
+    assert active2 is not None
+    assert active2["id"] == sf2["id"]
+
+    reloaded = service.get_soundfont(db_session, sf1["id"])
+    assert reloaded is not None
+    assert reloaded["is_active"] is False
+
+
+def test_activate_soundfont_missing_returns_none(db_session, storage_dir: Path) -> None:
+    service = SoundFontService(storage_dir=storage_dir / "sf")
+    assert service.activate_soundfont(db_session, 999) is None
+
+
+def test_delete_soundfont(db_session, storage_dir: Path) -> None:
+    service = SoundFontService(storage_dir=storage_dir / "sf")
+    saved = service.save_soundfont_to_db(
+        db_session, name="To Delete", description=None, sf_type="sf2", file_path=None,
+        presets=[PresetInfo(bank_msb=0, bank_lsb=0, program=0, name="X")],
+    )
+    assert len(service.list_soundfonts(db_session)) == 1
+
+    result = service.delete_soundfont(db_session, saved["id"])
+    assert result is True
+    assert len(service.list_soundfonts(db_session)) == 0
+
+
+def test_delete_soundfont_missing_returns_false(db_session, storage_dir: Path) -> None:
+    service = SoundFontService(storage_dir=storage_dir / "sf")
+    assert service.delete_soundfont(db_session, 999) is False
+
+
+def test_get_active_soundfont_when_none_active(db_session, storage_dir: Path) -> None:
+    service = SoundFontService(storage_dir=storage_dir / "sf")
+    service.save_soundfont_to_db(
+        db_session, name="Inactive", description=None, sf_type="sf2", file_path=None,
+        presets=[PresetInfo(bank_msb=0, bank_lsb=0, program=0, name="Y")],
+    )
+    assert service.get_active_soundfont(db_session) is None

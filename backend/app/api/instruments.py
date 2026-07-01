@@ -166,6 +166,28 @@ def delete_library(library_id: int, db: Session = Depends(get_db)) -> Response:
     return Response(status_code=204)
 
 
+@router.get("/libraries/{library_id}/export")
+def export_library(library_id: int, db: Session = Depends(get_db)) -> Response:
+    """Export a sample library as a JSON mapping file.
+
+    Returns a JSON file with the library's GM percussion note mapping.
+    Useful for backup or sharing custom drum kits.
+    """
+    service = sample_library_service.SampleLibraryService()
+    data = service.export_library(db, library_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="library not found")
+
+    import json
+    content = json.dumps(data, indent=2, ensure_ascii=False)
+    filename = f"{data['name'].replace(' ', '_')}_mapping.json"
+    return Response(
+        content=content,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.patch("/libraries/{library_id}/samples/{sample_id}", response_model=LibraryInfo)
 def update_sample(
     library_id: int,
@@ -376,8 +398,9 @@ def list_gm_instruments() -> list[dict]:
 async def import_preset_table(
     file: UploadFile = File(...),
     name: str = Form(...),
+    db: Session = Depends(get_db),
 ) -> dict:
-    """Import a preset table from a CSV file.
+    """Import a preset table from a CSV file and save to database.
 
     Expected CSV columns:
       - bank_msb (optional, default 0)
@@ -393,21 +416,19 @@ async def import_preset_table(
     service = SoundFontService()
     presets = service.import_preset_table(content, name)
 
-    return {
-        "name": name,
-        "preset_count": len(presets),
-        "presets": [
-            {
-                "bank_msb": p.bank_msb,
-                "bank_lsb": p.bank_lsb,
-                "program": p.program,
-                "name": p.name,
-                "category": p.category,
-                "instrument_type": p.instrument_type,
-            }
-            for p in presets
-        ],
-    }
+    if not presets:
+        raise HTTPException(status_code=400, detail="no valid presets found in CSV")
+
+    result = service.save_soundfont_to_db(
+        db,
+        name=name,
+        description=None,
+        sf_type="preset_table",
+        file_path=None,
+        presets=presets,
+    )
+
+    return result
 
 
 @router.post("/soundfont/import")
@@ -415,8 +436,9 @@ async def import_soundfont(
     file: UploadFile = File(...),
     name: str = Form(...),
     description: str | None = Form(default=None),
+    db: Session = Depends(get_db),
 ) -> dict:
-    """Import a SoundFont 2 (.sf2) file and extract its presets."""
+    """Import a SoundFont 2 (.sf2) file, extract presets, and save to database."""
     from app.services.soundfont_service import SoundFontService
 
     content = await file.read()
@@ -426,21 +448,74 @@ async def import_soundfont(
     if sf_info is None:
         raise HTTPException(status_code=400, detail="could not parse SoundFont file")
 
-    return {
-        "name": sf_info.name,
-        "description": sf_info.description,
-        "file_path": sf_info.file_path,
-        "preset_count": sf_info.preset_count,
-        "presets": [
-            {
-                "bank_msb": p.bank_msb,
-                "bank_lsb": p.bank_lsb,
-                "program": p.program,
-                "name": p.name,
-            }
-            for p in sf_info.presets
-        ],
-    }
+    result = service.save_soundfont_to_db(
+        db,
+        name=name,
+        description=description,
+        sf_type="sf2",
+        file_path=sf_info.file_path,
+        presets=sf_info.presets,
+    )
+
+    return result
+
+
+@router.get("/soundfonts")
+def list_soundfonts(db: Session = Depends(get_db)) -> list[dict]:
+    """List all SoundFonts and preset tables."""
+    from app.services.soundfont_service import SoundFontService
+
+    service = SoundFontService()
+    return service.list_soundfonts(db)
+
+
+@router.get("/soundfonts/{soundfont_id}")
+def get_soundfont(soundfont_id: int, db: Session = Depends(get_db)) -> dict:
+    """Get a SoundFont by ID with its presets."""
+    from app.services.soundfont_service import SoundFontService
+
+    service = SoundFontService()
+    result = service.get_soundfont(db, soundfont_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="soundfont not found")
+    return result
+
+
+@router.get("/soundfonts/active")
+def get_active_soundfont(db: Session = Depends(get_db)) -> Response:
+    """Get the currently active SoundFont, or 204 if none."""
+    from app.services.soundfont_service import SoundFontService
+
+    service = SoundFontService()
+    result = service.get_active_soundfont(db)
+    if result is None:
+        return Response(status_code=204)
+    import json
+    return Response(content=json.dumps(result, default=str), media_type="application/json")
+
+
+@router.post("/soundfonts/{soundfont_id}/activate")
+def activate_soundfont(soundfont_id: int, db: Session = Depends(get_db)) -> dict:
+    """Activate a SoundFont (deactivates all others)."""
+    from app.services.soundfont_service import SoundFontService
+
+    service = SoundFontService()
+    result = service.activate_soundfont(db, soundfont_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="soundfont not found")
+    return result
+
+
+@router.delete("/soundfonts/{soundfont_id}", status_code=204)
+def delete_soundfont(soundfont_id: int, db: Session = Depends(get_db)) -> Response:
+    """Delete a SoundFont and all its presets."""
+    from app.services.soundfont_service import SoundFontService
+
+    service = SoundFontService()
+    deleted = service.delete_soundfont(db, soundfont_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="soundfont not found")
+    return Response(status_code=204)
 
 
 # Re-export for convenience so other modules can import a single name.

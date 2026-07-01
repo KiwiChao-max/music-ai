@@ -62,6 +62,34 @@ export interface SoundFontImportResult {
   presets: PresetInfo[];
 }
 
+export interface SoundFontInfo {
+  id: number;
+  name: string;
+  description: string | null;
+  type: "sf2" | "preset_table";
+  file_path: string | null;
+  preset_count: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  presets?: PresetInfo[];
+}
+
+export interface LibraryExport {
+  version: number;
+  name: string;
+  description: string | null;
+  provider: string;
+  format: string;
+  note_range: [number, number];
+  sample_count: number;
+  mapping: Record<number, {
+    label: string;
+    velocity_offset: number;
+    relative_path: string;
+  }>;
+}
+
 export const instrumentsApi = {
   list: () =>
     api.get<SampleLibraryInfo[]>("/instruments/libraries").then((r) => r.data),
@@ -163,7 +191,7 @@ export const instrumentsApi = {
       })
       .then((r) => r.data);
   },
-  importSoundFont: (file: File, name: string, description?: string): Promise<SoundFontImportResult> => {
+  importSoundFont: (file: File, name: string, description?: string): Promise<SoundFontInfo> => {
     const form = new FormData();
     form.append("file", file);
     form.append("name", name);
@@ -171,9 +199,19 @@ export const instrumentsApi = {
       form.append("description", description);
     }
     return api
-      .post<SoundFontImportResult>("/instruments/soundfont/import", form, {
+      .post<SoundFontInfo>("/instruments/soundfont/import", form, {
         headers: { "Content-Type": "multipart/form-data" },
       })
       .then((r) => r.data);
   },
+  listSoundFonts: () =>
+    api.get<SoundFontInfo[]>("/instruments/soundfonts").then((r) => r.data),
+  getSoundFont: (id: number) =>
+    api.get<SoundFontInfo>(`/instruments/soundfonts/${id}`).then((r) => r.data),
+  activateSoundFont: (id: number) =>
+    api.post<SoundFontInfo>(`/instruments/soundfonts/${id}/activate`).then((r) => r.data),
+  deleteSoundFont: (id: number): Promise<void> =>
+    api.delete(`/instruments/soundfonts/${id}`).then(() => undefined),
+  exportLibrary: (libraryId: number): string =>
+    `/api/instruments/libraries/${libraryId}/export`,
 };

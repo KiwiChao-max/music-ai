@@ -260,3 +260,81 @@ class SampleFile(Base):
 
     def __repr__(self) -> str:  # pragma: no cover - debug helper
         return f"<SampleFile id={self.id} library_id={self.library_id} note={self.midi_note}>"
+
+
+class SoundFont(Base):
+    """SoundFont 2 (.sf2) library or preset table.
+
+    Stores metadata for imported SoundFont files and CSV preset tables so
+    users can manage multiple soundbanks and activate one for MIDI playback.
+    """
+
+    __tablename__ = "soundfonts"
+
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # "sf2" for real SoundFont files, "preset_table" for CSV imports
+    type: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="sf2", server_default="sf2"
+    )
+    # Relative path under storage/soundfonts/ (null for CSV preset tables)
+    file_path: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    preset_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    __mapper_args__ = {"eager_defaults": True}
+
+    def __repr__(self) -> str:  # pragma: no cover - debug helper
+        return f"<SoundFont id={self.id} name={self.name!r} type={self.type}>"
+
+
+class SoundFontPreset(Base):
+    """A single preset within a SoundFont or preset table.
+
+    Presets are identified by bank_msb/bank_lsb/program (MIDI MTC spec).
+    """
+
+    __tablename__ = "soundfont_presets"
+
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
+    soundfont_id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        nullable=False,
+        index=True,
+    )
+    bank_msb: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    bank_lsb: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    program: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    category: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    instrument_type: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("soundfont_id", "bank_msb", "bank_lsb", "program", name="ux_sf_preset_bank_program"),
+    )
+    __mapper_args__ = {"eager_defaults": True}
+
+    def __repr__(self) -> str:  # pragma: no cover - debug helper
+        return f"<SoundFontPreset id={self.id} sf_id={self.soundfont_id} prog={self.program}>"

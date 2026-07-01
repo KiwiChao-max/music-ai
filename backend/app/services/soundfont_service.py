@@ -372,3 +372,147 @@ class SoundFontService:
             logger.debug("soundfont: simplified parser failed: %s", exc)
 
         return presets
+
+    # ---- database CRUD ----------------------------------------------------
+
+    def list_soundfonts(self, db) -> list[dict]:
+        """List all SoundFonts and preset tables from the database."""
+        from sqlalchemy import select
+        from app.db.models import SoundFont
+
+        rows = list(db.scalars(select(SoundFont).order_by(SoundFont.created_at.desc())))
+        return [self._sf_row_to_dict(row) for row in rows]
+
+    def get_soundfont(self, db, soundfont_id: int) -> dict | None:
+        """Get a SoundFont by ID with its presets."""
+        from sqlalchemy import select
+        from app.db.models import SoundFont, SoundFontPreset
+
+        sf = db.get(SoundFont, soundfont_id)
+        if sf is None:
+            return None
+
+        presets = list(db.scalars(
+            select(SoundFontPreset)
+            .where(SoundFontPreset.soundfont_id == soundfont_id)
+            .order_by(SoundFontPreset.bank_msb, SoundFontPreset.bank_lsb, SoundFontPreset.program)
+        ))
+
+        result = self._sf_row_to_dict(sf)
+        result["presets"] = [self._preset_row_to_dict(p) for p in presets]
+        return result
+
+    def get_active_soundfont(self, db) -> dict | None:
+        """Get the currently active SoundFont, or None."""
+        from sqlalchemy import select
+        from app.db.models import SoundFont
+
+        sf = db.scalars(
+            select(SoundFont).where(SoundFont.is_active == 1).limit(1)
+        ).first()
+        if sf is None:
+            return None
+        return self.get_soundfont(db, sf.id)
+
+    def activate_soundfont(self, db, soundfont_id: int) -> dict | None:
+        """Activate a SoundFont (deactivates all others)."""
+        from sqlalchemy import update
+        from app.db.models import SoundFont
+
+        sf = db.get(SoundFont, soundfont_id)
+        if sf is None:
+            return None
+
+        db.execute(update(SoundFont).values(is_active=0))
+        sf.is_active = 1
+        db.commit()
+        db.refresh(sf)
+        return self.get_soundfont(db, soundfont_id)
+
+    def delete_soundfont(self, db, soundfont_id: int) -> bool:
+        """Delete a SoundFont and its presets."""
+        from sqlalchemy import select
+        from app.db.models import SoundFont, SoundFontPreset
+
+        sf = db.get(SoundFont, soundfont_id)
+        if sf is None:
+            return False
+
+        for preset in db.scalars(
+            select(SoundFontPreset).where(SoundFontPreset.soundfont_id == soundfont_id)
+        ):
+            db.delete(preset)
+
+        if sf.file_path:
+            full_path = self._storage_dir.parent / sf.file_path
+            if full_path.is_file():
+                full_path.unlink(missing_ok=True)
+
+        db.delete(sf)
+        db.commit()
+        return True
+
+    def save_soundfont_to_db(
+        self,
+        db,
+        *,
+        name: str,
+        description: str | None,
+        sf_type: str,
+        file_path: str | None,
+        presets: list[PresetInfo],
+    ) -> dict:
+        """Save a SoundFont and its presets to the database."""
+        from app.db.models import SoundFont, SoundFontPreset
+
+        sf = SoundFont(
+            name=name.strip(),
+            description=description,
+            type=sf_type,
+            file_path=file_path,
+            preset_count=len(presets),
+            is_active=0,
+        )
+        db.add(sf)
+        db.flush()
+
+        for p in presets:
+            db.add(SoundFontPreset(
+                soundfont_id=sf.id,
+                bank_msb=p.bank_msb,
+                bank_lsb=p.bank_lsb,
+                program=p.program,
+                name=p.name,
+                category=p.category,
+                instrument_type=p.instrument_type,
+            ))
+
+        db.commit()
+        db.refresh(sf)
+        return self.get_soundfont(db, sf.id)  # type: ignore[return-value]
+
+    # ---- internal helpers -------------------------------------------------
+
+    def _sf_row_to_dict(self, sf) -> dict:
+        return {
+            "id": sf.id,
+            "name": sf.name,
+            "description": sf.description,
+            "type": sf.type,
+            "file_path": sf.file_path,
+            "preset_count": sf.preset_count,
+            "is_active": bool(sf.is_active),
+            "created_at": sf.created_at.isoformat() if sf.created_at else "",
+            "updated_at": sf.updated_at.isoformat() if sf.updated_at else "",
+        }
+
+    def _preset_row_to_dict(self, p) -> dict:
+        return {
+            "id": p.id,
+            "bank_msb": p.bank_msb,
+            "bank_lsb": p.bank_lsb,
+            "program": p.program,
+            "name": p.name,
+            "category": p.category,
+            "instrument_type": p.instrument_type,
+        }

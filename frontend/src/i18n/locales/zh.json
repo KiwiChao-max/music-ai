@@ -181,7 +181,13 @@
     "csvFormat": "CSV 格式",
     "import": "导入",
     "importing": "导入中…",
-    "importSuccess": "已导入 \"{{name}}\"，共 {{count}} 个预设"
+    "importSuccess": "已导入 \"{{name}}\"，共 {{count}} 个预设",
+    "list": "列表",
+    "noSoundfonts": "还没有导入音色表，从 SF2 或 CSV 开始吧。",
+    "presets": "预设",
+    "category": "分类",
+    "deleteSoundfontConfirm": "确定要删除音色表\"{{name}}\"吗?",
+    "export": "导出"
   },
   "player": {
     "audioPlayer": "音频播放器",

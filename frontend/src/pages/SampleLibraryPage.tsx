@@ -497,6 +497,13 @@ function LibraryCard({ library, isActive, onActivate, onDelete, onUpdated, drumT
           >
             {t("samples.delete")}
           </button>
+          <a
+            href={instrumentsApi.exportLibrary(library.id)}
+            download
+            className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+          >
+            {t("samples.export")}
+          </a>
         </div>
       </header>
 
@@ -603,19 +610,27 @@ function findMissingNotes(files: SampleFileInfo[]): number[] {
 
 function SoundFontPanel() {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const csvInputRef = useRef<HTMLInputElement | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [sf2File, setSf2File] = useState<File | null>(null);
   const [csvFile, setCsvFile] = useState<File | null>(null);
-  const [imported, setImported] = useState<{
-    name: string;
-    preset_count: number;
-    presets: Array<{ bank_msb: number; bank_lsb: number; program: number; name: string; category?: string; instrument_type?: string }>;
-  } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"sf2" | "csv" | "gm">("gm");
+  const [activeTab, setActiveTab] = useState<"list" | "sf2" | "csv" | "gm">("list");
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+
+  const sfQuery = useQuery({
+    queryKey: ["soundfonts"],
+    queryFn: instrumentsApi.listSoundFonts,
+  });
+
+  const detailQuery = useQuery({
+    queryKey: ["soundfonts", selectedId],
+    queryFn: () => instrumentsApi.getSoundFont(selectedId!),
+    enabled: selectedId !== null,
+  });
 
   const gmInstrumentsQuery = useQuery({
     queryKey: ["gm-instruments"],
@@ -624,23 +639,45 @@ function SoundFontPanel() {
 
   const importSf2 = useMutation({
     mutationFn: () => instrumentsApi.importSoundFont(sf2File!, name.trim(), description.trim() || undefined),
-    onSuccess: (result) => {
-      setImported(result);
+    onSuccess: () => {
       setError(null);
+      setActiveTab("list");
+      setName("");
+      setDescription("");
+      setSf2File(null);
+      queryClient.invalidateQueries({ queryKey: ["soundfonts"] });
     },
     onError: (err) => setError(err.message),
   });
 
   const importCsv = useMutation({
     mutationFn: () => instrumentsApi.importPresetTable(csvFile!, name.trim()),
-    onSuccess: (result) => {
-      setImported(result);
+    onSuccess: () => {
       setError(null);
+      setActiveTab("list");
+      setName("");
+      setCsvFile(null);
+      queryClient.invalidateQueries({ queryKey: ["soundfonts"] });
     },
     onError: (err) => setError(err.message),
   });
 
-  const tabClass = (key: "sf2" | "csv" | "gm") =>
+  const activateMutation = useMutation({
+    mutationFn: (id: number) => instrumentsApi.activateSoundFont(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["soundfonts"] });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => instrumentsApi.deleteSoundFont(id),
+    onSuccess: () => {
+      setSelectedId(null);
+      queryClient.invalidateQueries({ queryKey: ["soundfonts"] });
+    },
+  });
+
+  const tabClass = (key: "list" | "sf2" | "csv" | "gm") =>
     `px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
       activeTab === key
         ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
@@ -658,6 +695,9 @@ function SoundFontPanel() {
             {t("samples.soundfontTitle")}
           </h2>
           <div className="flex gap-1">
+            <button type="button" className={tabClass("list")} onClick={() => setActiveTab("list")}>
+              {t("samples.list")}
+            </button>
             <button type="button" className={tabClass("gm")} onClick={() => setActiveTab("gm")}>
               {t("samples.gmList")}
             </button>
@@ -673,6 +713,107 @@ function SoundFontPanel() {
         <p className="text-xs text-slate-500 dark:text-slate-400">
           {t("samples.soundfontHint")}
         </p>
+
+        {activeTab === "list" && (
+          <div className="space-y-4">
+            {sfQuery.isLoading && (
+              <p className="text-sm text-slate-500 dark:text-slate-400">{t("common.loading")}</p>
+            )}
+            {sfQuery.data?.length === 0 && (
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {t("samples.noSoundfonts")}
+              </p>
+            )}
+            {sfQuery.data && sfQuery.data.length > 0 && (
+              <div className="space-y-2">
+                {sfQuery.data.map((sf) => (
+                  <div
+                    key={sf.id}
+                    className={`rounded border p-3 cursor-pointer transition-colors ${
+                      selectedId === sf.id
+                        ? "border-slate-400 bg-slate-50 dark:border-slate-600 dark:bg-slate-800"
+                        : "border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:hover:border-slate-600"
+                    }`}
+                    onClick={() => setSelectedId(selectedId === sf.id ? null : sf.id)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-slate-900 dark:text-slate-100">
+                            {sf.name}
+                          </span>
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                            {sf.type === "sf2" ? "SF2" : "CSV"}
+                          </span>
+                          {sf.is_active && (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">
+                              {t("samples.active")}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                          {sf.preset_count} {t("samples.presets")} · {new Date(sf.created_at).toLocaleDateString()}
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        {!sf.is_active && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              activateMutation.mutate(sf.id);
+                            }}
+                            className="text-xs px-3 py-1 rounded bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                          >
+                            {t("samples.activate")}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm(t("samples.deleteSoundfontConfirm", { name: sf.name }))) {
+                              deleteMutation.mutate(sf.id);
+                            }
+                          }}
+                          className="text-xs px-3 py-1 rounded bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/40"
+                        >
+                          {t("samples.delete")}
+                        </button>
+                      </div>
+                    </div>
+                    {selectedId === sf.id && detailQuery.data?.presets && (
+                      <div className="mt-3 max-h-64 overflow-y-auto rounded border border-slate-200 dark:border-slate-700">
+                        <table className="w-full text-xs">
+                          <thead className="sticky top-0 bg-slate-50 dark:bg-slate-800">
+                            <tr className="text-left text-slate-600 dark:text-slate-300">
+                              <th className="px-2 py-1 font-medium w-20">Bank:Prog</th>
+                              <th className="px-2 py-1 font-medium">{t("samples.instrumentName")}</th>
+                              <th className="px-2 py-1 font-medium w-24">{t("samples.category")}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {detailQuery.data.presets.map((p, i) => (
+                              <tr key={i} className="border-t border-slate-100 dark:border-slate-800">
+                                <td className="px-2 py-1 font-mono text-slate-500 dark:text-slate-400">
+                                  {p.bank_msb}:{p.bank_lsb}/{p.program}
+                                </td>
+                                <td className="px-2 py-1 text-slate-700 dark:text-slate-200">{p.name}</td>
+                                <td className="px-2 py-1 text-slate-500 dark:text-slate-400">
+                                  {p.category || "—"}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {activeTab === "gm" && (
           <div className="space-y-2">
@@ -798,38 +939,6 @@ function SoundFontPanel() {
               >
                 {importCsv.isPending ? t("samples.importing") : t("samples.import")}
               </button>
-            </div>
-          </div>
-        )}
-
-        {imported && (
-          <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-800 dark:bg-emerald-950/30">
-            <h3 className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">
-              {t("samples.importSuccess", { name: imported.name, count: imported.preset_count })}
-            </h3>
-            <div className="mt-2 max-h-64 overflow-y-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-left text-emerald-700 dark:text-emerald-400">
-                    <th className="px-2 py-1 font-medium">Bank</th>
-                    <th className="px-2 py-1 font-medium">Prog</th>
-                    <th className="px-2 py-1 font-medium">{t("samples.instrumentName")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {imported.presets.map((p, i) => (
-                    <tr key={i} className="border-t border-emerald-100 dark:border-emerald-900">
-                      <td className="px-2 py-1 font-mono text-emerald-600 dark:text-emerald-400">
-                        {p.bank_msb}:{p.bank_lsb}
-                      </td>
-                      <td className="px-2 py-1 font-mono text-emerald-600 dark:text-emerald-400">
-                        {p.program}
-                      </td>
-                      <td className="px-2 py-1 text-emerald-800 dark:text-emerald-200">{p.name}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
             </div>
           </div>
         )}

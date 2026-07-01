@@ -181,7 +181,13 @@
     "csvFormat": "CSV Format",
     "import": "Import",
     "importing": "Importing…",
-    "importSuccess": "Imported \"{{name}}\" with {{count}} presets"
+    "importSuccess": "Imported \"{{name}}\" with {{count}} presets",
+    "list": "List",
+    "noSoundfonts": "No soundfonts yet. Import one from SF2 or CSV.",
+    "presets": "presets",
+    "category": "Category",
+    "deleteSoundfontConfirm": "Delete soundfont \"{{name}}\"?",
+    "export": "Export"
   },
   "player": {
     "audioPlayer": "Audio player",

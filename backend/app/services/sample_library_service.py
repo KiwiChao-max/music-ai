@@ -70,6 +70,7 @@ _AUDIO_EXTENSIONS = {".wav", ".aif", ".aiff", ".flac", ".ogg", ".mp3", ".m4a"}
 
 @dataclass(frozen=True)
 class SampleFileInfo:
+    id: int
     label: str
     midi_note: int
     relative_path: str
@@ -392,6 +393,35 @@ class SampleLibraryService:
             library_id,
         )
         return self.get_library(db, library_id)
+
+    def export_library(self, db: Session, library_id: int) -> dict | None:
+        """Export a library as a JSON-serializable MIDI mapping config.
+
+        Returns a dict with library metadata and a note → sample mapping
+        that can be imported elsewhere or used by the playback engine.
+        """
+        info = self.get_library(db, library_id)
+        if info is None:
+            return None
+
+        mapping: dict[int, dict] = {}
+        for sample in info.files:
+            mapping[sample.midi_note] = {
+                "label": sample.label,
+                "velocity_offset": sample.velocity_offset,
+                "relative_path": sample.relative_path,
+            }
+
+        return {
+            "version": 1,
+            "name": info.name,
+            "description": info.description,
+            "provider": info.provider,
+            "format": "gm_percussion_mapping",
+            "note_range": [35, 81],
+            "sample_count": len(info.files),
+            "mapping": mapping,
+        }
 
     # ---- internal helpers --------------------------------------------------
     def _to_info(self, library: SampleLibrary, files: list[SampleFile]) -> LibraryInfo:
