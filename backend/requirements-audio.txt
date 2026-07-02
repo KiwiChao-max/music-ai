@@ -1,0 +1,13 @@
+# Heavy audio ML dependencies.
+# Install these only on worker nodes that actually run Demucs / Basic Pitch.
+# CI unit tests and the API server do not need them.
+
+# Spotify Basic Pitch: ONNX-based polyphonic audio-to-MIDI transcription.
+basic-pitch>=0.3,<0.5
+
+# Pretty MIDI: load / inspect MIDI files (used by e2e tests too, but lightweight enough to keep here)
+pretty_midi>=0.2.10
+
+# Meta Demucs: source separation (vocals / drums / bass / other).
+# Pulls in torch which is huge (~2 GB).
+demucs>=4.0,<5
