@@ -86,6 +86,34 @@ kind entries; the event list is served as a static file at
   writer — see `_GM_PROGRAMS` in `basic_pitch_service.py` and the
   per-instrument `program` values in `instrument_classifier_service.py`.
 
+### 3a. Active-SoundFont override (custom keyboards / sample banks)
+
+> "If I have uploaded my own SoundFont presets, the MIDI should use those
+> instead of the default GM programs."
+
+- The mapper is called with the current DB session. If
+  `SoundFontService.get_active_soundfont(db)` returns an active bank, the
+  worker builds a list of `SoundfontOverride` objects via
+  `midi_mapping_service.build_soundfont_overrides(preset_infos)`.
+- For each non-drum base voice (`piano`, `bass`, `guitar`, `strings`,
+  `synth`, `pad`, `lead`, `original`, `vocals`), the override replaces
+  the default bank MSB / LSB / program with the matching preset from the
+  active SoundFont. Drums are intentionally skipped because
+  `sample_library_service` owns the drum mapping (Feature 5).
+- The list of applied overrides is serialised into
+  `analysis.json` under `soundfont_overrides` and surfaced in two
+  places on the frontend:
+  - `AudioDetailPage` — `SoundfontOverridesPanel` shows the voice
+    label, stem, bank and program for each override.
+  - `SampleLibraryPage` — `ActiveSoundFontBanner` advertises the
+    active bank (or, when none is active, points the user at the
+    list to activate one).
+- When no SoundFont is active, the worker logs a single debug line
+  and the mapper falls back to the default GM voices. The pipeline
+  never fails because a SoundFont is missing.
+
+Tests: `backend/tests/test_midi_mapping_service.py` (8 cases).
+
 ---
 
 ## 4. MIDI controllers (CC) for dynamics & expression
