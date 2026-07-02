@@ -14,10 +14,18 @@
  * the decode cost for stems the user is actually looking at.
  */
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import WaveSurfer from "wavesurfer.js";
 
 import { usePlayer } from "@/contexts/PlayerContext";
+import { MidiPreviewPlayer } from "@/components/MidiPreviewPlayer";
 import type { StemInfo } from "@/types/audio";
+
+function stemLabel(t: (key: string) => string, name: string): string {
+  const key = `stems.${name}`;
+  const translated = t(key);
+  return translated === key ? name : translated;
+}
 
 interface StemRowProps {
   stem: StemInfo;
@@ -28,8 +36,6 @@ interface StemRowProps {
 
 function StemWaveform({ url, reloadKey }: { url: string; reloadKey: string }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  // Re-create the wavesurfer instance when the URL changes so we don't
-  // accidentally re-use a dead player.
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return undefined;
@@ -50,8 +56,6 @@ function StemWaveform({ url, reloadKey }: { url: string; reloadKey: string }) {
       barRadius: 2,
       normalize: true,
       autoplay: false,
-      // The per-row wave is non-interactive; clicking it would conflict
-      // with the play/pause button. The global bar handles seeking.
       interact: false,
     });
     return () => {
@@ -62,14 +66,16 @@ function StemWaveform({ url, reloadKey }: { url: string; reloadKey: string }) {
 }
 
 function StemRow({ stem, isCurrent, isPlaying, onPlay }: StemRowProps) {
+  const { t } = useTranslation();
+  const label = stemLabel(t, stem.name);
   return (
     <li className="grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
       <div className="flex w-32 shrink-0 flex-col gap-1">
         <span className="truncate text-sm font-semibold capitalize text-slate-900 dark:text-slate-100">
-          {stem.name}
+          {label}
         </span>
         <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-          Audio
+          {t("common.audio")}
         </span>
       </div>
       <div className="min-w-0">
@@ -84,16 +90,16 @@ function StemRow({ stem, isCurrent, isPlaying, onPlay }: StemRowProps) {
               ? "bg-emerald-600 text-white hover:bg-emerald-700"
               : "bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
           }`}
-          aria-label={isCurrent && isPlaying ? `Pause ${stem.name}` : `Play ${stem.name}`}
+          aria-label={isCurrent && isPlaying ? `${t("player.pause")} ${label}` : `${t("player.play")} ${label}`}
         >
-          {isCurrent && isPlaying ? "Pause" : "Play"}
+          {isCurrent && isPlaying ? t("player.pause") : t("player.play")}
         </button>
         <a
           href={stem.url}
           download={`${stem.name}.wav`}
           className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
         >
-          Download
+          {t("common.download")}
         </a>
       </div>
     </li>
@@ -104,28 +110,17 @@ interface StemMixerProps {
   stems: StemInfo[];
 }
 
-/**
- * Stem mixer: per-stem waveform previews wired into the global player.
- *
- * Audio stems get a row with a small waveform + play/pause. MIDI stems
- * don't have a waveform (they're symbolic data); they are listed as
- * a simple download row at the bottom for completeness.
- */
 export function StemMixer({ stems }: StemMixerProps) {
+  const { t } = useTranslation();
   const audioStems = stems.filter((s) => s.kind === "audio");
   const midiStems = stems.filter((s) => s.kind === "midi");
   const { current, isPlaying, play, pause } = usePlayer();
 
-  // Track which stem URL has been "activated" (scrolled into view at
-  // least once). We only mount the wavesurfer for activated stems to
-  // avoid N network decodes for hidden rows.
   const [activated, setActivated] = useState<Set<string>>(new Set());
   const sentinelRefs = useRef<Map<string, HTMLLIElement | null>>(new Map());
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof IntersectionObserver === "undefined") {
-      // No IntersectionObserver (test env / old browser): just activate
-      // everything so the user still gets waveforms.
       setActivated(new Set(audioStems.map((s) => s.url)));
       return;
     }
@@ -160,22 +155,34 @@ export function StemMixer({ stems }: StemMixerProps) {
     if (current?.url === stem.url && isPlaying) {
       pause();
     } else {
-      play({ url: stem.url, title: stem.name, kind: "audio" });
+      play({ url: stem.url, title: stemLabel(t, stem.name), kind: "audio" });
+    }
+  };
+
+  const midiProfileLabel = (profile?: string) => {
+    switch (profile) {
+      case "gm":
+        return t("common.gmMidi");
+      case "xg":
+        return t("common.xgMidi");
+      default:
+        return t("common.rawMidi");
     }
   };
 
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Stem Mixer</h2>
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{t("common.stemMixer")}</h2>
         <span className="text-xs text-slate-500 dark:text-slate-400">
-          {audioStems.length} audio · {midiStems.length} midi
+          {audioStems.length} {t("common.audio").toLowerCase()} · {midiStems.length} {t("common.midi").toLowerCase()}
         </span>
       </div>
       {audioStems.length > 0 && (
         <ul className="space-y-2">
           {audioStems.map((stem) => {
             const isCurrent = current?.url === stem.url;
+            const label = stemLabel(t, stem.name);
             return (
               <li
                 key={stem.name}
@@ -195,10 +202,10 @@ export function StemMixer({ stems }: StemMixerProps) {
                   <div className="grid h-[68px] grid-cols-[auto_1fr_auto] items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
                     <div className="w-32 shrink-0">
                       <p className="truncate text-sm font-semibold capitalize text-slate-900 dark:text-slate-100">
-                        {stem.name}
+                        {label}
                       </p>
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                        Audio
+                        {t("common.audio")}
                       </p>
                     </div>
                     <div className="h-9 w-full animate-pulse rounded bg-slate-100 dark:bg-slate-800" />
@@ -208,14 +215,14 @@ export function StemMixer({ stems }: StemMixerProps) {
                         onClick={() => onPlayAudio(stem)}
                         className="inline-flex min-w-20 items-center justify-center rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
                       >
-                        Play
+                        {t("player.play")}
                       </button>
                       <a
                         href={stem.url}
                         download={`${stem.name}.wav`}
                         className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                       >
-                        Download
+                        {t("common.download")}
                       </a>
                     </div>
                   </div>
@@ -229,22 +236,34 @@ export function StemMixer({ stems }: StemMixerProps) {
       {midiStems.length > 0 && (
         <details className="rounded-lg border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
           <summary className="cursor-pointer text-sm font-semibold text-slate-900 dark:text-slate-100">
-            MIDI stems ({midiStems.length})
+            {t("common.midiStems")} ({midiStems.length})
           </summary>
-          <ul className="mt-3 space-y-1">
+          <ul className="mt-3 space-y-2">
             {midiStems.map((stem) => (
               <li
                 key={stem.name}
-                className="flex items-center justify-between rounded border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800"
+                className="flex items-center justify-between gap-2 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
               >
-                <span className="truncate text-slate-700 dark:text-slate-300">{stem.name}</span>
-                <a
-                  href={stem.url}
-                  download={`${stem.name}.mid`}
-                  className="text-xs font-semibold uppercase tracking-wide text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
-                >
-                  .mid
-                </a>
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="truncate font-medium text-slate-700 dark:text-slate-300">{stemLabel(t, stem.name)}</span>
+                  {stem.profile && (
+                    <span className="shrink-0 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:bg-slate-700 dark:text-slate-400">
+                      {midiProfileLabel(stem.profile)}
+                    </span>
+                  )}
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <div className="w-36">
+                    <MidiPreviewPlayer url={stem.url} />
+                  </div>
+                  <a
+                    href={stem.url}
+                    download={`${stem.name}.mid`}
+                    className="inline-flex items-center rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600 dark:hover:text-slate-100"
+                  >
+                    {t("common.download")}
+                  </a>
+                </div>
               </li>
             ))}
           </ul>

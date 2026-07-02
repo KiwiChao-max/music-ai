@@ -11,6 +11,7 @@ const ACCEPT = "audio/*";
 export function UploadPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [picked, setPicked] = useState<File | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const upload = useUploadAudio();
   const navigate = useNavigate();
   const { t } = useTranslation();
@@ -18,6 +19,37 @@ export function UploadPage() {
   const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0] ?? null;
     setPicked(f);
+  };
+
+  const acceptFile = (file: File | null) => {
+    if (file && file.type.startsWith("audio/")) {
+      setPicked(file);
+    }
+  };
+
+  const onDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const onDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const onDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0] ?? null;
+    acceptFile(file);
   };
 
   const onSubmit = (e: React.FormEvent) => {
@@ -54,7 +86,15 @@ export function UploadPage() {
       >
         <label
           htmlFor="file"
-          className="flex cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center transition-colors hover:border-slate-400 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:hover:border-slate-500 dark:hover:bg-slate-700"
+          onDragOver={onDragOver}
+          onDragEnter={onDragEnter}
+          onDragLeave={onDragLeave}
+          onDrop={onDrop}
+          className={`flex cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed px-6 py-10 text-center transition-colors ${
+            isDragging
+              ? "border-indigo-500 bg-indigo-50 dark:border-indigo-400 dark:bg-indigo-950/40"
+              : "border-slate-300 bg-slate-50 hover:border-slate-400 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:hover:border-slate-500 dark:hover:bg-slate-700"
+          }`}
         >
           <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
             {t("upload.dropLabel")}
@@ -79,7 +119,7 @@ export function UploadPage() {
                 {picked.name}
               </p>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                {picked.type || "unknown type"} · {sizeKB} KB
+                {picked.type || t("upload.unknownType")} · {sizeKB} KB
               </p>
             </div>
             <button

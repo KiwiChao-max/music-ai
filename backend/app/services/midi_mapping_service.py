@@ -89,20 +89,27 @@ class MidiMappingResult:
 _DRUM_CHANNEL = 9
 _MIDI_SUFFIXES = {".mid", ".midi"}
 _GENERATED_PROFILE_SUFFIXES = ("_gm", "_xg")
-_GENERATED_DRUM_PART_SUFFIXES = tuple(
-    f"_{part}" for part in ("kick", "snare", "hat", "tom", "cymbal", "fill")
-)
+_DRUM_PART_NAMES: frozenset[str] = frozenset({
+    "kick", "snare", "sidestick", "hihat_closed", "hihat_open",
+    "tom_high", "tom_himid", "tom_lomid", "tom_low", "tom_floor",
+    "crash", "ride", "china", "splash", "ride_bell",
+    "tambourine", "cowbell", "percussion", "fill",
+})
+_PER_INSTRUMENT_STEMS: frozenset[str] = frozenset({
+    "piano", "guitar", "strings", "synth", "other_melodic",
+})
 _BANK_CONTROLLERS = {0, 32}
 
 _STEM_ORDER: dict[str, int] = {
     "drums": 0,
     "bass": 1,
     "piano": 2,
-    "other": 3,
-    "vocals": 4,
-    "guitar": 5,
-    "strings": 6,
-    "original": 7,
+    "guitar": 3,
+    "strings": 4,
+    "synth": 5,
+    "other": 6,
+    "vocals": 7,
+    "original": 8,
 }
 
 _STEM_ALIASES: tuple[tuple[str, str], ...] = (
@@ -123,6 +130,10 @@ _STEM_ALIASES: tuple[tuple[str, str], ...] = (
     ("string", "strings"),
     ("violin", "strings"),
     ("cello", "strings"),
+    ("synth", "synth"),
+    ("lead", "synth"),
+    ("pad", "synth"),
+    ("other_melodic", "other"),
     ("other", "other"),
     ("accompaniment", "other"),
     ("original", "original"),
@@ -140,10 +151,11 @@ _BASE_VOICES: dict[str, VoiceMapping] = {
     "original": VoiceMapping("Acoustic Grand Piano", program=0, channel=0),
     "piano": VoiceMapping("Acoustic Grand Piano", program=0, channel=0),
     "bass": VoiceMapping("Electric Bass (finger)", program=33, channel=1, volume=108, pan=54),
-    "other": VoiceMapping("Warm Pad", program=89, channel=2, volume=92, pan=74),
-    "vocals": VoiceMapping("Voice Oohs", program=53, channel=3, volume=94, pan=64),
-    "guitar": VoiceMapping("Acoustic Guitar (nylon)", program=24, channel=4, volume=98, pan=44),
-    "strings": VoiceMapping("String Ensemble 1", program=48, channel=5, volume=96, pan=84),
+    "guitar": VoiceMapping("Acoustic Guitar (nylon)", program=24, channel=2, volume=98, pan=44),
+    "strings": VoiceMapping("String Ensemble 1", program=48, channel=3, volume=96, pan=84),
+    "synth": VoiceMapping("Synth Lead (square)", program=80, channel=4, volume=92, pan=64),
+    "other": VoiceMapping("Warm Pad", program=89, channel=5, volume=92, pan=74),
+    "vocals": VoiceMapping("Voice Oohs", program=53, channel=6, volume=94, pan=64),
     "drums": VoiceMapping(
         "Standard Drum Kit",
         program=0,
@@ -164,6 +176,16 @@ def midi_profile_from_name(name: str) -> str:
     return "raw"
 
 
+def _is_drum_part_file(path: Path) -> bool:
+    stem = path.stem.lower()
+    for sep in ("_", "-"):
+        if sep in stem:
+            _, _, part = stem.rpartition(sep)
+            if part in _DRUM_PART_NAMES:
+                return True
+    return False
+
+
 def is_raw_midi_path(path: Path) -> bool:
     """Return true for source MIDI files, false for generated GM/XG outputs."""
     if path.suffix.lower() not in _MIDI_SUFFIXES:
@@ -171,15 +193,32 @@ def is_raw_midi_path(path: Path) -> bool:
     stem = path.stem.lower()
     if _strip_profile_suffix(path.stem).lower() != stem:
         return False
-    return not stem.endswith(_GENERATED_DRUM_PART_SUFFIXES)
+    if _is_drum_part_file(path):
+        return False
+    return True
 
 
 def collect_raw_midi_sources(output_dir: Path, fallback: Path | None = None) -> list[Path]:
     """Collect raw MIDI files from a task output directory in musical order."""
     sources = [p for p in output_dir.iterdir() if p.is_file() and is_raw_midi_path(p)]
+    _dedupe_per_instrument_sources(sources)
     if fallback is not None and fallback.is_file() and fallback not in sources:
         sources.append(fallback)
     return sorted(sources, key=lambda p: (_STEM_ORDER.get(stem_key_from_name(p.stem), 99), p.name.lower()))
+
+
+def _dedupe_per_instrument_sources(sources: list[Path]) -> None:
+    per_stem_files: dict[str, list[Path]] = {}
+    for p in sources:
+        stem = p.stem.lower()
+        if "_" in stem:
+            parent, _, instrument = stem.rpartition("_")
+            if instrument in _PER_INSTRUMENT_STEMS:
+                per_stem_files.setdefault(parent, []).append(p)
+    for parent, instrument_files in per_stem_files.items():
+        combined = next((p for p in sources if p.stem.lower() == parent), None)
+        if combined is not None and combined in sources:
+            sources.remove(combined)
 
 
 def stem_key_from_name(name: str) -> str:
@@ -220,7 +259,7 @@ class MidiMappingService:
 
         output_dir = output_dir or sources[0].parent
         output_dir.mkdir(parents=True, exist_ok=True)
-        output_stem = sources[0].stem if len(sources) == 1 else "stems"
+        output_stem = sources[0].stem if len(sources) == 1 else "merged"
 
         gm_path = output_dir / f"{output_stem}_{MidiProfile.GM.value}.mid"
         xg_path = output_dir / f"{output_stem}_{MidiProfile.XG.value}.mid"

@@ -23,7 +23,7 @@ from app.config import settings
 from app.db.models import AudioTaskStatus
 from app.db.session import get_db
 from app.schemas.audio import MusicAnalysisResponse, ProcessResponse, StemInfo, TaskStatusResponse
-from app.services import midi_mapping_service, music_analysis_service, task_service
+from app.services import file_service, midi_mapping_service, music_analysis_service, task_service
 from app.tasks_audio import process_audio_task
 
 logger = logging.getLogger(__name__)
@@ -153,11 +153,17 @@ def list_stems(
     if not out_dir.is_dir():
         return []
 
-    # Collect audio and MIDI outputs separately, then concatenate with
-    # audio first so the frontend naturally shows the "playable" rows
-    # before the "downloadable" ones.
     audio_stems: list[StemInfo] = []
     midi_stems: list[StemInfo] = []
+
+    upload_dir = file_service.task_upload_dir(task.id)
+    for candidate in sorted(upload_dir.glob("original.*")):
+        if candidate.is_file() and candidate.suffix.lower() in _AUDIO_SUFFIXES:
+            audio_stems.append(
+                StemInfo(name="original", url=_public_url(candidate), kind="audio"),
+            )
+            break
+
     for f in sorted(out_dir.iterdir()):
         if not f.is_file():
             continue

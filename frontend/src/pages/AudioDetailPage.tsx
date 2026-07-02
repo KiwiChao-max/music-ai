@@ -294,27 +294,18 @@ function SoundfontOverridesPanel({ overrides }: { overrides: SoundfontOverride[]
   );
 }
 
-const DRUM_PART_LABELS: Record<string, string> = {
-  kick: "Kick",
-  snare: "Snare",
-  sidestick: "Side Stick",
-  hihat_closed: "Closed Hi-Hat",
-  hihat_open: "Open Hi-Hat",
-  tom_high: "High Tom",
-  tom_himid: "Hi-Mid Tom",
-  tom_lomid: "Low-Mid Tom",
-  tom_low: "Low Tom",
-  tom_floor: "Floor Tom",
-  crash: "Crash",
-  ride: "Ride",
-  china: "China",
-  splash: "Splash",
-  ride_bell: "Ride Bell",
-  tambourine: "Tambourine",
-  cowbell: "Cowbell",
-  percussion: "Percussion",
-  fill: "Fills",
-};
+const DRUM_PARTS = [
+  "kick", "snare", "sidestick", "hihat_closed", "hihat_open",
+  "tom_high", "tom_himid", "tom_lomid", "tom_low", "tom_floor",
+  "crash", "ride", "china", "splash", "ride_bell",
+  "tambourine", "cowbell", "percussion", "fill",
+] as const;
+
+function drumPartLabel(t: (key: string) => string, part: string): string {
+  const key = `drumParts.${part}`;
+  const translated = t(key);
+  return translated === key ? part : translated;
+}
 
 function DrumPartPanel({ stems }: { stems: StemInfo[] }) {
   const { t } = useTranslation();
@@ -324,8 +315,8 @@ function DrumPartPanel({ stems }: { stems: StemInfo[] }) {
       const part = s.name.replace(/^drums_/, "");
       return { part, stem: s };
     })
-    .filter((entry) => entry.part in DRUM_PART_LABELS)
-    .sort((a, b) => a.part.localeCompare(b.part));
+    .filter((entry) => DRUM_PARTS.includes(entry.part as typeof DRUM_PARTS[number]))
+    .sort((a, b) => DRUM_PARTS.indexOf(a.part as typeof DRUM_PARTS[number]) - DRUM_PARTS.indexOf(b.part as typeof DRUM_PARTS[number]));
   if (parts.length === 0) return null;
   return (
     <div className="rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 p-4">
@@ -342,7 +333,7 @@ function DrumPartPanel({ stems }: { stems: StemInfo[] }) {
             className="flex items-center justify-between rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 px-2 py-1.5 text-xs"
           >
             <span className="truncate text-slate-700 dark:text-slate-300">
-              {DRUM_PART_LABELS[part] ?? part}
+              {drumPartLabel(t, part)}
             </span>
             <a
               href={stem.url}
