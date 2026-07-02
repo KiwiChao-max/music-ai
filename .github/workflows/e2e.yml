@@ -83,9 +83,15 @@ jobs:
         run: npm run build
       - name: Start backend
         working-directory: backend
+        env:
+          APP_ENV: test
+          AUTH_REQUIRED: "false"
+          DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/music_ai
+          REDIS_URL: redis://localhost:6379/0
+          JWT_SECRET: e2e-jwt-secret
         run: |
           # Background the server; the next step waits for /healthz.
-          nohup .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 \
+          nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 \
             > /tmp/backend.log 2>&1 &
           echo "backend pid: $!"
       - name: Wait for backend
