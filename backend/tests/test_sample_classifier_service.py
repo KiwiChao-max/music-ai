@@ -146,10 +146,10 @@ def test_extract_features_returns_expected_keys(tmp_path: Path) -> None:
     _write_noise(wav_path, seconds=1.0, low_hz=200.0, high_hz=4000.0)
     features = service._extract_features(wav_path)
     assert features is not None
-    assert "spectral_centroid" in features
-    assert "spectral_rolloff" in features
-    assert "peak_frequency" in features
-    assert "zero_crossing_rate" in features
+    assert "centroid" in features
+    assert "rolloff" in features
+    assert "peak_freq" in features
+    assert "zcr" in features
 
 
 def test_features_have_reasonable_values(tmp_path: Path) -> None:
@@ -158,8 +158,8 @@ def test_features_have_reasonable_values(tmp_path: Path) -> None:
     _write_tone(wav_path, freq_hz=1000.0, seconds=1.0)
     features = service._extract_features(wav_path)
     assert features is not None
-    assert features["spectral_centroid"] > 0
-    assert features["spectral_centroid"] < SAMPLE_RATE / 2
-    assert features["peak_frequency"] > 0
-    assert features["peak_frequency"] < SAMPLE_RATE / 2
-    assert 0.0 <= features["zero_crossing_rate"] <= 1.0
+    assert features["centroid"] > 0
+    assert features["centroid"] < SAMPLE_RATE / 2
+    assert features["peak_freq"] > 0
+    assert features["peak_freq"] < SAMPLE_RATE / 2
+    assert 0.0 <= features["zcr"] <= 1.0

@@ -109,7 +109,7 @@ def test_create_library_rolls_back_when_no_recognised_samples(
     db_session: Session, storage_dir: Path
 ) -> None:
     service = SampleLibraryService(root=storage_dir / "sample-libraries")
-    with pytest.raises(ValueError, match="recognizable drum names"):
+    with pytest.raises(ValueError, match="no samples could be mapped to GM drum notes"):
         service.create_library(
             db_session,
             name="Bad kit",
