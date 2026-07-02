@@ -1,11 +1,10 @@
 name: e2e
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
+
+# NOTE: E2E tests are disabled for push/PR until Playwright test specs
+# are added to the repo. Run manually via "Run workflow" when needed.
 
 # Same concurrency group as the regular CI so we don't fight for the
 # same Redis/Postgres services.
