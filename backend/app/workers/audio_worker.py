@@ -132,7 +132,9 @@ def _transcribe_stems_or_mix(
 
 
 def _map_midi(
-    output_dir: Path, fallback_midi_path: Path
+    output_dir: Path,
+    fallback_midi_path: Path,
+    db=None,
 ) -> midi_mapping_service.MidiMappingResult:
     source_paths = midi_mapping_service.collect_raw_midi_sources(
         output_dir,
@@ -140,7 +142,52 @@ def _map_midi(
     )
     if not source_paths:
         raise RuntimeError("no raw MIDI files found to map")
-    return _MIDI_MAPPING.create_variants_for_sources(source_paths, output_dir)
+    overrides = _collect_soundfont_overrides(db)
+    return _MIDI_MAPPING.create_variants_for_sources(
+        source_paths, output_dir, soundfont_overrides=overrides,
+    )
+
+
+def _collect_soundfont_overrides(db) -> list[midi_mapping_service.SoundfontOverride]:
+    """If a user has an active SoundFont, build stem -> preset overrides.
+
+    Returns an empty list when no DB session is available, no SoundFont is
+    active, or the active SoundFont has no presets — in all of those cases
+    the mapper falls back to the default GM voices.
+    """
+    if db is None:
+        return []
+    try:
+        from app.services.soundfont_service import SoundFontService
+
+        svc = SoundFontService()
+        active = svc.get_active_soundfont(db)
+    except Exception as exc:  # noqa: BLE001 - never fail the worker for this
+        logger.debug("soundfont overrides: lookup failed: %s", exc)
+        return []
+    if not active:
+        return []
+    presets = active.get("presets") or []
+    if not presets:
+        return []
+    # `active["presets"]` is a list of dicts from `_preset_row_to_dict`.
+    # Convert to the lightweight PresetInfo shape that
+    # `build_soundfont_overrides` expects.
+    from app.services.soundfont_service import PresetInfo
+
+    preset_infos = [
+        PresetInfo(
+            bank_msb=int(p.get("bank_msb", 0)),
+            bank_lsb=int(p.get("bank_lsb", 0)),
+            program=int(p["program"]),
+            name=str(p.get("name", "")),
+            instrument_type=p.get("instrument_type"),
+        )
+        for p in presets
+    ]
+    return midi_mapping_service.build_soundfont_overrides(
+        preset_infos, soundfont_name=active.get("name"),
+    )
 
 
 def _analyze_music(output_dir: Path) -> Path:
@@ -223,17 +270,21 @@ def _run_pipeline(
     _report(db, task, 88, "Mapping GM/XG MIDI...")
     if not midi_paths:
         raise RuntimeError("cannot map MIDI before transcription completes")
-    mapping = _map_midi(output_dir, midi_paths[0])
-    logger.info(
-        "task %s: mapped %d midi source(s) to %s and %s",
-        task.id,
-        len(mapping.source_paths),
-        mapping.gm_path,
-        mapping.xg_path,
-    )
+    mapping = _map_midi(output_dir, midi_paths[0], db=db)
+    if mapping.applied_overrides:
+        logger.info(
+            "task %s: soundfont overrides applied: %s",
+            task.id,
+            [
+                f"{o['stem']} -> {o['label']}"
+                for o in mapping.applied_overrides
+            ],
+        )
 
     _report(db, task, 94, "Analyzing music...")
-    analysis_path = _analyze_music(output_dir, detection=detection)
+    analysis_path = _analyze_music(
+        output_dir, detection=detection, mapping=mapping,
+    )
     logger.info("task %s: analysis written to %s", task.id, analysis_path)
 
     _report(db, task, 98, "Writing commentary...")
@@ -274,6 +325,7 @@ def _analyze_music(
     output_dir: Path,
     *,
     detection: instrument_classifier_service.InstrumentDetection,
+    mapping: midi_mapping_service.MidiMappingResult | None = None,
 ) -> Path:
     analysis_path = _MUSIC_ANALYSIS.analyze_and_write(output_dir)
     # Attach instrument detection to the JSON so the frontend can render
@@ -283,6 +335,8 @@ def _analyze_music(
         data = json.load(f)
     data["detected_instruments"] = list(detection.probabilities.items())
     data["dominant_instrument"] = detection.dominant
+    if mapping is not None:
+        data["soundfont_overrides"] = list(mapping.applied_overrides)
     with analysis_path.open("w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
     return analysis_path

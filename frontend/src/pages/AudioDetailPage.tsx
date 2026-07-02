@@ -17,7 +17,7 @@ import {
   useStems,
 } from "@/hooks/useAudioTasks";
 import { useTaskProgress } from "@/hooks/useTaskProgress";
-import type { DetectedInstrument, MusicAnalysis, StemInfo } from "@/types/audio";
+import type { DetectedInstrument, MusicAnalysis, SoundfontOverride, StemInfo } from "@/types/audio";
 
 // Slow fallback poll in case the WebSocket never connects (e.g. the
 // worker is on a different host that doesn't expose WS). The WS path
@@ -134,6 +134,12 @@ function AnalysisPanel({ analysis }: { analysis: MusicAnalysis }) {
         />
       )}
 
+      {(analysis.soundfont_overrides?.length ?? 0) > 0 && (
+        <SoundfontOverridesPanel
+          overrides={analysis.soundfont_overrides ?? []}
+        />
+      )}
+
       {analysis.sections.length > 0 && (
         <div className="rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 p-4">
           <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
@@ -239,6 +245,47 @@ function DetectedInstrumentsPanel({
                 className="h-full bg-slate-700 dark:bg-slate-400"
                 style={{ width: `${Math.max(2, item.probability * 100)}%` }}
               />
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function SoundfontOverridesPanel({ overrides }: { overrides: SoundfontOverride[] }) {
+  const { t } = useTranslation();
+  return (
+    <div className="rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-950/20 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+          {t("detail.soundfont.title")}
+        </h3>
+        <span className="rounded bg-indigo-100 dark:bg-indigo-900/40 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-indigo-700 dark:text-indigo-300">
+          {t("detail.soundfont.count", { count: overrides.length })}
+        </span>
+      </div>
+      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+        {t("detail.soundfont.subtitle")}
+      </p>
+      <ul className="mt-3 space-y-2">
+        {overrides.map((ov) => (
+          <li
+            key={`${ov.stem}-${ov.program}-${ov.bank_msb}-${ov.bank_lsb}`}
+            className="flex items-center justify-between gap-3 rounded border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-900 px-3 py-2"
+          >
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">
+                {ov.label}
+              </p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {t("detail.soundfont.stem", { stem: ov.stem })} ·{" "}
+                {t("detail.soundfont.bank", {
+                  msb: ov.bank_msb,
+                  lsb: ov.bank_lsb,
+                  program: ov.program,
+                })}
+              </p>
             </div>
           </li>
         ))}

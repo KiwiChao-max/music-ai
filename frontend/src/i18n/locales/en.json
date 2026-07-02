@@ -96,6 +96,18 @@
       "title": "Drum parts (per-instrument MIDI)",
       "subtitle": "Drop any of these into a DAW to edit a single component of the kit."
     },
+    "soundfont": {
+      "title": "Active SoundFont voices",
+      "subtitle": "These stems were remapped to presets from the active SoundFont. Default GM voices are used for any stem not listed here.",
+      "count": "{{count}} override",
+      "count_other": "{{count}} overrides",
+      "stem": "Stem: {{stem}}",
+      "bank": "Bank {{msb}}:{{lsb}} · Program {{program}}"
+    },
+    "soundfontActive": "Active SoundFont: {{name}}",
+    "soundfontActiveHint": "MIDI mappings from new audio tasks will use {{count}} presets from this SoundFont.",
+    "soundfontInactive": "No active SoundFont",
+    "soundfontInactiveHint": "Activate a SoundFont below to remap generated MIDI to your own voice bank instead of the default GM voices.",
     "samples": {
       "title": "Sample-based drum player"
     },

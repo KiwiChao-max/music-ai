@@ -56,6 +56,14 @@ export interface DetectedInstrument {
   probability: number;
 }
 
+export interface SoundfontOverride {
+  stem: string;
+  label: string;
+  program: number;
+  bank_msb: number;
+  bank_lsb: number;
+}
+
 export interface MusicAnalysis {
   bpm: number | null;
   bpm_confidence: number;
@@ -72,6 +80,9 @@ export interface MusicAnalysis {
   warnings: string[];
   detected_instruments?: DetectedInstrument[];
   dominant_instrument?: string;
+  // Active SoundFont overrides applied at MIDI mapping time. Empty /
+  // undefined means the worker used default GM voices (no SF active).
+  soundfont_overrides?: SoundfontOverride[];
   // LLM commentary fields, attached by the API when the worker has
   // finished the analysis step. May all be null if LLM is disabled
   // or the LLM call failed.

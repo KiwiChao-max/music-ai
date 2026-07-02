@@ -96,6 +96,18 @@
       "title": "鼓组分轨 (按乐器拆分的 MIDI)",
       "subtitle": "把任意一个拖进 DAW 即可单独编辑底鼓、军鼓、踩镲等组件。"
     },
+    "soundfont": {
+      "title": "当前激活的音色表",
+      "subtitle": "这些分轨的音色已替换为音色表中的预设。未列出的分轨仍使用默认 GM 音色。",
+      "count": "{{count}} 个覆写",
+      "count_other": "{{count}} 个覆写",
+      "stem": "分轨: {{stem}}",
+      "bank": "Bank {{msb}}:{{lsb}} · Program {{program}}"
+    },
+    "soundfontActive": "已激活音色表: {{name}}",
+    "soundfontActiveHint": "新的音频任务生成的 MIDI 将使用该音色表中的 {{count}} 个预设。",
+    "soundfontInactive": "未激活音色表",
+    "soundfontInactiveHint": "在下方激活一个音色表,即可将生成的 MIDI 映射到你的音色库,而不是默认的 GM 音色。",
     "samples": {
       "title": "基于采样的鼓点播放器"
     },

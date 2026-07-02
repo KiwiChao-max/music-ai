@@ -5,14 +5,20 @@ General MIDI and Yamaha XG players: it inserts reset, bank-select,
 program-change, volume/expression/pan setup, and assigns stable channels per
 stem. When several raw stem MIDI files exist, they are merged into one mapped
 arrangement while preserving tempo and note timing.
+
+If a user-supplied SoundFont (or preset table) is active, the mapper can
+rewrite each stem's `program` / `bank_msb` / `bank_lsb` to point at the
+user's chosen instrument via the `soundfont_overrides` argument. The notes
+themselves are untouched — only the voice selection is overridden.
 """
 from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+from typing import Mapping
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +46,27 @@ class VoiceMapping:
     volume: int = 100
     expression: int = 127
     pan: int = 64
+    # Optional metadata about the override source. `None` means we used the
+    # default GM voice. When a user-supplied SoundFont is active, this is
+    # populated so the frontend can show "Stem X -> Custom voice Y" on the
+    # task detail page.
+    source: str | None = None
+    source_detail: str | None = None
+
+
+@dataclass(frozen=True)
+class SoundfontOverride:
+    """Per-stem voice override coming from a user-supplied SoundFont.
+
+    Built by `SoundFontService.map_gm_to_custom`. The mapper will use these
+    values in place of the default GM voice for the corresponding stem role.
+    """
+
+    stem_key: str
+    label: str
+    program: int
+    bank_msb: int = 0
+    bank_lsb: int = 0
 
 
 @dataclass(frozen=True)
@@ -49,6 +76,9 @@ class MidiMappingResult:
     source_paths: tuple[Path, ...]
     gm_path: Path
     xg_path: Path
+    # Which stems ended up using a custom voice (label, program). Empty
+    # tuple when no SoundFont override was active.
+    applied_overrides: tuple[dict, ...] = field(default_factory=tuple)
 
     @property
     def source_path(self) -> Path:
@@ -169,14 +199,20 @@ class MidiMappingService:
         self,
         source_path: Path,
         output_dir: Path | None = None,
+        *,
+        soundfont_overrides: Sequence[SoundfontOverride] | None = None,
     ) -> MidiMappingResult:
         """Backward-compatible one-file mapping entry point."""
-        return self.create_variants_for_sources([source_path], output_dir)
+        return self.create_variants_for_sources(
+            [source_path], output_dir, soundfont_overrides=soundfont_overrides,
+        )
 
     def create_variants_for_sources(
         self,
         source_paths: Sequence[Path],
         output_dir: Path | None = None,
+        *,
+        soundfont_overrides: Sequence[SoundfontOverride] | None = None,
     ) -> MidiMappingResult:
         sources = tuple(source_paths)
         if not sources:
@@ -189,30 +225,56 @@ class MidiMappingService:
         gm_path = output_dir / f"{output_stem}_{MidiProfile.GM.value}.mid"
         xg_path = output_dir / f"{output_stem}_{MidiProfile.XG.value}.mid"
 
-        self.map_sources(sources, gm_path, MidiProfile.GM)
-        self.map_sources(sources, xg_path, MidiProfile.XG)
+        applied = self.map_sources(sources, gm_path, MidiProfile.GM, soundfont_overrides=soundfont_overrides)
+        applied = self.map_sources(sources, xg_path, MidiProfile.XG, soundfont_overrides=soundfont_overrides)
 
-        return MidiMappingResult(source_paths=sources, gm_path=gm_path, xg_path=xg_path)
+        return MidiMappingResult(
+            source_paths=sources,
+            gm_path=gm_path,
+            xg_path=xg_path,
+            applied_overrides=tuple(applied),
+        )
 
-    def map_file(self, source_path: Path, output_path: Path, profile: MidiProfile) -> Path:
+    def map_file(
+        self,
+        source_path: Path,
+        output_path: Path,
+        profile: MidiProfile,
+        *,
+        soundfont_overrides: Sequence[SoundfontOverride] | None = None,
+    ) -> Path:
         """Write one mapped MIDI file and return `output_path`."""
-        return self.map_sources([source_path], output_path, profile)
+        return self.map_sources(
+            [source_path],
+            output_path,
+            profile,
+            soundfont_overrides=soundfont_overrides,
+        )
 
     def map_sources(
         self,
         source_paths: Sequence[Path],
         output_path: Path,
         profile: MidiProfile,
-    ) -> Path:
+        *,
+        soundfont_overrides: Sequence[SoundfontOverride] | None = None,
+    ) -> tuple[dict, ...]:
         """Merge and map raw MIDI sources into one profile-specific MIDI file.
 
         Import mido lazily so the API can serve task/stem metadata in light
         environments where only the worker has audio dependencies installed.
+
+        Returns a tuple of dicts describing which stems used a custom
+        SoundFont voice, so the caller can surface the override on the UI.
         """
         from mido import MidiFile
 
         if not source_paths:
             raise ValueError("at least one source MIDI is required")
+
+        overrides_by_stem: Mapping[str, SoundfontOverride] = {
+            o.stem_key: o for o in (soundfont_overrides or [])
+        }
 
         source_midis = [(path, MidiFile(str(path))) for path in source_paths]
         first_midi = source_midis[0][1]
@@ -226,6 +288,7 @@ class MidiMappingService:
         voice_channels: dict[str, int] = {}
         used_channels: set[int] = set()
         mapped_tracks = []
+        applied_overrides: list[dict] = []
 
         for source_index, (source_path, source_midi) in enumerate(source_midis):
             for track in source_midi.tracks:
@@ -235,7 +298,19 @@ class MidiMappingService:
                     continue
 
                 stem_key = _detect_stem_key(source_path.stem, track)
-                voice = _voice_for_profile(_BASE_VOICES[stem_key], profile)
+                base_voice = _BASE_VOICES[stem_key]
+                voice = _voice_for_profile(base_voice, profile)
+                voice = _apply_soundfont_override(voice, stem_key, overrides_by_stem)
+                if voice.source == "soundfont":
+                    applied_overrides.append(
+                        {
+                            "stem": stem_key,
+                            "label": voice.label,
+                            "program": voice.program,
+                            "bank_msb": voice.bank_msb,
+                            "bank_lsb": voice.bank_lsb,
+                        }
+                    )
                 channel = _resolve_channel(stem_key, voice, voice_channels, used_channels)
                 voice = _with_channel(voice, channel)
                 setup_assignments[channel] = voice
@@ -255,13 +330,14 @@ class MidiMappingService:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         target.save(str(output_path))
         logger.info(
-            "midi-mapping: wrote %s profile=%s sources=%d tracks=%d",
+            "midi-mapping: wrote %s profile=%s sources=%d tracks=%d overrides=%d",
             output_path.name,
             profile.value,
             len(source_paths),
             len(target.tracks),
+            len(applied_overrides),
         )
-        return output_path
+        return tuple(applied_overrides)
 
     def _build_setup_track(
         self,
@@ -416,7 +492,93 @@ def _with_channel(voice: VoiceMapping, channel: int) -> VoiceMapping:
         volume=voice.volume,
         expression=voice.expression,
         pan=voice.pan,
+        source=voice.source,
+        source_detail=voice.source_detail,
     )
+
+
+def _apply_soundfont_override(
+    voice: VoiceMapping,
+    stem_key: str,
+    overrides: Mapping[str, "SoundfontOverride"],
+) -> VoiceMapping:
+    """If a user-supplied SoundFont override exists for this stem, apply it.
+
+    The default GM voice is preserved as a fallback. When a per-instrument
+    match is found, we replace program + bank + label but keep the
+    channel / volume / pan / expression from the default voice.
+    """
+    override = overrides.get(stem_key)
+    if override is None:
+        return voice
+    return VoiceMapping(
+        label=override.label,
+        program=int(override.program),
+        bank_msb=int(override.bank_msb),
+        bank_lsb=int(override.bank_lsb),
+        channel=voice.channel,
+        is_drum=voice.is_drum,
+        volume=voice.volume,
+        expression=voice.expression,
+        pan=voice.pan,
+        source="soundfont",
+        source_detail=f"bank {override.bank_msb}:{override.bank_lsb} program {override.program}",
+    )
+
+
+def build_soundfont_overrides(
+    presets: Sequence,
+    *,
+    soundfont_name: str | None = None,
+) -> list[SoundfontOverride]:
+    """Build per-stem SoundFont overrides from a list of `PresetInfo`.
+
+    For every base voice we know about (piano, bass, guitar, strings, ...),
+    ask the SoundFont service for the closest preset of the same instrument
+    family. Returns an empty list when no presets are supplied.
+    """
+    if not presets:
+        return []
+    # Import inside the function to avoid a hard dependency on the
+    # SoundFont service at module import time (keeps the mapper usable
+    # in environments where the SF service is not available).
+    try:
+        from app.services.soundfont_service import SoundFontService
+    except Exception:  # noqa: BLE001 - defensive: mapper is light
+        return []
+
+    svc = SoundFontService()
+    overrides: list[SoundfontOverride] = []
+    seen_stems: set[str] = set()
+    for stem_key, voice in _BASE_VOICES.items():
+        if voice.is_drum:
+            # Drums are handled by the sample-library pipeline, not the
+            # SoundFont presets. Skip them here.
+            continue
+        if stem_key in seen_stems:
+            continue
+        instrument_type = svc.get_instrument_type_for_gm_program(voice.program)
+        mapping = svc.map_gm_to_custom(
+            voice.program, list(presets), instrument_type=instrument_type,
+        )
+        if mapping is None:
+            continue
+        overrides.append(
+            SoundfontOverride(
+                stem_key=stem_key,
+                label=mapping.target_name,
+                program=mapping.target_program,
+                bank_msb=mapping.target_bank_msb,
+                bank_lsb=mapping.target_bank_lsb,
+            )
+        )
+        seen_stems.add(stem_key)
+    if soundfont_name:
+        logger.info(
+            "soundfont-mapping: %d stem overrides built from %s",
+            len(overrides), soundfont_name,
+        )
+    return overrides
 
 
 def _reset_message(profile: MidiProfile):

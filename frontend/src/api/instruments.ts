@@ -216,6 +216,15 @@ export const instrumentsApi = {
   },
   listSoundFonts: () =>
     api.get<SoundFontInfo[]>("/instruments/soundfonts").then((r) => r.data),
+  activeSoundFont: async (): Promise<SoundFontInfo | null> => {
+    const response = await api.get<SoundFontInfo | "" | null>(
+      "/instruments/soundfonts/active",
+      { validateStatus: (s) => (s >= 200 && s < 300) || s === 204 },
+    );
+    if (response.status === 204) return null;
+    if (response.data === "" || response.data === null) return null;
+    return response.data as SoundFontInfo;
+  },
   getSoundFont: (id: number) =>
     api.get<SoundFontInfo>(`/instruments/soundfonts/${id}`).then((r) => r.data),
   activateSoundFont: (id: number) =>
