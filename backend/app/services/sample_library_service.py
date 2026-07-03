@@ -75,6 +75,8 @@ class SampleFileInfo:
     midi_note: int
     relative_path: str
     velocity_offset: int
+    velocity_min: int = 1
+    velocity_max: int = 127
 
 
 @dataclass(frozen=True)
@@ -154,6 +156,7 @@ class SampleLibraryService:
             
             target = library_dir / safe_name
             target.write_bytes(content)
+            v_min, v_max = _resolve_velocity_range(safe_name)
             sample_files.append(
                 SampleFile(
                     library_id=library.id,
@@ -161,6 +164,8 @@ class SampleLibraryService:
                     midi_note=note,
                     file_path=str(target.relative_to(self._root)),
                     velocity_offset=0,
+                    velocity_min=v_min,
+                    velocity_max=v_max,
                 )
             )
 
@@ -371,12 +376,15 @@ class SampleLibraryService:
         target = library_dir / safe_name
         target.write_bytes(content)
 
+        v_min, v_max = _resolve_velocity_range(safe_name)
         sample_file = SampleFile(
             library_id=library_id,
             label=Path(safe_name).stem,
             midi_note=note,
             file_path=str(target.relative_to(self._root)),
             velocity_offset=0,
+            velocity_min=v_min,
+            velocity_max=v_max,
         )
         db.add(sample_file)
         db.commit()
@@ -479,6 +487,8 @@ class SampleLibraryService:
             mapping[sample.midi_note] = {
                 "label": sample.label,
                 "velocity_offset": sample.velocity_offset,
+                "velocity_min": sample.velocity_min,
+                "velocity_max": sample.velocity_max,
                 "relative_path": sample.relative_path,
             }
 
@@ -510,6 +520,8 @@ class SampleLibraryService:
                     midi_note=sample_file.midi_note,
                     relative_path=sample_file.file_path,
                     velocity_offset=sample_file.velocity_offset,
+                    velocity_min=sample_file.velocity_min,
+                    velocity_max=sample_file.velocity_max,
                 )
                 for sample_file in sorted(files, key=lambda sf: (sf.midi_note, sf.label))
             ),
@@ -546,3 +558,51 @@ def _resolve_note_from_name(filename: str) -> int | None:
         if token in _FILENAME_ALIASES:
             return _FILENAME_ALIASES[token]
     return None
+
+
+# Velocity-layer naming conventions.  When a filename contains a known
+# dynamic suffix (pp / p / mf / f / ff) or an explicit range
+# (vel_001_064), the sample is assigned to that velocity layer so the
+# frontend player can pick the right sample per incoming MIDI velocity.
+_VELOCITY_LAYER_MAP: dict[str, tuple[int, int]] = {
+    "pp": (1, 42),
+    "p": (43, 63),
+    "mp": (50, 72),
+    "mf": (64, 90),
+    "f": (91, 110),
+    "ff": (111, 127),
+    "soft": (1, 63),
+    "hard": (64, 127),
+    "low": (1, 63),
+    "high": (64, 127),
+    "quiet": (1, 50),
+    "loud": (90, 127),
+}
+
+_VEL_RANGE_RE = re.compile(r"vel[_\s-]*(\d{1,3})[_\s-]*(\d{1,3})")
+
+
+def _resolve_velocity_range(filename: str) -> tuple[int, int]:
+    """Parse velocity layer from filename. Returns (v_min, v_max) or (1, 127).
+
+    Supports:
+      - Dynamic suffixes:  ``kick_pp.wav``, ``snare_ff.wav``
+      - Explicit ranges:   ``kick_vel_001_064.wav``, ``snare_vel 065 127.wav``
+      - English labels:    ``snare_soft.wav``, ``crash_hard.wav``
+    """
+    stem = Path(filename).stem.lower()
+
+    # Explicit range: "vel_001_064" or "vel 065 127"
+    m = _VEL_RANGE_RE.search(stem)
+    if m:
+        lo = max(1, min(127, int(m.group(1))))
+        hi = max(1, min(127, int(m.group(2))))
+        return (lo, hi) if lo <= hi else (hi, lo)
+
+    # Dynamic / English suffix
+    for token in reversed(stem.split("_")):
+        token = token.strip("-")
+        if token in _VELOCITY_LAYER_MAP:
+            return _VELOCITY_LAYER_MAP[token]
+
+    return (1, 127)

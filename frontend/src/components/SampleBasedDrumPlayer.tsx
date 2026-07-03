@@ -51,7 +51,12 @@ export function SampleBasedDrumPlayer({
   const [duration, setDuration] = useState(0);
 
   const contextRef = useRef<AudioContext | null>(null);
-  const buffersRef = useRef<Map<number, AudioBuffer>>(new Map());
+  // Cache: key = `${note}:${vMin}:${vMax}`, value = decoded AudioBuffer.
+  const buffersRef = useRef<Map<string, AudioBuffer>>(new Map());
+  // Velocity-layer metadata for each buffer key: { note, vMin, vMax }.
+  const layerMetaRef = useRef<Map<string, { note: number; vMin: number; vMax: number }>>(
+    new Map(),
+  );
   const masterRef = useRef<GainNode | null>(null);
   // The list of nodes we've already scheduled so we can stop them on pause.
   const activeSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
@@ -82,13 +87,11 @@ export function SampleBasedDrumPlayer({
     let cancelled = false;
     (async () => {
       try {
-        const decoded = new Map<number, AudioBuffer>();
-        // Dedup by midi note — many libraries have multiple round-robins
-        // mapped to the same note, but we only need one to play it back.
-        const seenNotes = new Set<number>();
+        const decoded = new Map<string, AudioBuffer>();
+        const meta = new Map<string, { note: number; vMin: number; vMax: number }>();
         for (const file of library.files) {
-          if (seenNotes.has(file.midi_note)) continue;
-          seenNotes.add(file.midi_note);
+          const key = `${file.midi_note}:${file.velocity_min}:${file.velocity_max}`;
+          if (decoded.has(key)) continue;
           const url = instrumentsApi.sampleUrl(library.id, file.midi_note);
           const response = await api.get<ArrayBuffer>(url, {
             responseType: "arraybuffer",
@@ -96,10 +99,16 @@ export function SampleBasedDrumPlayer({
           if (cancelled) return;
           const buffer = await ac.decodeAudioData(response.data);
           if (cancelled) return;
-          decoded.set(file.midi_note, buffer);
+          decoded.set(key, buffer);
+          meta.set(key, {
+            note: file.midi_note,
+            vMin: file.velocity_min ?? 1,
+            vMax: file.velocity_max ?? 127,
+          });
         }
         if (cancelled) return;
         buffersRef.current = decoded;
+        layerMetaRef.current = meta;
       } catch (err) {
         if (!cancelled) {
           setState({
@@ -168,17 +177,15 @@ export function SampleBasedDrumPlayer({
       const master = masterRef.current;
       const events = eventListRef.current?.events ?? [];
       const buffers = buffersRef.current;
+      const meta = layerMetaRef.current;
       if (!master || events.length === 0) return;
 
-      // First event strictly in the future of `fromSeconds` — anything
-      // before that we just skip (the user already heard it on the first
-      // pass).
       const startContextTime = ac.currentTime + 0.05;
       playbackStartRef.current = { contextTime: startContextTime, songTime: fromSeconds };
 
       for (const event of events) {
         if (event.t < fromSeconds) continue;
-        const buffer = buffers.get(event.note);
+        const buffer = _pickBuffer(buffers, meta, event.note, event.velocity);
         if (!buffer) continue;
         const source = ac.createBufferSource();
         source.buffer = buffer;
@@ -265,6 +272,9 @@ export function SampleBasedDrumPlayer({
 
   const noteCount = new Set(library?.files.map((f) => f.midi_note) ?? []).size;
   const fileCount = library?.files.length ?? 0;
+  const layerCount = library?.files.filter(
+    (f) => (f.velocity_min ?? 1) > 1 || (f.velocity_max ?? 127) < 127,
+  ).length;
 
   return (
     <section className="space-y-4 rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
@@ -327,6 +337,7 @@ export function SampleBasedDrumPlayer({
       {library && hasSamples && (
         <p className="text-xs text-slate-500 dark:text-slate-400">
           {t("player.samplesSummary", { fileCount, noteCount })}
+          {layerCount > 0 && ` (${layerCount} velocity layers)`}
         </p>
       )}
       {library && !hasSamples && (
@@ -345,4 +356,46 @@ function ensureContext(ref: React.MutableRefObject<AudioContext | null>): AudioC
     (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
   ref.current = new Ctor();
   return ref.current;
+}
+
+/**
+ * Pick the best-matching AudioBuffer for a given MIDI note and velocity.
+ *
+ * Strategy:
+ * 1. Exact match: buffer whose [vMin, vMax] contains the velocity.
+ * 2. Full-range fallback: buffer with vMin=1, vMax=127 for the same note.
+ * 3. Closest layer: buffer whose range is nearest to the velocity.
+ */
+function _pickBuffer(
+  buffers: Map<string, AudioBuffer>,
+  meta: Map<string, { note: number; vMin: number; vMax: number }>,
+  note: number,
+  velocity: number,
+): AudioBuffer | null {
+  let bestKey: string | null = null;
+  let bestScore = -1;
+  // Full-range fallback for this note.
+  let fallbackKey: string | null = null;
+
+  for (const [key, info] of meta) {
+    if (info.note !== note) continue;
+    // Exact velocity range match
+    if (velocity >= info.vMin && velocity <= info.vMax) {
+      // Prefer the narrowest matching range (most specific layer).
+      const width = info.vMax - info.vMin;
+      const score = 1000 - width; // narrower = higher score
+      if (score > bestScore) {
+        bestScore = score;
+        bestKey = key;
+      }
+    }
+    // Track full-range fallback
+    if (info.vMin === 1 && info.vMax === 127) {
+      fallbackKey = key;
+    }
+  }
+
+  if (bestKey !== null) return buffers.get(bestKey) ?? null;
+  if (fallbackKey !== null) return buffers.get(fallbackKey) ?? null;
+  return null;
 }

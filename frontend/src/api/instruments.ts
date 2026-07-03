@@ -6,6 +6,8 @@ export interface SampleFileInfo {
   midi_note: number;
   relative_path: string;
   velocity_offset: number;
+  velocity_min?: number;
+  velocity_max?: number;
 }
 
 export interface SampleLibraryInfo {

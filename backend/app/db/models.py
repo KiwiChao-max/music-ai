@@ -225,9 +225,12 @@ class SampleLibrary(Base):
 class SampleFile(Base):
     """One sample in a library, keyed by GM drum note.
 
-    `midi_note` is the GM percussion note (35..81) this sample plays for.
-    Multiple samples can share a note (round-robin) but typically the
-    player picks one.
+    ``midi_note`` is the GM percussion note (35..81) this sample plays for.
+    Multiple samples can share a note — the frontend player selects the
+    best match by incoming MIDI velocity using ``velocity_min`` and
+    ``velocity_max``, which define the velocity range this sample covers.
+    Samples with the default range (1-127) are treated as full-range
+    fallbacks.
     """
 
     __tablename__ = "sample_files"
@@ -239,9 +242,6 @@ class SampleFile(Base):
     )
     library_id: Mapped[int] = mapped_column(
         BigInteger().with_variant(Integer, "sqlite"),
-        # On-disk FK; we don't declare it as a SQLAlchemy ForeignKey because
-        # the SQLite test engine would need PRAGMA foreign_keys=ON to enforce
-        # it, and the model stays portable.
         nullable=False,
         index=True,
     )
@@ -253,13 +253,20 @@ class SampleFile(Base):
     velocity_offset: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )
-    # Optional extra round-robin slots; not modelled as separate rows because
-    # the player can pick the round-robin from `file_path` deterministically.
+    # Velocity layer range (1-127).  The player picks the sample whose
+    # [velocity_min, velocity_max] contains the incoming note velocity.
+    # Default range 1-127 means "full-range fallback".
+    velocity_min: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1",
+    )
+    velocity_max: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=127, server_default="127",
+    )
 
     __mapper_args__ = {"eager_defaults": True}
 
     def __repr__(self) -> str:  # pragma: no cover - debug helper
-        return f"<SampleFile id={self.id} library_id={self.library_id} note={self.midi_note}>"
+        return f"<SampleFile id={self.id} library_id={self.library_id} note={self.midi_note} v={self.velocity_min}-{self.velocity_max}>"
 
 
 class SoundFont(Base):

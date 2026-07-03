@@ -54,6 +54,92 @@ class PresetMapping:
     target_name: str
 
 
+# Instrument-type aliases: common CSV variations → canonical key.
+# Case-insensitive; the CSV importer normalises through this dict.
+_INSTRUMENT_TYPE_ALIASES: dict[str, str] = {
+    "piano": "piano",
+    "grand piano": "piano",
+    "acoustic piano": "piano",
+    "electric piano": "piano",
+    "ep": "piano",
+    "guitar": "guitar",
+    "acoustic guitar": "guitar",
+    "electric guitar": "guitar",
+    "bass": "bass",
+    "bass guitar": "bass",
+    "electric bass": "bass",
+    "acoustic bass": "bass",
+    "strings": "strings",
+    "string": "strings",
+    "string ensemble": "strings",
+    "violin": "strings",
+    "cello": "strings",
+    "viola": "strings",
+    "organ": "organ",
+    "pipe organ": "organ",
+    "brass": "brass",
+    "trumpet": "brass",
+    "trombone": "brass",
+    "sax": "woodwind",
+    "saxophone": "woodwind",
+    "flute": "woodwind",
+    "clarinet": "woodwind",
+    "woodwind": "woodwind",
+    "synth": "synth_lead",
+    "synthesizer": "synth_lead",
+    "lead": "synth_lead",
+    "pad": "synth_pad",
+    "synth pad": "synth_pad",
+    "drums": "drums",
+    "drum": "drums",
+    "percussion": "percussion",
+    "vocal": "vocals",
+    "voice": "vocals",
+    "choir": "vocals",
+    "ethnic": "ethnic",
+    "fx": "synth_fx",
+    "sound effect": "synth_fx",
+}
+
+
+def _normalize_instrument_type(raw: str | None) -> str | None:
+    """Normalise a user-supplied instrument_type string to a canonical key."""
+    if raw is None:
+        return None
+    key = raw.strip().lower()
+    if not key:
+        return None
+    return _INSTRUMENT_TYPE_ALIASES.get(key, key)
+
+
+def _normalize_name(name: str) -> set[str]:
+    """Extract normalised keyword tokens from an instrument name.
+
+    "Acoustic Grand Piano" → {"acoustic", "grand", "piano"}
+    "Grand Piano 1"       → {"grand", "piano", "1"}
+    """
+    return set(
+        token.strip("()[]{},.0123456789")
+        for token in name.lower().replace("-", " ").replace("/", " ").split()
+        if token.strip("()[]{},.0123456789")
+    )
+
+
+def _name_similarity(gm_name: str, preset_name: str) -> float:
+    """Return a 0..1 similarity score based on token overlap.
+
+    Jaccard-like: |intersection| / max(|A|, |B|).  A score of 1.0 means
+    all tokens of one name are contained in the other.
+    """
+    a = _normalize_name(gm_name)
+    b = _normalize_name(preset_name)
+    if not a or not b:
+        return 0.0
+    intersection = len(a & b)
+    denom = max(len(a), len(b))
+    return intersection / denom if denom > 0 else 0.0
+
+
 class SoundFontService:
     """Manage SoundFont files and preset mappings."""
 
@@ -127,7 +213,7 @@ class SoundFontService:
                     program=program,
                     name=preset_name,
                     category=row.get("category"),
-                    instrument_type=row.get("instrument_type"),
+                    instrument_type=_normalize_instrument_type(row.get("instrument_type")),
                 ))
             except (KeyError, ValueError):
                 continue
@@ -142,9 +228,12 @@ class SoundFontService:
     ) -> PresetMapping | None:
         """Map a GM program number to a custom preset.
 
-        If instrument_type is provided, tries to find a matching preset of that type.
-        Otherwise, finds the closest match by program number.
+        Matching strategy (tried in order):
+          1. Exact instrument_type match.
+          2. Exact program number match.
+          3. Fuzzy name match — token overlap with GM instrument name.
         """
+        # 1. Exact instrument_type match.
         if instrument_type:
             candidates = [
                 p for p in presets
@@ -159,6 +248,7 @@ class SoundFontService:
                     target_name=candidates[0].name,
                 )
 
+        # 2. Exact program match.
         candidates = [
             p for p in presets
             if p.program == gm_program
@@ -171,6 +261,29 @@ class SoundFontService:
                 target_program=candidates[0].program,
                 target_name=candidates[0].name,
             )
+
+        # 3. Fuzzy name match (token overlap).
+        gm_name = dict(self.list_gm_instruments()).get(gm_program, "")
+        if gm_name and presets:
+            best_score = 0.0
+            best_preset: PresetInfo | None = None
+            for p in presets:
+                score = _name_similarity(gm_name, p.name)
+                if score > best_score:
+                    best_score = score
+                    best_preset = p
+            if best_preset is not None and best_score >= 0.4:
+                logger.debug(
+                    "soundfont: fuzzy match gm=%d (%s) -> preset=%s (score=%.2f)",
+                    gm_program, gm_name, best_preset.name, best_score,
+                )
+                return PresetMapping(
+                    gm_program=gm_program,
+                    target_bank_msb=best_preset.bank_msb,
+                    target_bank_lsb=best_preset.bank_lsb,
+                    target_program=best_preset.program,
+                    target_name=best_preset.name,
+                )
 
         return None
 
@@ -335,8 +448,54 @@ class SoundFontService:
     def _extract_sf2_presets(self, sf2_path: Path) -> list[PresetInfo]:
         """Extract presets from a SoundFont 2 file.
 
-        This is a simplified parser that reads the preset header chunk.
-        For full SF2 support, external libraries like sf2utils can be used.
+        Tries `sf2utils` (a proper SF2 parser) first; falls back to a
+        simplified parser that reads only the phdr chunk.  The simplified
+        parser is sufficient for most single-layer SF2 files, but complex
+        SoundFonts with multiple zones and generators are better handled
+        by sf2utils.
+        """
+        presets = self._extract_sf2_with_sf2utils(sf2_path)
+        if presets:
+            return presets
+        return self._extract_sf2_simplified(sf2_path)
+
+    @staticmethod
+    def _extract_sf2_with_sf2utils(sf2_path: Path) -> list[PresetInfo]:
+        """Try parsing with sf2utils (optional dependency)."""
+        try:
+            from sf2utils.sf2parse import Sf2File
+        except ImportError:
+            return []
+
+        presets: list[PresetInfo] = []
+        try:
+            with open(sf2_path, "rb") as f:
+                sf2 = Sf2File(f)
+        except Exception as exc:
+            logger.debug("soundfont: sf2utils failed: %s", exc)
+            return []
+
+        for preset in sf2.presets:
+            if not preset.name or preset.bank > 0x7FFF:
+                continue
+            bank_msb = (preset.bank >> 8) & 0x7F
+            bank_lsb = preset.bank & 0x7F
+            presets.append(PresetInfo(
+                bank_msb=bank_msb,
+                bank_lsb=bank_lsb,
+                program=preset.preset,
+                name=preset.name,
+                instrument_type=None,
+            ))
+        return presets
+
+    @staticmethod
+    def _extract_sf2_simplified(sf2_path: Path) -> list[PresetInfo]:
+        """Simplified SF2 parser — reads phdr chunk only.
+
+        Handles the common case where each preset header maps to exactly
+        one instrument.  Complex SF2 files with multiple zones per preset
+        should use sf2utils instead.
         """
         presets: list[PresetInfo] = []
 
