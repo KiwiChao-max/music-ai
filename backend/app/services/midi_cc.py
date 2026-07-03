@@ -1,10 +1,20 @@
 """Shared MIDI control-change helpers.
 
 The basic-pitch and drum writers both need to emit the same GM/XG setup
-controllers (CC7 volume, CC10 pan, CC11 expression, CC64 sustain) so that
-mapped MIDI files sound consistent in any player. Centralizing the helper
-here keeps the per-writer code short and makes it easy to add new CCs
-(pitch bend, modulation) without touching every writer.
+controllers (CC7 volume, CC10 pan, CC11 expression, CC64 sustain, CC74
+brightness, CC91 reverb, CC93 chorus) so that mapped MIDI files sound
+consistent in any player. Centralizing the helper here keeps the per-writer
+code short and makes it easy to add new CCs without touching every writer.
+
+CC reference:
+  CC1   Modulation wheel
+  CC7   Channel volume
+  CC10  Pan
+  CC11  Expression
+  CC64  Sustain pedal (on/off)
+  CC74  Brightness / filter cutoff (Timbre/Harmonic Content)
+  CC91  Reverb send level
+  CC93  Chorus send level
 """
 from __future__ import annotations
 
@@ -21,14 +31,22 @@ def gm_setup_messages(
     expression: int = 127,
     pan: int = 64,
     sustain: int = 0,
+    brightness: int | None = None,
+    reverb: int | None = None,
+    chorus: int | None = None,
+    modulation: int | None = None,
 ) -> list[Message]:
     """Return the standard GM reset/setup messages for one channel.
 
     The returned messages are in delta-time-zero form; the caller is
     responsible for threading them into a track with the correct
     accumulated times.
+
+    Optional expressive CCs (brightness, reverb, chorus, modulation)
+    are only emitted when a non-None value is supplied, so drum tracks
+    and other non-melodic stems can skip them.
     """
-    return [
+    msgs: list[Message] = [
         Message("control_change", channel=channel, control=0, value=bank_msb, time=0),
         Message("control_change", channel=channel, control=32, value=bank_lsb, time=0),
         Message("program_change", channel=channel, program=program, time=0),
@@ -37,6 +55,15 @@ def gm_setup_messages(
         Message("control_change", channel=channel, control=10, value=pan, time=0),
         Message("control_change", channel=channel, control=64, value=sustain, time=0),
     ]
+    if brightness is not None:
+        msgs.append(Message("control_change", channel=channel, control=74, value=brightness, time=0))
+    if reverb is not None:
+        msgs.append(Message("control_change", channel=channel, control=91, value=reverb, time=0))
+    if chorus is not None:
+        msgs.append(Message("control_change", channel=channel, control=93, value=chorus, time=0))
+    if modulation is not None:
+        msgs.append(Message("control_change", channel=channel, control=1, value=modulation, time=0))
+    return msgs
 
 
 def pitch_bend_message(channel: int, value: int = 0) -> Message:

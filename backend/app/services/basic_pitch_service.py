@@ -108,6 +108,15 @@ class BasicPitchService:
             save_notes=False,
         )
         note_count = self._write_notes_csv(note_events, notes_csv_path)
+
+        # Inject GM setup + expressive CCs into the Basic Pitch output.
+        # Basic Pitch itself only writes raw note_on/note_off — without
+        # this post-processing the melodic MIDI files are missing bank
+        # select, program change, volume/expression/pan, and per-stem
+        # expressive controllers (brightness, reverb, chorus).
+        stem_key = audio_path.stem.lower()
+        self._inject_gm_setup(midi_path, stem_key)
+
         logger.info("basic-pitch: wrote %s (%d notes)", midi_path.name, note_count)
         return BasicPitchResult(midi_path=midi_path, notes_csv_path=notes_csv_path, note_count=note_count)
 
@@ -260,6 +269,112 @@ class BasicPitchService:
             writer.writerow(["start_time_s", "end_time_s", "pitch_midi", "velocity"])
             writer.writerows(rows)
         return len(rows)
+
+    # -- GM setup injection ---------------------------------------------------
+
+    # Per-stem expressive CC defaults.  Brightness (CC74) opens the filter
+    # for brighter tone; reverb (CC91) and chorus (CC93) add spatial depth.
+    # These are conservative defaults that work well in any GM player.
+    _STEM_CC_CONFIG: dict[str, dict] = {
+        "piano": {
+            "program": 0,
+            "brightness": 64,
+            "reverb": 40,
+            "chorus": 0,
+            "modulation": 0,
+        },
+        "bass": {
+            "program": 33,
+            "brightness": 64,
+            "reverb": 15,
+            "chorus": 0,
+            "modulation": 0,
+        },
+        "guitar": {
+            "program": 24,
+            "brightness": 64,
+            "reverb": 30,
+            "chorus": 20,
+            "modulation": 0,
+        },
+        "strings": {
+            "program": 48,
+            "brightness": 72,
+            "reverb": 55,
+            "chorus": 35,
+            "modulation": 0,
+        },
+        "vocals": {
+            "program": 53,
+            "brightness": 64,
+            "reverb": 50,
+            "chorus": 30,
+            "modulation": 0,
+        },
+        "other": {
+            "program": 89,
+            "brightness": 64,
+            "reverb": 35,
+            "chorus": 15,
+            "modulation": 0,
+        },
+    }
+
+    @staticmethod
+    def _inject_gm_setup(midi_path: Path, stem_key: str) -> None:
+        """Read back a Basic Pitch MIDI and inject GM setup + expressive CCs.
+
+        Basic Pitch outputs raw note_on / note_off events without any
+        controller setup.  This method prepends bank-select, program-change,
+        volume/expression/pan, and per-stem expressive controllers
+        (brightness, reverb, chorus) into every note track so the file
+        plays back identically in any GM-aware player.
+        """
+        from mido import MidiFile
+
+        from app.services.midi_cc import gm_setup_messages
+
+        cc = BasicPitchService._STEM_CC_CONFIG.get(stem_key, BasicPitchService._STEM_CC_CONFIG["other"])
+
+        try:
+            midi = MidiFile(str(midi_path))
+        except Exception:
+            logger.warning("basic-pitch: cannot read back %s for CC injection", midi_path.name)
+            return
+
+        for track in midi.tracks:
+            if not _track_has_notes(track):
+                continue
+            setup = gm_setup_messages(
+                channel=0,
+                program=cc["program"],
+                brightness=cc.get("brightness"),
+                reverb=cc.get("reverb"),
+                chorus=cc.get("chorus"),
+                modulation=cc.get("modulation"),
+            )
+            # Insert setup messages right after the track_name meta event.
+            new_msgs: list = []
+            inserted = False
+            for msg in track:
+                new_msgs.append(msg)
+                if not inserted and msg.is_meta and msg.type == "track_name":
+                    new_msgs.extend(setup)
+                    inserted = True
+            track.clear()
+            for msg in new_msgs:
+                track.append(msg)
+
+        midi.save(str(midi_path))
+        logger.debug("basic-pitch: injected GM setup for stem=%s", stem_key)
+
+
+def _track_has_notes(track) -> bool:
+    """Return True if the track contains at least one note_on or note_off."""
+    return any(
+        not msg.is_meta and msg.type in {"note_on", "note_off"}
+        for msg in track
+    )
 
 
 def _notes_from_f0(

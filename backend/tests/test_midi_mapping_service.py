@@ -18,7 +18,6 @@ from app.services.midi_mapping_service import (
     MidiMappingService,
     MidiProfile,
     SoundfontOverride,
-    _BASE_VOICES,
     build_soundfont_overrides,
     collect_raw_midi_sources,
     is_raw_midi_path,

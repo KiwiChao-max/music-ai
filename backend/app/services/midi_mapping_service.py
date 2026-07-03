@@ -13,6 +13,7 @@ themselves are untouched — only the voice selection is overridden.
 """
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -140,14 +141,23 @@ _STEM_ALIASES: tuple[tuple[str, str], ...] = (
     ("mix", "original"),
 )
 
-# GM programs are zero-based here:
+# Path to the user-editable voice configuration file, relative to this module.
+_VOICES_CONFIG_PATH: Path = Path(__file__).resolve().parent.parent / "config" / "voices.json"
+
+# Default XG drum bank (MSB, LSB). Standard Kit = (127, 0).
+# SFX Kit 1: bank MSB=127, LSB=0, program=56
+# SFX Kit 2: bank MSB=126, LSB=0
+_DEFAULT_XG_DRUM_BANK: tuple[int, int] = (127, 0)
+
+# Built-in fallback voice mappings — used when the config file is missing or
+# a stem key is absent from the user config. All program values are zero-based.
 #   0  Acoustic Grand Piano
 #   24 Acoustic Guitar (nylon)
 #   33 Electric Bass (finger)
 #   48 String Ensemble 1
 #   53 Voice Oohs
 #   89 Pad 2 (warm)
-_BASE_VOICES: dict[str, VoiceMapping] = {
+_BUILTIN_VOICES: dict[str, VoiceMapping] = {
     "original": VoiceMapping("Acoustic Grand Piano", program=0, channel=0),
     "piano": VoiceMapping("Acoustic Grand Piano", program=0, channel=0),
     "bass": VoiceMapping("Electric Bass (finger)", program=33, channel=1, volume=108, pan=54),
@@ -164,6 +174,65 @@ _BASE_VOICES: dict[str, VoiceMapping] = {
         volume=112,
     ),
 }
+
+
+def _load_voices_config() -> tuple[dict[str, VoiceMapping], tuple[int, int]]:
+    """Load voice mappings and XG drum bank from the user-editable JSON config.
+
+    Returns (voices, xg_drum_bank). Missing keys fall back to `_BUILTIN_VOICES`
+    and `_DEFAULT_XG_DRUM_BANK`. If the config file is absent or unparseable,
+    the built-in defaults are returned as-is.
+    """
+    try:
+        raw = json.loads(_VOICES_CONFIG_PATH.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return dict(_BUILTIN_VOICES), _DEFAULT_XG_DRUM_BANK
+
+    # --- XG drum bank ---
+    drum_bank_raw = raw.get("xg_drum_bank", {}) if isinstance(raw, dict) else {}
+    xg_drum_bank: tuple[int, int] = (
+        int(drum_bank_raw.get("msb", _DEFAULT_XG_DRUM_BANK[0])),
+        int(drum_bank_raw.get("lsb", _DEFAULT_XG_DRUM_BANK[1])),
+    )
+
+    # --- voice mappings ---
+    voices: dict[str, VoiceMapping] = dict(_BUILTIN_VOICES)
+    user_voices = raw.get("voices", {}) if isinstance(raw, dict) else {}
+    if not isinstance(user_voices, dict):
+        return voices, xg_drum_bank
+
+    for stem_key, entry in user_voices.items():
+        if not isinstance(entry, dict):
+            continue
+        try:
+            voices[stem_key] = VoiceMapping(
+                label=str(entry.get("label", stem_key)),
+                program=int(entry.get("program", 0)),
+                bank_msb=int(entry.get("bank_msb", 0)),
+                bank_lsb=int(entry.get("bank_lsb", 0)),
+                channel=entry.get("channel") if "channel" in entry else None,
+                is_drum=bool(entry.get("is_drum", False)),
+                volume=int(entry.get("volume", 100)),
+                expression=int(entry.get("expression", 127)),
+                pan=int(entry.get("pan", 64)),
+            )
+        except (ValueError, TypeError):
+            logger.warning("midi-mapping: skipping invalid voice entry for stem=%s", stem_key)
+            continue
+
+    return voices, xg_drum_bank
+
+
+def _get_voices() -> dict[str, VoiceMapping]:
+    """Return the active voice mappings (user config merged over built-in defaults)."""
+    voices, _ = _load_voices_config()
+    return voices
+
+
+def _get_xg_drum_bank() -> tuple[int, int]:
+    """Return the configured XG drum bank as (MSB, LSB)."""
+    _, bank = _load_voices_config()
+    return bank
 
 
 def midi_profile_from_name(name: str) -> str:
@@ -337,7 +406,7 @@ class MidiMappingService:
                     continue
 
                 stem_key = _detect_stem_key(source_path.stem, track)
-                base_voice = _BASE_VOICES[stem_key]
+                base_voice = _get_voices()[stem_key]
                 voice = _voice_for_profile(base_voice, profile)
                 voice = _apply_soundfont_override(voice, stem_key, overrides_by_stem)
                 if voice.source == "soundfont":
@@ -483,11 +552,12 @@ def _detect_stem_key(source_stem: str, track) -> str:
 
 def _voice_for_profile(voice: VoiceMapping, profile: MidiProfile) -> VoiceMapping:
     if profile is MidiProfile.XG and voice.is_drum:
+        msb, lsb = _get_xg_drum_bank()
         return VoiceMapping(
             label=voice.label,
             program=voice.program,
-            bank_msb=127,
-            bank_lsb=0,
+            bank_msb=msb,
+            bank_lsb=lsb,
             channel=voice.channel,
             is_drum=True,
             volume=voice.volume,
@@ -589,7 +659,7 @@ def build_soundfont_overrides(
     svc = SoundFontService()
     overrides: list[SoundfontOverride] = []
     seen_stems: set[str] = set()
-    for stem_key, voice in _BASE_VOICES.items():
+    for stem_key, voice in _get_voices().items():
         if voice.is_drum:
             # Drums are handled by the sample-library pipeline, not the
             # SoundFont presets. Skip them here.

@@ -1,0 +1,69 @@
+{
+  "_description": "GM / XG MIDI voice mappings. Edit to customize default instrument assignments per stem. All program values are zero-based.",
+  "xg_drum_bank": {
+    "_comment": "XG drum bank MSB/LSB. Standard Kit = 127/0. For SFX kits, try 126/0 (SFX Kit 2) or 127/0 program 56 (SFX Kit 1).",
+    "msb": 127,
+    "lsb": 0
+  },
+  "voices": {
+    "original": {
+      "label": "Acoustic Grand Piano",
+      "program": 0,
+      "channel": 0
+    },
+    "piano": {
+      "label": "Acoustic Grand Piano",
+      "program": 0,
+      "channel": 0
+    },
+    "bass": {
+      "label": "Electric Bass (finger)",
+      "program": 33,
+      "channel": 1,
+      "volume": 108,
+      "pan": 54
+    },
+    "guitar": {
+      "label": "Acoustic Guitar (nylon)",
+      "program": 24,
+      "channel": 2,
+      "volume": 98,
+      "pan": 44
+    },
+    "strings": {
+      "label": "String Ensemble 1",
+      "program": 48,
+      "channel": 3,
+      "volume": 96,
+      "pan": 84
+    },
+    "synth": {
+      "label": "Synth Lead (square)",
+      "program": 80,
+      "channel": 4,
+      "volume": 92,
+      "pan": 64
+    },
+    "other": {
+      "label": "Warm Pad",
+      "program": 89,
+      "channel": 5,
+      "volume": 92,
+      "pan": 74
+    },
+    "vocals": {
+      "label": "Voice Oohs",
+      "program": 53,
+      "channel": 6,
+      "volume": 94,
+      "pan": 64
+    },
+    "drums": {
+      "label": "Standard Drum Kit",
+      "program": 0,
+      "channel": 9,
+      "is_drum": true,
+      "volume": 112
+    }
+  }
+}

@@ -348,10 +348,18 @@ class DrumMidiService:
         for time_s in times:
             features.append(self._extract_features(y, sr, float(time_s)))
 
-        # Velocity scaling: per-track normalization so softest hit lands at
-        # velocity 35 and the loudest at 127 (mirrors the existing curve).
+        # Velocity reference: use the 95th percentile rather than the
+        # maximum so the relative dynamic range is preserved.  Per-track
+        # normalisation (strength / max_strength) stretches every track
+        # to fill 35–127, destroying playing expression and dynamics.
+        # With the 95th-percentile reference, the softest ghost notes
+        # stay quiet and the loudest accents stay loud — only the top
+        # 5 % of hits are clamped to velocity 127.
         strengths = [feat[4] for feat in features]
-        max_strength = max(strengths) or 1.0
+        ref_strength = (
+            float(np.percentile(strengths, 95)) if len(strengths) > 1
+            else (max(strengths) or 1.0)
+        )
 
         raw_hits: list[DrumHit] = []
         for time_s, (part, confidence, centroid, flux, strength) in zip(times, features):
@@ -360,7 +368,7 @@ class DrumMidiService:
                     time_s=float(time_s),
                     part=part,
                     midi_note=_GM_DRUM_NOTES[part],
-                    velocity=_velocity_from_strength(strength / max_strength),
+                    velocity=_velocity_from_strength(min(1.0, strength / ref_strength)),
                     confidence=confidence,
                     spectral_centroid=centroid,
                     spectral_flux=flux,
