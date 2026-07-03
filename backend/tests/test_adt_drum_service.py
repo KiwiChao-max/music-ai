@@ -50,26 +50,29 @@ class _ScriptedBackend:
 def _build_audio_with_bursts(
     path: Path,
     *,
-    bursts: list[tuple[float, float, float]],
+    bursts: list[tuple[float, float, float, float | None]],
     seconds: float = 3.0,
     sample_rate: int = 22050,
 ) -> None:
     """Build a synthetic audio file with timed noise bursts.
 
-    ``bursts`` is a list of ``(center_s, cutoff_hz, envelope_width)``
-    tuples. The resulting signal contains one band-limited noise burst
-    per entry — enough for the cymbal sub-classifier to find
-    distinguishable centroids, sustains, and high-band ratios.
+    ``bursts`` is a list of ``(center_s, cutoff_hz, envelope_width, highpass_hz)``
+    tuples. ``highpass_hz`` may be ``None`` for a flat spectrum from 0 to
+    ``cutoff_hz``; when set, only frequencies between ``highpass_hz`` and
+    ``cutoff_hz`` are kept (useful for pushing the centroid above the
+    flat-spectrum value of ``cutoff/2``).
     """
     t = np.arange(int(seconds * sample_rate)) / sample_rate
     rng = np.random.default_rng(42)
     noise = rng.standard_normal(t.shape).astype(np.float32)
     signal = np.zeros_like(t, dtype=np.float32)
 
-    for center, cutoff, width in bursts:
+    for center, cutoff, width, highpass in bursts:
         spectrum = np.fft.rfft(noise)
         freqs = np.fft.rfftfreq(noise.size, d=1.0 / sample_rate)
         spectrum[freqs > cutoff] = 0.0
+        if highpass is not None:
+            spectrum[freqs < highpass] = 0.0
         band = np.fft.irfft(spectrum, n=noise.size).astype(np.float32)
         envelope = np.exp(-((t - center) ** 2) / max(width, 1e-6)).astype(np.float32)
         signal += band * envelope
@@ -84,7 +87,7 @@ def test_adtos_direct_mapping_covers_eight_classes(tmp_path: Path) -> None:
     """KD/SD/HH/OH/HT/MT/FT must each map to the expected DRUM_PARTS
     bucket — no spectral pass should touch them."""
     audio = tmp_path / "drums.wav"
-    _build_audio_with_bursts(audio, bursts=[(0.10, 8000.0, 0.001)])
+    _build_audio_with_bursts(audio, bursts=[(0.10, 8000.0, 0.001, None)])
     out = tmp_path / "out"
 
     backend = _ScriptedBackend(
@@ -125,13 +128,15 @@ def test_adtos_cymbal_subclassifier_picks_china_vs_ride(tmp_path: Path) -> None:
     A RD hit on a 3-5 kHz short-sustain burst → ride_bell.
     """
     audio = tmp_path / "drums.wav"
-    # Center 0.30: bright, long tail (china-like).
+    # Center 0.30: bright, long tail (china-like).  The envelope width
+    # must be wide enough that the sustain_ratio clears the 0.45
+    # threshold in _subclassify_cymbal (0.10 gives ~0.53 at 0.08s).
     # Center 1.00: short burst at 3-5 kHz (ride bell-like).
     _build_audio_with_bursts(
         audio,
         bursts=[
-            (0.30, 12000.0, 0.04),
-            (1.00, 4500.0, 0.001),
+            (0.30, 12000.0, 0.10, 5000.0),
+            (1.00, 5000.0, 0.001, 3500.0),
         ],
     )
     out = tmp_path / "out"
@@ -159,7 +164,7 @@ def test_adtos_cymbal_subclassifier_falls_back_to_default(
     CY, ride for RD) — never a non-cymbal bucket."""
     audio = tmp_path / "drums.wav"
     # Build a low-energy cymbal-ish hit that has ambiguous features.
-    _build_audio_with_bursts(audio, bursts=[(0.50, 5000.0, 0.01)])
+    _build_audio_with_bursts(audio, bursts=[(0.50, 5000.0, 0.01, None)])
     out = tmp_path / "out"
 
     backend = _ScriptedBackend(
@@ -184,7 +189,7 @@ def test_adtos_service_writes_same_file_layout_as_rule_based(
     e2e pipeline (frontend, download endpoints) keeps working when
     the ADTOS path is enabled."""
     audio = tmp_path / "drums.wav"
-    _build_audio_with_bursts(audio, bursts=[(0.20, 6000.0, 0.001)])
+    _build_audio_with_bursts(audio, bursts=[(0.20, 6000.0, 0.001, None)])
     out = tmp_path / "out"
 
     backend = _ScriptedBackend(
@@ -215,7 +220,7 @@ def test_adtos_backend_predict_is_called_with_audio_path(
     so the backend can decide whether to load the audio or stream
     spectrograms — we don't want the service layer to pre-process."""
     audio = tmp_path / "drums.wav"
-    _build_audio_with_bursts(audio, bursts=[(0.20, 4000.0, 0.001)])
+    _build_audio_with_bursts(audio, bursts=[(0.20, 4000.0, 0.001, None)])
     out = tmp_path / "out"
     backend = _ScriptedBackend(
         hits=[ADTHit(time_s=0.20, label="KD", confidence=0.7)],

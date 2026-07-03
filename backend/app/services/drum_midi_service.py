@@ -35,6 +35,35 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+# Minimum confidence below which the classifier falls back to a
+# "nearest main part" rather than blindly returning a low-confidence
+# tom_lomid or snare. This is the gate that prevents the final-resort
+# line from dumping ambiguous hits into the most common bucket.
+_CLASSIFIER_CONFIDENCE_FLOOR = 0.55
+
+# Per-part "nearest main part" fallback mapping. When the classifier
+# returns a part below the confidence floor, we remap to the closest
+# primary part by spectral region. This is intentionally conservative:
+# the ambiguous hit is still placed somewhere useful (kick / snare /
+# tom / cymbal / hat) but never silently dropped.
+_CONFIDENCE_FALLBACK: dict[str, tuple[str, str]] = {
+    # Pitch-bucketed toms collapse to the nearest main tom.
+    "tom_high": ("tom_high", "tom_himid"),
+    "tom_himid": ("tom_himid", "tom_lomid"),
+    "tom_lomid": ("tom_lomid", "tom_himid"),
+    "tom_low": ("tom_low", "tom_lomid"),
+    "tom_floor": ("tom_floor", "tom_low"),
+    # Cymbal family → primary member.
+    "china": ("crash", "china"),
+    "splash": ("crash", "splash"),
+    "ride_bell": ("ride", "ride_bell"),
+    # Rare percussion → closest common part.
+    "sidestick": ("snare", "sidestick"),
+    "cowbell": ("snare", "cowbell"),
+    "tambourine": ("hihat_closed", "tambourine"),
+    "percussion": ("hihat_closed", "percussion"),
+}
+
 # Ordered public list of part buckets. Consumers (frontend, mapping service)
 # rely on this ordering to render splits in a stable, human-friendly way.
 DRUM_PARTS: tuple[str, ...] = (
@@ -158,7 +187,7 @@ class DrumMidiService:
         output_dir.mkdir(parents=True, exist_ok=True)
         y, sr = self._load_audio(audio_path)
         bpm = self._estimate_bpm(y, sr)
-        raw_hits = self._detect_hits(y, sr)
+        raw_hits = self._detect_hits(y, sr, bpm=bpm)
         hits = self._derive_fills(raw_hits)
 
         combined_path = output_dir / f"{stem_name}.mid"
@@ -229,12 +258,55 @@ class DrumMidiService:
         return bpm
 
     # ---- onset + per-hit feature extraction ---------------------------------
-    def _detect_hits(self, y, sr: int) -> list[DrumHit]:
+    def _detect_hits(
+        self, y, sr: int, *, bpm: float | None = None
+    ) -> list[DrumHit]:
         import librosa
         import numpy as np
 
         if y.size == 0 or float(np.max(np.abs(y))) < 1e-5:
             return []
+
+        # ── BPM-adaptive onset parameters ────────────────────────────────
+        # Different tempo ranges need different sensitivity. At 60 BPM
+        # (slow ballads) the space between hits is ~1s, so a high delta
+        # avoids false positives from reverb tails. At 180 BPM (blast
+        # beats / dense fills), the inter-hit gap is ~0.33s, so we
+        # lower delta and skip wait to catch every transient.
+        if bpm is None:
+            bpm = self._estimate_bpm(y, sr)
+
+        if bpm < 80.0:
+            # Slow / ballad: sparse hits, high threshold to avoid reverb
+            # tails being picked up as separate hits.
+            delta = 0.22
+            wait = 2
+            pre_max = 5
+            pre_avg = 4
+            post_avg = 7
+        elif bpm < 130.0:
+            # Mid-tempo (most pop/rock): the default set.
+            delta = 0.16
+            wait = 1
+            pre_max = 3
+            pre_avg = 3
+            post_avg = 5
+        elif bpm < 170.0:
+            # Fast tempo: lower threshold so we don't miss quick hits.
+            delta = 0.12
+            wait = 0
+            pre_max = 2
+            pre_avg = 2
+            post_avg = 4
+        else:
+            # Very fast / extreme: aggressive sensitivity. The risk of
+            # false positives is higher, but missing a blast-beat snare
+            # is worse than flagging a ghost note.
+            delta = 0.08
+            wait = 0
+            pre_max = 2
+            pre_avg = 2
+            post_avg = 3
 
         # `aggregate` is invoked by librosa as `aggregate(data_slice, axis=-1)`.
         # We use the per-frame mean — the previous `np.median` over the whole
@@ -252,12 +324,12 @@ class DrumMidiService:
             onset_envelope=onset_env,
             units="frames",
             backtrack=False,
-            pre_max=3,
-            post_max=3,
-            pre_avg=3,
-            post_avg=5,
-            delta=0.16,
-            wait=1,
+            pre_max=pre_max,
+            post_max=pre_max,
+            pre_avg=pre_avg,
+            post_avg=post_avg,
+            delta=delta,
+            wait=wait,
         )
         times = list(librosa.frames_to_time(frames, sr=sr))
 
@@ -359,6 +431,26 @@ class DrumMidiService:
             sustain_ratio=sustain_ratio,
             flux=flux,
         )
+
+        # ── Confidence fallback: remap low-confidence hits to the ─────────
+        # nearest main part instead of blindly accepting a likely wrong
+        # classification. The `_CONFIDENCE_FALLBACK` dict maps each part
+        # to a (primary, secondary) tuple. We use `primary` when the
+        # classifier returned the secondary label with low confidence;
+        # we use `secondary` when the classifier returned the primary
+        # label — that way ambiguous hits collapse to the nearest
+        # well-defined part rather than defaulting to "tom_lomid".
+        if confidence < _CLASSIFIER_CONFIDENCE_FLOOR and part in _CONFIDENCE_FALLBACK:
+            primary, secondary = _CONFIDENCE_FALLBACK[part]
+            if part == secondary:
+                part = primary
+            elif part == primary:
+                part = secondary
+            # Confidence stays low — the remap is a best-effort guess,
+            # not a confident classification.
+            if confidence < 0.40:
+                confidence = max(confidence, 0.40)
+
         return part, confidence, centroid, flux, strength
 
     @staticmethod
