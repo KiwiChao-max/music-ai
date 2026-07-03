@@ -112,6 +112,29 @@ class Settings(BaseSettings):
     # deployments that don't want the LLM cost.
     llm_enabled: bool = True
 
+    # ---- ADTOS (drum transcription) ----------------------------------------
+    # When false (default), the worker uses the rule-based DrumMidiService
+    # baseline. When true, it tries to load the ADTOS drum-transcription
+    # model and falls back to the baseline on any failure (missing
+    # checkpoint, missing torch, inference exception, low-confidence
+    # sub-classifier crash).
+    #
+    # The ADTOS package itself is research code (not on PyPI) — to enable,
+    # install torch + torchaudio, clone https://github.com/AMAAI-Lab/ADTOS,
+    # download a checkpoint, and set ADT_MODEL_PATH. The service is
+    # deliberately opt-in so workers in lean environments (no torch)
+    # keep working out of the box.
+    adt_enabled: bool = False
+    adt_model_path: Path | None = None
+    # Optional extra sys.path entry for an ADTOS checkout. When unset, the
+    # service uses the default `import adtos` lookup.
+    adt_python_path: Path | None = None
+    # Confidence threshold below which the cymbal sub-classifier refines
+    # an ADTOS "cymbal" prediction into crash / ride / china / splash /
+    # ride_bell. Above the threshold the label collapses to "crash"
+    # (the most common cymbal in a GM kit) without spectral refinement.
+    adt_cymbal_confidence_threshold: float = 0.6
+
     # ---- celery / redis ----------------------------------------------------
     # The Celery broker (queue transport) and result backend share the same
     # Redis instance by default. Override `celery_broker_url` /

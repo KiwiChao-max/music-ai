@@ -23,6 +23,7 @@ from app.config import settings
 from app.db.models import AudioTaskStatus
 from app.db.session import SessionLocal
 from app.services import (
+    adt_drum_service,
     basic_pitch_service,
     demucs_service,
     drum_midi_service,
@@ -33,6 +34,7 @@ from app.services import (
     music_analysis_service,
     task_service,
 )
+from app.services.adt_backend_adtos import ADTUnavailable
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +42,9 @@ logger = logging.getLogger(__name__)
 # worker process; each call takes a fresh audio path so state cannot leak.
 _DEMUCS = demucs_service.DemucsService()
 _BASIC_PITCH = basic_pitch_service.BasicPitchService()
-_DRUM_MIDI = drum_midi_service.DrumMidiService()
+_DRUM_MIDI_RULE = drum_midi_service.DrumMidiService()
+_ADT_DRUM: adt_drum_service.ADTDrumService | None = None
+_ADT_DRUM_WARNED = False
 _MIDI_MAPPING = midi_mapping_service.MidiMappingService()
 _MUSIC_ANALYSIS = music_analysis_service.MusicAnalysisService()
 _INSTRUMENT_CLASSIFIER = instrument_classifier_service.InstrumentClassifierService(
@@ -95,10 +99,56 @@ def _run_basic_pitch(audio_path: Path, output_dir: Path) -> Path:
 
 
 def _run_drum_midi(stem_path: Path, output_dir: Path) -> Path | None:
-    result = _DRUM_MIDI.create_drum_midi(stem_path, output_dir)
+    """Generate GM drum MIDI for the drum stem.
+
+    Routes to the ADTOS-backed service when ``settings.adt_enabled``
+    is true. Any failure (missing torch, missing ADTOS package, missing
+    checkpoint, inference exception) is logged once and the worker
+    stays on the rule-based :class:`DrumMidiService` for the rest of
+    the process lifetime — feature-flagged opt-in must not break the
+    default path.
+    """
+    service = _get_drum_midi_service()
+    try:
+        result = service.create_drum_midi(stem_path, output_dir, stem_name="drums")
+    except ADTUnavailable as exc:
+        _disable_adt_drum(f"ADTOS unavailable, falling back to rule-based: {exc}")
+        result = _DRUM_MIDI_RULE.create_drum_midi(stem_path, output_dir, stem_name="drums")
+    except Exception as exc:  # noqa: BLE001 - any failure is non-fatal
+        logger.warning("drum-midi (%s) failed for %s: %s",
+                       type(service).__name__, stem_path.name, exc)
+        result = _DRUM_MIDI_RULE.create_drum_midi(stem_path, output_dir, stem_name="drums")
     if result.event_count == 0:
         logger.warning("drum-midi produced no hits for %s", stem_path.name)
     return result.combined_path
+
+
+def _get_drum_midi_service():
+    """Return the ADTOS-backed service if enabled, else the rule-based one."""
+    global _ADT_DRUM, _ADT_DRUM_WARNED
+    if not settings.adt_enabled:
+        return _DRUM_MIDI_RULE
+    if _ADT_DRUM is None:
+        _ADT_DRUM = adt_drum_service.ADTDrumService(
+            model_path=settings.adt_model_path,
+            cymbal_confidence_threshold=settings.adt_cymbal_confidence_threshold,
+        )
+    return _ADT_DRUM
+
+
+def _disable_adt_drum(message: str) -> None:
+    """Permanently fall back to the rule-based service for this process.
+
+    The ADTOS backend is heavy (torch + a checkpoint). Once we've
+    established that the dependency is missing, retrying on every
+    audio task just adds startup latency. ``_ADT_DRUM_WARNED`` makes
+    sure we only log the failure once.
+    """
+    global _ADT_DRUM, _ADT_DRUM_WARNED
+    if not _ADT_DRUM_WARNED:
+        logger.warning(message)
+        _ADT_DRUM_WARNED = True
+    _ADT_DRUM = None
 
 
 def _transcribe_stems_or_mix(
