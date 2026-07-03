@@ -48,7 +48,11 @@ _INSTRUMENT_CLASSIFIER = instrument_classifier_service.InstrumentClassifierServi
 )
 
 _PLACEHOLDER_STEMS: tuple[str, ...] = demucs_service.EXPECTED_STEMS
-_MELODIC_STEMS: tuple[str, ...] = ("bass", "other", "vocals")
+# Stems that Basic Pitch should transcribe directly. With the 6-stem
+# Demucs model, piano and guitar come out as their own stems, so
+# transcribing them individually is far cleaner than running them
+# through the rule-based instrument classifier.
+_MELODIC_STEMS: tuple[str, ...] = ("bass", "piano", "guitar", "other", "vocals")
 
 
 def _write_silent_wav(path: Path, *, seconds: float = 0.1, rate: int = 8000) -> None:

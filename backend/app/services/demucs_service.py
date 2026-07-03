@@ -1,9 +1,15 @@
-﻿"""Meta Demucs source-separation service.
+"""Meta Demucs source-separation service.
 
-Demucs splits a mixed track into four stems: vocals, drums, bass and other.
-The service prefers a pure Python path for local WAV processing so the app can
-run the model without a system FFmpeg install. The CLI path is retained as a
-fallback for formats that soundfile cannot decode.
+The default model is the 6-stem variant (``htdemucs_6s``), which natively
+outputs vocals, drums, bass, piano, guitar and other — the piano/guitar
+stems replace the rule-based instrument classifier for those two
+instruments, giving much cleaner separation when several melodic
+instruments overlap. The classifier still runs on the residual
+``other`` stem to pull out strings / synth / other_melodic.
+
+The service prefers a pure Python path for local WAV processing so the
+app can run the model without a system FFmpeg install. The CLI path is
+retained as a fallback for formats that soundfile cannot decode.
 """
 from __future__ import annotations
 
@@ -18,7 +24,14 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-EXPECTED_STEMS: tuple[str, ...] = ("vocals", "drums", "bass", "other")
+EXPECTED_STEMS: tuple[str, ...] = (
+    "vocals",
+    "drums",
+    "bass",
+    "piano",
+    "guitar",
+    "other",
+)
 
 
 @dataclass(frozen=True)
@@ -30,7 +43,7 @@ class DemucsResult:
 class DemucsService:
     """Runs Meta's Demucs model and normalizes its output layout."""
 
-    def __init__(self, *, model_name: str = "htdemucs", timeout_seconds: int = 900) -> None:
+    def __init__(self, *, model_name: str = "htdemucs_6s", timeout_seconds: int = 900) -> None:
         self.model_name = model_name
         self.timeout_seconds = timeout_seconds
 
