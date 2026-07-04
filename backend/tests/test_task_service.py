@@ -111,6 +111,49 @@ def test_mark_finished_sets_timestamps_and_error_message(db_session: Session) ->
     assert task.progress == 100
 
 
+def test_mark_finished_preserves_progress_on_failure(db_session: Session) -> None:
+    """A FAILED task must keep its last-known progress so the UI can show
+    how far the pipeline got before crashing — `mark_finished(success=False)`
+    must NOT clobber `progress`."""
+    task = task_service.create_task(db_session, "song.wav")
+    db_session.commit()
+    task_service.set_progress(db_session, task, 73, "transcribing")
+    db_session.commit()
+    assert task.progress == 73
+
+    task_service.mark_finished(db_session, task, success=False, error_message="boom")
+    assert task.status == AudioTaskStatus.FAILED
+    # Progress is preserved, not reset.
+    assert task.progress == 73
+
+
+def test_mark_finished_overwrites_finished_at_on_retry(db_session: Session) -> None:
+    """A retry that succeeds must stamp a fresh `finished_at` — the
+    original failure timestamp is no longer accurate."""
+    task = task_service.create_task(db_session, "song.wav")
+    db_session.commit()
+    task_service.mark_finished(db_session, task, success=False, error_message="boom")
+    failed_at = task.finished_at
+    assert failed_at is not None
+
+    task_service.mark_finished(db_session, task, success=True)
+    assert task.finished_at is not None
+    # The successful finish must stamp a later (or equal) timestamp.
+    assert task.finished_at >= failed_at
+
+
+def test_mark_finished_success_clears_error_message(db_session: Session) -> None:
+    """A successful finish after a failure must clear the stale error."""
+    task = task_service.create_task(db_session, "song.wav")
+    db_session.commit()
+    task_service.mark_finished(db_session, task, success=False, error_message="boom")
+    assert task.error_message == "boom"
+
+    task_service.mark_finished(db_session, task, success=True)
+    assert task.error_message is None
+    assert task.status == AudioTaskStatus.FINISHED
+
+
 def test_list_tasks_paginates_newest_first(db_session: Session) -> None:
     for i in range(5):
         task_service.create_task(db_session, f"song-{i}.wav")
