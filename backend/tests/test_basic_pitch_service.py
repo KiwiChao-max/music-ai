@@ -14,6 +14,7 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
+import pytest
 from mido import MidiFile, MetaMessage, Message, MidiTrack
 
 from app.services.basic_pitch_service import (
@@ -151,3 +152,29 @@ def test_inject_gm_setup_missing_file_is_noop(tmp_path: Path) -> None:
     missing = tmp_path / "does_not_exist.mid"
     # Should not raise.
     BasicPitchService._inject_gm_setup(missing, stem_key="piano")
+
+
+# ---- _normalize_stem_key ------------------------------------------------
+@pytest.mark.parametrize(
+    "stem,expected",
+    [
+        # Demucs primary stems pass through unchanged.
+        ("piano", "piano"),
+        ("bass", "bass"),
+        ("guitar", "guitar"),
+        ("strings", "strings"),
+        ("vocals", "vocals"),
+        ("other", "other"),
+        # Classifier-produced per-instrument files must strip "other_"
+        # so they pick up the correct GM voice instead of Warm Pad.
+        ("other_strings", "strings"),
+        ("other_piano", "piano"),
+        ("other_guitar", "guitar"),
+        # Truly unknown stems fall back to "other".
+        ("unknown_thing", "other"),
+        ("other_unknown", "other"),
+    ],
+)
+def test_normalize_stem_key_maps_per_instrument_files(stem: str, expected: str) -> None:
+    assert BasicPitchService._normalize_stem_key(stem) == expected
+

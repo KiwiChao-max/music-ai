@@ -114,7 +114,7 @@ class BasicPitchService:
         # this post-processing the melodic MIDI files are missing bank
         # select, program change, volume/expression/pan, and per-stem
         # expressive controllers (brightness, reverb, chorus).
-        stem_key = audio_path.stem.lower()
+        stem_key = self._normalize_stem_key(audio_path.stem.lower())
         self._inject_gm_setup(midi_path, stem_key)
 
         logger.info("basic-pitch: wrote %s (%d notes)", midi_path.name, note_count)
@@ -319,6 +319,25 @@ class BasicPitchService:
             "modulation": 0,
         },
     }
+
+    @staticmethod
+    def _normalize_stem_key(stem: str) -> str:
+        """Normalize a file stem into a key for _STEM_CC_CONFIG.
+
+        Demucs primary stems (bass/piano/guitar/vocals/other) match
+        directly. The instrument classifier produces per-instrument
+        files like ``other_strings``, ``other_piano``, ``other_guitar``,
+        ``other_synth`` — strip the ``other_`` prefix so they pick up
+        the correct GM voice instead of falling through to "other"
+        (Warm Pad, program 89).
+        """
+        if stem in BasicPitchService._STEM_CC_CONFIG:
+            return stem
+        if stem.startswith("other_"):
+            inner = stem[len("other_"):]
+            if inner in BasicPitchService._STEM_CC_CONFIG:
+                return inner
+        return "other"
 
     @staticmethod
     def _inject_gm_setup(midi_path: Path, stem_key: str) -> None:
