@@ -14,6 +14,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    restart: unless-stopped
 
   redis:
     # Broker + result backend for Celery. The `api` and `worker` services
@@ -30,6 +31,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    restart: unless-stopped
 
   api:
     build: ./backend
@@ -46,11 +48,18 @@ services:
     volumes:
       - backend_storage:/app/storage
     command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+    restart: unless-stopped
 
   worker:
     # Celery consumer. No HTTP port; only logs. Reuses the same image as
@@ -72,6 +81,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   postgres_data:

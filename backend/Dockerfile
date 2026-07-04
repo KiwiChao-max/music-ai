@@ -24,6 +24,12 @@ RUN python warmup_basic_pitch.py
 
 # Persistent storage for uploads and worker outputs — mount a volume here in compose.
 RUN mkdir -p /app/storage/uploads /app/storage/outputs
+
+# Create a non-root user and grant ownership of the app directory.
+RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin appuser \
+    && chown -R appuser:appuser /app
+USER appuser
+
 ENV STORAGE_DIR=/app/storage
 
 EXPOSE 8000
