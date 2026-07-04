@@ -61,6 +61,32 @@ _MAX_SAMPLE_BYTES = 5 * 1024 * 1024  # 5 MB per sample
 _MAX_TOTAL_BYTES = 80 * 1024 * 1024  # 80 MB total per upload
 
 
+def _safe_zip_read(
+    zf: zipfile.ZipFile, info: zipfile.ZipInfo, max_bytes: int
+) -> bytes | None:
+    """Read a zip entry with a hard decompressed-size cap.
+
+    ``info.file_size`` in the zip header can be spoofed, so we stream-read
+    chunks and abort once the decompressed size exceeds ``max_bytes``.
+    Returns ``None`` if the entry is unreadable or exceeds the cap.
+    """
+    try:
+        chunks: list[bytes] = []
+        total = 0
+        with zf.open(info) as f:
+            while True:
+                chunk = f.read(65536)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > max_bytes:
+                    return None
+                chunks.append(chunk)
+        return b"".join(chunks)
+    except Exception:  # noqa: BLE001 - corrupt entry, skip it
+        return None
+
+
 @router.get("/active")
 def get_active_library(db: Session = Depends(get_db)) -> Response:
     """Return the currently active library, or 204 if none is active."""
@@ -139,16 +165,24 @@ async def create_library(
                 for info in zf.infolist():
                     if info.is_dir():
                         continue
+                    # Don't trust info.file_size — it can be spoofed in the
+                    # zip header. Instead, stream-read with a hard cap.
                     if info.file_size > _MAX_SAMPLE_BYTES:
                         logger.warning("skipping oversize sample: %s", info.filename)
                         continue
-                    total_bytes += info.file_size
+                    # Read with streaming size enforcement to prevent zip
+                    # bombs (small compressed payload, huge decompressed).
+                    data = _safe_zip_read(zf, info, _MAX_SAMPLE_BYTES)
+                    if data is None:
+                        logger.warning("skipping oversize or unreadable sample: %s", info.filename)
+                        continue
+                    total_bytes += len(data)
                     if total_bytes > _MAX_TOTAL_BYTES:
                         raise HTTPException(
                             status_code=413,
                             detail="zip contents exceed the upload size limit",
                         )
-                    payload.append((info.filename, zf.read(info.filename)))
+                    payload.append((info.filename, data))
                     if len(payload) >= _MAX_SAMPLES_PER_LIBRARY:
                         break
         except zipfile.BadZipFile as exc:
