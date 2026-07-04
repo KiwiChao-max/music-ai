@@ -240,10 +240,18 @@ function DetectedInstrumentsPanel({
                 {(item.probability * 100).toFixed(0)}%
               </span>
             </div>
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+            <div
+              className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"
+              role="progressbar"
+              aria-valuenow={Math.round(item.probability * 100)}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label={formatInstrumentName(item.instrument)}
+            >
               <div
                 className="h-full bg-slate-700 dark:bg-slate-400"
                 style={{ width: `${Math.max(2, item.probability * 100)}%` }}
+                aria-hidden="true"
               />
             </div>
           </li>

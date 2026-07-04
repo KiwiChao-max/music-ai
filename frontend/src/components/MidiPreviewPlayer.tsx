@@ -404,8 +404,15 @@ export function MidiPreviewPlayer({ url }: MidiPreviewPlayerProps) {
       >
         {t("player.stop")}
       </button>
-      <div className="h-1 flex-1 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
-        <div className="h-full bg-indigo-500 transition-all" style={{ width: `${pct}%` }} />
+      <div
+        className="h-1 flex-1 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700"
+        role="progressbar"
+        aria-valuenow={Math.round(pct)}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={t("player.midiPlayback")}
+      >
+        <div className="h-full bg-indigo-500 transition-all" style={{ width: `${pct}%` }} aria-hidden="true" />
       </div>
       {error && <span className="text-[10px] text-red-500">{t("player.playerError")}</span>}
     </div>

@@ -321,10 +321,18 @@ export function SampleBasedDrumPlayer({
         </span>
       </div>
 
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+      <div
+        className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"
+        role="progressbar"
+        aria-valuenow={Math.round(duration > 0 ? (position / duration) * 100 : 0)}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={t("player.sampleBasedDrumPlayback")}
+      >
         <div
           className="h-full bg-slate-700 transition-all dark:bg-slate-400"
           style={{ width: `${duration > 0 ? (position / duration) * 100 : 0}%` }}
+          aria-hidden="true"
         />
       </div>
 

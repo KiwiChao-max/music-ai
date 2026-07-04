@@ -617,6 +617,7 @@ function LibraryCard({ library, isActive, onActivate, onDelete, onUpdated, drumT
                 type="text"
                 value={editName}
                 onChange={(e) => setEditName(e.target.value)}
+                aria-label={t("samples.name")}
                 className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-base font-semibold focus:border-slate-500 focus:outline-none dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
               />
               <input
@@ -624,6 +625,7 @@ function LibraryCard({ library, isActive, onActivate, onDelete, onUpdated, drumT
                 value={editDesc}
                 onChange={(e) => setEditDesc(e.target.value)}
                 placeholder={t("samples.descriptionPlaceholder")}
+                aria-label={t("samples.description")}
                 className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-sm focus:border-slate-500 focus:outline-none dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
               />
               <div className="flex gap-2">
@@ -782,6 +784,7 @@ function LibraryCard({ library, isActive, onActivate, onDelete, onUpdated, drumT
                       type="checkbox"
                       checked={sample.id !== undefined && selectedIds.has(sample.id)}
                       onChange={() => sample.id !== undefined && toggleSelect(sample.id)}
+                      aria-label={sample.label}
                       className="h-3 w-3"
                     />
                     <button
@@ -789,6 +792,7 @@ function LibraryCard({ library, isActive, onActivate, onDelete, onUpdated, drumT
                       onClick={() => playSample(sample.midi_note)}
                       className="shrink-0 rounded border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600"
                       title={t("samples.preview")}
+                      aria-label={t("samples.preview")}
                     >
                       ▶
                     </button>
@@ -796,6 +800,7 @@ function LibraryCard({ library, isActive, onActivate, onDelete, onUpdated, drumT
                       value={sample.midi_note}
                       onChange={(e) => handleNoteChange(sample.id!, Number(e.target.value))}
                       disabled={updateSample.isPending}
+                      aria-label={sample.label}
                       className="flex-1 rounded border border-slate-300 bg-white px-2 py-1 text-xs focus:border-slate-500 focus:outline-none dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
                     >
                       {drumNoteOptions.map((opt) => (
@@ -1073,11 +1078,13 @@ function SoundFontPanel() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={t("samples.searchSoundfont")}
+                aria-label={t("samples.searchSoundfont")}
                 className="flex-1 rounded border border-slate-300 bg-white px-3 py-1.5 text-sm focus:border-slate-500 focus:outline-none dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
               />
               <select
                 value={filterType}
                 onChange={(e) => setFilterType(e.target.value as "all" | "sf2" | "preset_table")}
+                aria-label={t("samples.filterAll")}
                 className="rounded border border-slate-300 bg-white px-3 py-1.5 text-sm focus:border-slate-500 focus:outline-none dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
               >
                 <option value="all">{t("samples.filterAll")}</option>
@@ -1103,12 +1110,21 @@ function SoundFontPanel() {
                 {filteredSoundfonts.map((sf) => (
                   <div
                     key={sf.id}
-                    className={`rounded border p-3 cursor-pointer transition-colors ${
+                    role="button"
+                    tabIndex={0}
+                    aria-label={sf.name}
+                    className={`rounded border p-3 cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
                       selectedId === sf.id
                         ? "border-slate-400 bg-slate-50 dark:border-slate-600 dark:bg-slate-800"
                         : "border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:hover:border-slate-600"
                     }`}
                     onClick={() => setSelectedId(selectedId === sf.id ? null : sf.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setSelectedId(selectedId === sf.id ? null : sf.id);
+                      }
+                    }}
                   >
                     <div className="flex items-center justify-between">
                       <div>
@@ -1163,6 +1179,7 @@ function SoundFontPanel() {
                           value={presetSearch}
                           onChange={(e) => setPresetSearch(e.target.value)}
                           placeholder={t("samples.searchPreset")}
+                          aria-label={t("samples.searchPreset")}
                           className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs focus:border-slate-500 focus:outline-none dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
                         />
                         <div className="max-h-64 overflow-y-auto rounded border border-slate-200 dark:border-slate-700">
@@ -1215,6 +1232,7 @@ function SoundFontPanel() {
               value={gmSearch}
               onChange={(e) => setGmSearch(e.target.value)}
               placeholder={t("samples.searchGm")}
+              aria-label={t("samples.searchGm")}
               className="w-full rounded border border-slate-300 bg-white px-3 py-1.5 text-sm focus:border-slate-500 focus:outline-none dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
             />
             {gmInstrumentsQuery.isLoading && (
