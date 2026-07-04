@@ -22,6 +22,7 @@ from app.services import sample_library_service
 from app.services.sample_library_service import (
     SampleLibraryService,
     _resolve_note_from_name,
+    _resolve_velocity_range,
     _safe_filename,
 )
 
@@ -360,3 +361,41 @@ def test_batch_remove_missing_library(
 ) -> None:
     service = SampleLibraryService(root=storage_dir / "sample-libraries")
     assert service.batch_remove_samples(db_session, 999, [1, 2]) is None
+
+
+# ---- _resolve_velocity_range --------------------------------------------
+@pytest.mark.parametrize(
+    "filename,expected",
+    [
+        # No velocity info → full range.
+        ("kick.wav", (1, 127)),
+        # Explicit "vel_NNN_NNN" form.
+        ("kick_vel_001_064.wav", (1, 64)),
+        ("snare_vel_065_127.wav", (65, 127)),
+        # Short-form "vN-M" / "v_N_M" / "v N M" — both numbers are
+        # 1..127 velocity values.
+        ("kick_v1-50.wav", (1, 50)),
+        ("kick_v_51_100.wav", (51, 100)),
+        ("kick_v 101 127.wav", (101, 127)),
+        # Out-of-order values are swapped.
+        ("kick_v100-50.wav", (50, 100)),
+        # Clamped to [1, 127].
+        ("kick_v0-200.wav", (1, 127)),
+        # Dynamic suffixes.
+        ("kick_pp.wav", (1, 42)),
+        ("snare_ff.wav", (111, 127)),
+        # English labels.
+        ("snare_soft.wav", (1, 63)),
+        ("crash_hard.wav", (64, 127)),
+        # "v1" alone (layer index, no explicit upper bound) is NOT
+        # consumed by the short-form range parser — it falls through
+        # to (1, 127) because there is no second number.
+        ("kick_v1.wav", (1, 127)),
+        ("kick_v2.wav", (1, 127)),
+    ],
+)
+def test_resolve_velocity_range_parses_supported_patterns(
+    filename: str, expected: tuple[int, int]
+) -> None:
+    assert _resolve_velocity_range(filename) == expected
+

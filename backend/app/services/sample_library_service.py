@@ -580,6 +580,12 @@ _VELOCITY_LAYER_MAP: dict[str, tuple[int, int]] = {
 }
 
 _VEL_RANGE_RE = re.compile(r"vel[_\s-]*(\d{1,3})[_\s-]*(\d{1,3})")
+# Short-form velocity range: "v1-50", "v_51_100", "v 86 127".
+# Both numbers are 1..127 velocity values (NOT layer indices).
+# The leading (?:^|[_\s-]) lets the pattern start at a filename token
+# boundary — \b won't fire between "_" and "v" because both are word
+# characters, so we need an explicit boundary class.
+_V_SHORT_RANGE_RE = re.compile(r"(?:^|[_\s-])v[_\s-]*(\d{1,3})[_\s-]+(\d{1,3})(?:$|[_\s.])")
 
 
 def _resolve_velocity_range(filename: str) -> tuple[int, int]:
@@ -588,12 +594,23 @@ def _resolve_velocity_range(filename: str) -> tuple[int, int]:
     Supports:
       - Dynamic suffixes:  ``kick_pp.wav``, ``snare_ff.wav``
       - Explicit ranges:   ``kick_vel_001_064.wav``, ``snare_vel 065 127.wav``
+      - Short-form ranges: ``kick_v1-50.wav``, ``snare_v_51_100.wav``
       - English labels:    ``snare_soft.wav``, ``crash_hard.wav``
     """
     stem = Path(filename).stem.lower()
 
     # Explicit range: "vel_001_064" or "vel 065 127"
     m = _VEL_RANGE_RE.search(stem)
+    if m:
+        lo = max(1, min(127, int(m.group(1))))
+        hi = max(1, min(127, int(m.group(2))))
+        return (lo, hi) if lo <= hi else (hi, lo)
+
+    # Short-form range: "v1-50", "v_51_100", "v 86 127"
+    # Requires a separator between the two numbers so "v1" alone (layer
+    # index without an explicit upper bound) is NOT consumed here — it
+    # falls through to dynamic-suffix handling or (1, 127).
+    m = _V_SHORT_RANGE_RE.search(stem)
     if m:
         lo = max(1, min(127, int(m.group(1))))
         hi = max(1, min(127, int(m.group(2))))
