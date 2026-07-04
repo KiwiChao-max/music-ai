@@ -12,16 +12,23 @@ persistent) and a frontend surface. Tests live under
 > "Split the drums / bass / guitar / piano / strings / other into editable
 > MIDI."
 
-- **Demucs** (`app/services/audio_worker.py`) splits the master into 4 stems.
+- **Demucs** (`app/services/demucs_service.py`) splits the master into 6
+  stems using the `htdemucs_6s` model: `vocals`, `drums`, `bass`, `piano`,
+  `guitar`, `other`. Piano and guitar are first-class stems (no longer
+  derived from `other` by the rule-based classifier).
 - The **instrument classifier** (`app/services/instrument_classifier_service.py`)
-  runs on the `other` stem and produces per-instrument WAVs for piano,
-  guitar, strings, synth, and a residual bucket. Classification uses
-  per-frame spectral features (centroid, bandwidth, rolloff, flatness,
-  ZCR, HF / low-band ratios) against a small heuristic rule table — no
-  external model dependency.
+  runs on the `other` stem and produces per-instrument WAVs for
+  `other_piano`, `other_guitar`, `other_strings`, `other_synth`, and a
+  residual `other_other_melodic` bucket. Classification uses per-frame
+  spectral features (centroid, bandwidth, rolloff, flatness, ZCR, HF /
+  low-band ratios) against a small heuristic rule table — no external
+  model dependency.
 - **Spotify Basic Pitch** (`app/services/basic_pitch_service.py`) transcribes
   each melodic stem into a polyphonic MIDI file. Each output is
-  prepended with a full GM setup sequence (see Feature 4).
+  prepended with a full GM setup sequence (see Feature 4). The
+  `_normalize_stem_key` helper strips the `other_` prefix from
+  classifier-produced files so `other_strings.mid` picks up the String
+  Ensemble voice (program 48) instead of falling through to Warm Pad.
 - The detector writes a `detected_instruments` block (per-instrument
   probability + dominant label) to `analysis.json`, which the frontend
   renders on the task detail page as a sorted list with a probability
@@ -124,19 +131,29 @@ Tests: `backend/tests/test_midi_mapping_service.py` (8 cases).
   of the file (Feature 3) and the per-note velocity is taken directly
   from Basic Pitch's note-level `velocity` score (mapped via
   `velocity_from_strength`, a sqrt curve clamped to 35-127).
+- **Per-stem expressive CCs** are injected by
+  `BasicPitchService._inject_gm_setup` via `_STEM_CC_CONFIG`:
+  - CC74 (brightness) — per-stem, e.g. piano=64, strings=72, synth=80.
+  - CC91 (reverb) — per-stem, e.g. bass=15, vocals=50, strings=55.
+  - CC93 (chorus) — per-stem, e.g. guitar=20, strings=35, synth=25.
+  - CC1 (modulation) — defaults to 0 across all stems.
+  Drums deliberately omit CC64/CC74/CC91/CC93 (only CC0/CC32/program/
+  CC7/CC11/CC10 are written) since drum channels don't use sustain or
+  expression controllers.
 - **Pitch bend** is reset to 0 before every note so a slide / bend in
   one track never leaks into the next.
 - **Sustain pedal** events are emitted on long sustained chords using
   `sustain_messages(channel, down_at, up_at)` — a down event at the
   chord start and an up event at the chord end.
-- Drum hits carry note velocities derived from the per-onset
-  on-set envelope, also mapped through `velocity_from_strength`. The
-  drum channel also gets a single CC7/CC10/CC11 setup at the start of
-  the file so the kit is mixed at a consistent level across the song.
+- Drum hits carry note velocities derived from the per-onset envelope,
+  also mapped through `velocity_from_strength`. The drum channel also
+  gets a single CC7/CC10/CC11 setup at the start of the file so the
+  kit is mixed at a consistent level across the song.
 
 Tests: `backend/tests/test_midi_cc.py` pins the exact message sequence
 produced by `gm_setup_messages` and the curve produced by
-`velocity_from_strength`.
+`velocity_from_strength`. `test_basic_pitch_service.py` covers
+`_normalize_stem_key` and the `_STEM_CC_CONFIG` synth entry.
 
 ---
 
@@ -145,10 +162,14 @@ produced by `gm_setup_messages` and the curve produced by
 > "If I upload my own drum samples, can the app play the transcription
 > through my kit?"
 
-- **Database** (`sample_libraries` + `sample_files`, migration
-  `alembic/versions/0004_sample_libraries.py`): a user can have any
-  number of libraries, but only one is `is_active` at a time. The
-  "one active" invariant is enforced by a partial unique index.
+- **Database** (`sample_libraries` + `sample_files`, migrations
+  `alembic/versions/0004_sample_libraries.py` and
+  `0008_sample_velocity_layers.py`): a user can have any number of
+  libraries, but only one is `is_active` at a time. The "one active"
+  invariant is enforced by a partial unique index. `sample_files`
+  carries `velocity_min`/`velocity_max` columns (CHECK constraint
+  `velocity_min <= velocity_max`) so multiple samples per note can
+  cover different velocity layers.
 - **Upload** (`app/api/instruments.py` + `app/services/sample_library_service.py`):
   accepts a `files=` multipart payload (one file per percussion note)
   or a single `zip_file` containing the same. Filenames are mapped to
@@ -158,13 +179,35 @@ produced by `gm_setup_messages` and the curve produced by
   are dropped with a count returned in the response. Per-library
   limits: 5 MB per file, 80 MB total, 80 files, all in `.wav` / `.aiff`
   / `.flac` / `.mp3` / `.ogg`.
+- **Velocity layers** (`_resolve_velocity_range`): parses velocity
+  ranges from filenames so a single note can have multiple samples
+  covering different MIDI velocities. Supported patterns:
+  - Dynamic suffixes: `kick_pp.wav`, `snare_ff.wav`
+  - Explicit ranges: `kick_vel_001_064.wav`, `snare_vel 065 127.wav`
+  - Short-form ranges: `kick_v1-50.wav`, `snare_v_51_100.wav`
+  - English labels: `snare_soft.wav`, `crash_hard.wav`
+  The `SampleFileInfo` Pydantic schema surfaces `velocity_min`/
+  `velocity_max` so the frontend can pick the right layer per incoming
+  MIDI velocity.
+- **Auto-classification** (`app/services/sample_classifier_service.py`):
+  when filename-based lookup fails, samples are classified by 14
+  spectral features (centroid, peak frequency, rolloff, RMS envelope,
+  band-energy ratios, ZCR, harmonicity, attack ratio) into 36 drum
+  types covering kick/snare/hats/toms/cymbals/hand-percussion. The
+  classifier is also exposed via `POST /api/instruments/classify` for
+  preview before uploading a full library.
 - **Activation** (`POST /api/instruments/libraries/{id}/activate`):
   flips the `is_active` bit on the target library and clears it on
   the previous one — atomic in a single transaction.
 - **Browser playback** (`frontend/src/components/SampleBasedDrumPlayer.tsx`):
   - Fetches `drums_events.json` (pre-sorted by `t`) and the active
     library metadata.
-  - Decodes each unique sample to an `AudioBuffer`.
+  - Decodes each unique sample to an `AudioBuffer`, keyed by
+    `${note}:${vMin}:${vMax}` so multiple velocity layers per note
+    coexist in the cache.
+  - `_pickBuffer` selects the best-matching layer for each incoming
+    note+velocity using a 3-tier strategy: exact range match (prefer
+    narrowest), full-range fallback, closest layer.
   - Schedules each event with `AudioContext.currentTime` + the event's
     time offset, threading the velocity into a per-hit `GainNode`.
   - Provides Play / Pause / Stop with a `requestAnimationFrame` driven
@@ -193,17 +236,24 @@ curl -X POST http://127.0.0.1:8000/api/instruments/libraries/1/activate
 
 ## Tests
 
-`cd backend && .venv/bin/pytest` runs the suite (62 tests, all green):
+`cd backend && .venv/bin/pytest` runs the suite (249 tests, all green).
+Highlights for Features 1-5:
 
 - `tests/test_drum_midi_service.py` — per-part MIDI files, GM CC on the
   drum channel, events.json sidecar, classifier coverage.
 - `tests/test_midi_cc.py` — pinned message sequence for the GM setup
-  and the velocity curve.
+  and the velocity curve (single `velocity_from_strength` definition).
 - `tests/test_instrument_classifier_service.py` — full posterior set on
   arbitrary input, short-circuit on silent / very short input, WAV
   output for the active instruments.
 - `tests/test_sample_library_service.py` — filename aliasing, rollback
-  on empty / unrecognised payloads, single-active invariant, deletion.
+  on empty / unrecognised payloads, single-active invariant, deletion,
+  `velocity_min`/`velocity_max` schema transparency regression, and
+  parametrized `_resolve_velocity_range` coverage for `vel_NNN_NNN`,
+  `vN-M`, dynamic suffixes, and English labels.
+- `tests/test_basic_pitch_service.py` — `_normalize_stem_key` (strips
+  `other_` prefix, falls back to `other`), `_STEM_CC_CONFIG` synth
+  entry, GM setup injection per stem.
 - `tests/test_music_analysis_service.py` — BPM / key / chord detection
   on synthetic input.
 - `tests/test_task_service.py` / `tests/test_file_service.py` —
@@ -341,7 +391,7 @@ rate limiting, backups, HSTS) and a first-login runbook.
 
 ## Tests (after Phase 3)
 
-`cd backend && .venv/bin/pytest` runs the full suite (**134 tests,
+`cd backend && .venv/bin/pytest` runs the full suite (**249 tests,
 all green**). The Phase 1-2 services stay as they were; Phase 3
 adds:
 
@@ -360,3 +410,16 @@ adds:
 - `tests/test_ws.py` — snapshot, terminal FINISHED / FAILED, error
   for missing task, 1008 for forbidden, owner allowed, anonymous
   allowed for legacy tasks.
+- `tests/test_midi_mapping_service.py` — GM default voices,
+  SoundFont override replacement, drum-channel skip, bank/program
+  plumbing (8 cases).
+- `tests/test_soundfont_service.py` — SF2 parse + active bank
+  selection + GM instrument name ↔ program mapping cache.
+- `tests/test_adt_drum_service.py` — onset detection + 19-part
+  classification on synthetic transients.
+- `tests/test_sample_classifier_service.py` — 14 spectral features
+  → 36 drum types, confidence thresholds.
+- `tests/test_llm_service.py` — mock + OpenAI-compatible commentary
+  providers, prompt shaping, error fallback.
+- `tests/test_rate_limit.py` — per-IP sliding window, auth vs anon
+  buckets, 429 semantics.
