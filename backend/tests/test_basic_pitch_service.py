@@ -170,6 +170,7 @@ def test_inject_gm_setup_missing_file_is_noop(tmp_path: Path) -> None:
         ("other_strings", "strings"),
         ("other_piano", "piano"),
         ("other_guitar", "guitar"),
+        ("other_synth", "synth"),
         # Truly unknown stems fall back to "other".
         ("unknown_thing", "other"),
         ("other_unknown", "other"),
@@ -177,4 +178,15 @@ def test_inject_gm_setup_missing_file_is_noop(tmp_path: Path) -> None:
 )
 def test_normalize_stem_key_maps_per_instrument_files(stem: str, expected: str) -> None:
     assert BasicPitchService._normalize_stem_key(stem) == expected
+
+
+def test_stem_cc_config_has_synth_entry() -> None:
+    """The synth stem must have its own GM voice (Lead 1 square = program 80).
+
+    Without this entry, other_synth.wav (from the instrument classifier)
+    would still fall through to "other" (Warm Pad) even after F2's
+    stem_key normalization fix.
+    """
+    assert "synth" in BasicPitchService._STEM_CC_CONFIG
+    assert BasicPitchService._STEM_CC_CONFIG["synth"]["program"] == 80
 

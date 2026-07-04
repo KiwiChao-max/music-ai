@@ -304,6 +304,13 @@ class BasicPitchService:
             "chorus": 35,
             "modulation": 0,
         },
+        "synth": {
+            "program": 80,
+            "brightness": 80,
+            "reverb": 40,
+            "chorus": 25,
+            "modulation": 0,
+        },
         "vocals": {
             "program": 53,
             "brightness": 64,
