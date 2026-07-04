@@ -165,16 +165,27 @@ class BasicPitchService:
                 min_note_length_s=max(0.04, min_note_length_ms / 1000.0),
             )
 
-        self._write_midi(note_events, midi_path)
+        stem_key = self._normalize_stem_key(basename.lower())
+        self._write_midi(note_events, midi_path, stem_key=stem_key, stem_name=basename)
         note_count = self._write_notes_csv(note_events, notes_csv_path)
         logger.info("librosa-midi: wrote %s (%d notes)", midi_path.name, note_count)
         return BasicPitchResult(midi_path=midi_path, notes_csv_path=notes_csv_path, note_count=note_count)
 
     @staticmethod
-    def _write_midi(note_events, midi_path: Path, *, stem_name: str = "librosa transcription") -> None:
+    def _write_midi(
+        note_events,
+        midi_path: Path,
+        *,
+        stem_key: str = "other",
+        stem_name: str = "librosa transcription",
+    ) -> None:
         from mido import Message, MetaMessage, MidiFile, MidiTrack, bpm2tempo, second2tick
 
         from app.services.midi_cc import gm_setup_messages, pitch_bend_message
+
+        cc = BasicPitchService._STEM_CC_CONFIG.get(
+            stem_key, BasicPitchService._STEM_CC_CONFIG["other"]
+        )
 
         ticks_per_beat = 480
         tempo = bpm2tempo(120)
@@ -188,15 +199,16 @@ class BasicPitchService:
 
         note_track = MidiTrack()
         note_track.append(MetaMessage("track_name", name=stem_name, time=0))
-        # Channel 0 for the default Acoustic Grand Piano program. The setup
-        # messages write the full GM control set (volume/expression/pan) so
-        # the file plays back identically in any GM-aware DAW.
         for message in gm_setup_messages(
             channel=0,
-            program=0,
+            program=cc["program"],
             volume=100,
             expression=127,
             pan=64,
+            brightness=cc.get("brightness"),
+            reverb=cc.get("reverb"),
+            chorus=cc.get("chorus"),
+            modulation=cc.get("modulation"),
         ):
             note_track.append(message)
 
