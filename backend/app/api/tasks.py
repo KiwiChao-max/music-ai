@@ -15,11 +15,13 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.api.deps import OptionalUser
 from app.db.models import AudioTaskStatus
 from app.db.session import get_db
 from app.schemas.audio import MusicAnalysisResponse, ProcessResponse, StemInfo, TaskStatusResponse
@@ -29,6 +31,23 @@ from app.tasks_audio import process_audio_task
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
+
+
+def _auth_user(user: OptionalUser):
+    """Optional auth gate matching audio.py's pattern."""
+    if settings.auth_required and user is None:
+        raise HTTPException(
+            status_code=401,
+            detail="authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return user
+
+
+def _check_ownership(task, user) -> None:
+    """Raise 403 if the user is not the owner (or admin)."""
+    if user is not None and getattr(user, "role", None) != "admin" and task.user_id not in (None, user.id):
+        raise HTTPException(status_code=403, detail="not your task")
 
 # Suffixes that count as an "output file" the worker can produce.
 #   * `.wav/.mp3/.flac/.ogg/.m4a` — Demucs audio stems
@@ -58,11 +77,14 @@ def _public_url(file_path: Path) -> str:
     response_model=ProcessResponse,
 )
 def start_processing(
-    task_id: int, db: Session = Depends(get_db)
+    task_id: int,
+    db: Session = Depends(get_db),
+    user: Annotated[object | None, Depends(_auth_user)] = None,
 ) -> ProcessResponse:
     """Kick off the Demucs pipeline for an uploaded task.
 
     - 404 if the task does not exist
+    - 403 if the task belongs to another user
     - 409 if the task is already PROCESSING or FINISHED (one job per task;
       re-upload to retry a finished one)
     - 202 + spawn worker if the task is UPLOADED or FAILED (retry)
@@ -71,11 +93,15 @@ def start_processing(
     inside a single SQL UPDATE, so two concurrent /process calls cannot both
     spawn a worker for the same task.
     """
+    # Pre-check ownership before the atomic claim so we return 403 (not 409)
+    # for other users' tasks.
+    existing = task_service.get_task(db, task_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="task not found")
+    _check_ownership(existing, user)
+
     task = task_service.claim_for_processing(db, task_id)
     if task is None:
-        existing = task_service.get_task(db, task_id)
-        if existing is None:
-            raise HTTPException(status_code=404, detail="task not found")
         raise HTTPException(
             status_code=409,
             detail=(
@@ -114,12 +140,15 @@ def start_processing(
     response_model=TaskStatusResponse,
 )
 def get_task_status(
-    task_id: int, db: Session = Depends(get_db)
+    task_id: int,
+    db: Session = Depends(get_db),
+    user: Annotated[object | None, Depends(_auth_user)] = None,
 ) -> TaskStatusResponse:
     """Lightweight status snapshot for polling UIs."""
     task = task_service.get_task(db, task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="task not found")
+    _check_ownership(task, user)
     return TaskStatusResponse(status=task.status, progress=task.progress)
 
 
@@ -131,7 +160,9 @@ def get_task_status(
     response_model=list[StemInfo],
 )
 def list_stems(
-    task_id: int, db: Session = Depends(get_db)
+    task_id: int,
+    db: Session = Depends(get_db),
+    user: Annotated[object | None, Depends(_auth_user)] = None,
 ) -> list[StemInfo]:
     """Return the separated stems once the task has FINISHED.
 
@@ -141,6 +172,7 @@ def list_stems(
     task = task_service.get_task(db, task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="task not found")
+    _check_ownership(task, user)
     if task.status != AudioTaskStatus.FINISHED:
         raise HTTPException(
             status_code=409,
@@ -190,12 +222,15 @@ def list_stems(
     response_model=MusicAnalysisResponse,
 )
 def get_task_analysis(
-    task_id: int, db: Session = Depends(get_db)
+    task_id: int,
+    db: Session = Depends(get_db),
+    user: Annotated[object | None, Depends(_auth_user)] = None,
 ) -> MusicAnalysisResponse:
     """Return generated music analysis once the task has FINISHED."""
     task = task_service.get_task(db, task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="task not found")
+    _check_ownership(task, user)
     if task.status != AudioTaskStatus.FINISHED:
         raise HTTPException(
             status_code=409,
@@ -226,7 +261,9 @@ def get_task_analysis(
 # ---------------------------------------------------------------------------
 @router.get("/{task_id}/commentary")
 def get_task_commentary(
-    task_id: int, db: Session = Depends(get_db)
+    task_id: int,
+    db: Session = Depends(get_db),
+    user: Annotated[object | None, Depends(_auth_user)] = None,
 ) -> dict:
     """Return just the LLM commentary (and metadata) for a task.
 
@@ -237,6 +274,7 @@ def get_task_commentary(
     task = task_service.get_task(db, task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="task not found")
+    _check_ownership(task, user)
     return {
         "task_id": task.id,
         "commentary": task.commentary,
