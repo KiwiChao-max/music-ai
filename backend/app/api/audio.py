@@ -190,12 +190,17 @@ def list_tasks(
     if offset < 0:
         offset = 0
     only_user_id = None
+    public_only = False
     if user is not None and getattr(user, "role", None) != "admin":
         only_user_id = user.id
+    elif user is None:
+        # Anonymous callers only see tasks with no owner (legacy/public).
+        public_only = True
     return [
         AudioTaskRead.model_validate(t)
         for t in task_service.list_tasks(
-            db, limit=limit, offset=offset, user_id=only_user_id
+            db, limit=limit, offset=offset, user_id=only_user_id,
+            public_only=public_only,
         )
     ]
 

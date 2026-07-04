@@ -25,14 +25,19 @@ def list_tasks(
     limit: int = 100,
     offset: int = 0,
     user_id: int | None = None,
+    public_only: bool = False,
 ) -> list[AudioTask]:
     """Return tasks, newest first. When `user_id` is set, filter the
     list to that user (used by non-admin endpoints to scope to "my
-    tasks"). `None` means "no filter" (admin view).
+    tasks"). `None` means "no filter" (admin view). When
+    `public_only` is True, only tasks with ``user_id IS NULL`` are
+    returned (used for anonymous callers in open-auth mode).
     """
     stmt = select(AudioTask)
     if user_id is not None:
         stmt = stmt.where(AudioTask.user_id == user_id)
+    elif public_only:
+        stmt = stmt.where(AudioTask.user_id.is_(None))
     stmt = (
         stmt.order_by(AudioTask.created_at.desc(), AudioTask.id.desc())
         .limit(limit)
