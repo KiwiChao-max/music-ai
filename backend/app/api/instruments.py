@@ -24,12 +24,15 @@ import logging
 import zipfile
 from pathlib import Path
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db.session import get_db
+from app.api.deps import OptionalUser
 from app.schemas.sample_library import (
     BatchRemoveSamples,
     LibraryInfo,
@@ -41,6 +44,17 @@ from app.services import sample_library_service
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/instruments", tags=["instruments"])
+
+
+def _auth_user(user: OptionalUser):
+    """Optional auth gate matching audio.py's pattern."""
+    if settings.auth_required and user is None:
+        raise HTTPException(
+            status_code=401,
+            detail="authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return user
 
 _MAX_SAMPLES_PER_LIBRARY = 80
 _MAX_SAMPLE_BYTES = 5 * 1024 * 1024  # 5 MB per sample
@@ -79,6 +93,7 @@ async def create_library(
     files: list[UploadFile] = File(default=[]),
     zip_file: UploadFile | None = File(default=None),
     db: Session = Depends(get_db),
+    user: Annotated[object | None, Depends(_auth_user)] = None,
 ) -> LibraryInfo:
     """Upload a new library.
 
@@ -153,7 +168,11 @@ async def create_library(
 
 
 @router.post("/libraries/{library_id}/activate", response_model=LibraryInfo)
-def activate_library(library_id: int, db: Session = Depends(get_db)) -> LibraryInfo:
+def activate_library(
+    library_id: int,
+    db: Session = Depends(get_db),
+    user: Annotated[object | None, Depends(_auth_user)] = None,
+) -> LibraryInfo:
     info = sample_library_service.SampleLibraryService().activate(db, library_id)
     if info is None:
         raise HTTPException(status_code=404, detail="library not found")
@@ -165,6 +184,7 @@ def update_library(
     library_id: int,
     payload: UpdateLibrary,
     db: Session = Depends(get_db),
+    user: Annotated[object | None, Depends(_auth_user)] = None,
 ) -> LibraryInfo:
     """Update a sample library's name and/or description."""
     try:
@@ -182,7 +202,11 @@ def update_library(
 
 
 @router.delete("/libraries/{library_id}", status_code=204)
-def delete_library(library_id: int, db: Session = Depends(get_db)) -> Response:
+def delete_library(
+    library_id: int,
+    db: Session = Depends(get_db),
+    user: Annotated[object | None, Depends(_auth_user)] = None,
+) -> Response:
     deleted = sample_library_service.SampleLibraryService().delete_library(db, library_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="library not found")
@@ -218,6 +242,7 @@ def update_sample(
     midi_note: int | None = Form(default=None),
     label: str | None = Form(default=None),
     db: Session = Depends(get_db),
+    user: Annotated[object | None, Depends(_auth_user)] = None,
 ) -> LibraryInfo:
     """Update a sample's MIDI note or label.
 
@@ -255,6 +280,7 @@ async def add_sample(
     file: UploadFile = File(...),
     midi_note: int | None = Form(default=None),
     db: Session = Depends(get_db),
+    user: Annotated[object | None, Depends(_auth_user)] = None,
 ) -> LibraryInfo:
     """Add a single sample to an existing library.
 
@@ -292,6 +318,7 @@ def batch_remove_samples(
     library_id: int,
     payload: BatchRemoveSamples,
     db: Session = Depends(get_db),
+    user: Annotated[object | None, Depends(_auth_user)] = None,
 ) -> LibraryInfo:
     """Remove multiple samples from a library at once."""
     service = sample_library_service.SampleLibraryService()
@@ -306,6 +333,7 @@ def remove_sample(
     library_id: int,
     sample_id: int,
     db: Session = Depends(get_db),
+    user: Annotated[object | None, Depends(_auth_user)] = None,
 ) -> LibraryInfo:
     """Remove a single sample from a library."""
     service = sample_library_service.SampleLibraryService()
@@ -374,6 +402,7 @@ def _library_response(info) -> Response:  # pragma: no cover - tiny helper
 @router.post("/classify")
 async def classify_sample(
     file: UploadFile = File(...),
+    user: Annotated[object | None, Depends(_auth_user)] = None,
 ) -> dict:
     """Classify a single audio sample using spectral analysis.
 
@@ -436,6 +465,7 @@ async def import_preset_table(
     file: UploadFile = File(...),
     name: str = Form(...),
     db: Session = Depends(get_db),
+    user: Annotated[object | None, Depends(_auth_user)] = None,
 ) -> dict:
     """Import a preset table from a CSV file and save to database.
 
@@ -474,6 +504,7 @@ async def import_soundfont(
     name: str = Form(...),
     description: str | None = Form(default=None),
     db: Session = Depends(get_db),
+    user: Annotated[object | None, Depends(_auth_user)] = None,
 ) -> dict:
     """Import a SoundFont 2 (.sf2) file, extract presets, and save to database."""
     from app.services.soundfont_service import SoundFontService
@@ -532,7 +563,11 @@ def get_active_soundfont(db: Session = Depends(get_db)) -> Response:
 
 
 @router.post("/soundfonts/{soundfont_id}/activate")
-def activate_soundfont(soundfont_id: int, db: Session = Depends(get_db)) -> dict:
+def activate_soundfont(
+    soundfont_id: int,
+    db: Session = Depends(get_db),
+    user: Annotated[object | None, Depends(_auth_user)] = None,
+) -> dict:
     """Activate a SoundFont (deactivates all others)."""
     from app.services.soundfont_service import SoundFontService
 
@@ -544,7 +579,11 @@ def activate_soundfont(soundfont_id: int, db: Session = Depends(get_db)) -> dict
 
 
 @router.delete("/soundfonts/{soundfont_id}", status_code=204)
-def delete_soundfont(soundfont_id: int, db: Session = Depends(get_db)) -> Response:
+def delete_soundfont(
+    soundfont_id: int,
+    db: Session = Depends(get_db),
+    user: Annotated[object | None, Depends(_auth_user)] = None,
+) -> Response:
     """Delete a SoundFont and all its presets."""
     from app.services.soundfont_service import SoundFontService
 
