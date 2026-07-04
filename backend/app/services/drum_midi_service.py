@@ -605,6 +605,8 @@ class DrumMidiService:
     def _write_midi(path: Path, hits: list[DrumHit], *, bpm: float, track_name: str) -> None:
         from mido import Message, MetaMessage, MidiFile, MidiTrack, bpm2tempo, second2tick
 
+        from app.services.midi_cc import gm_setup_messages
+
         ticks_per_beat = 480
         tempo = bpm2tempo(bpm)
         midi = MidiFile(type=1, ticks_per_beat=ticks_per_beat)
@@ -617,17 +619,16 @@ class DrumMidiService:
 
         drum_track = MidiTrack()
         drum_track.append(MetaMessage("track_name", name=track_name, time=0))
-        # GM channel 10 (zero-based 9) for drums. The setup track emits the
-        # standard controller pair (CC7 / CC10 / CC11) plus bank select so
-        # the file sounds consistent across any GM-aware player.
-        drum_track.append(
-            Message("control_change", channel=9, control=0, value=120, time=0)  # bank MSB
-        )
-        drum_track.append(Message("control_change", channel=9, control=32, value=0, time=0))  # bank LSB
-        drum_track.append(Message("program_change", channel=9, program=0, time=0))
-        drum_track.append(Message("control_change", channel=9, control=7, value=112, time=0))  # volume
-        drum_track.append(Message("control_change", channel=9, control=11, value=127, time=0))  # expression
-        drum_track.append(Message("control_change", channel=9, control=10, value=64, time=0))  # pan center
+        for message in gm_setup_messages(
+            channel=9,
+            program=0,
+            bank_msb=0,
+            bank_lsb=0,
+            volume=112,
+            expression=127,
+            pan=64,
+        ):
+            drum_track.append(message)
 
         events = []
         for hit in hits:
