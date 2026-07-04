@@ -10,16 +10,20 @@ five product-grade features described in [`FEATURES.md`](./FEATURES.md).
 ## What Works Now
 
 - FastAPI backend with upload, task list/detail, processing, status, stems, analysis and sample-library endpoints.
-- Celery worker backed by Redis for long-running audio jobs.
-- PostgreSQL schema managed by Alembic migrations.
-- React/Vite frontend for uploading files, following progress, downloading outputs, browsing drum parts and managing sample libraries.
-- 4-stem Demucs separation, per-instrument Basic Pitch MIDI with full GM controllers (CC7/CC10/CC11/CC64, pitch bend), and a 19-part drum detector that emits per-part MIDI plus a JSON event list for the browser-side sample player.
+- Celery worker backed by Redis for long-running audio jobs, with a 30-minute task time limit + soft-time-limit cleanup and a dead-letter queue for failed tasks.
+- PostgreSQL schema managed by Alembic migrations; CI runs the test suite against real Postgres (not just SQLite).
+- React/Vite frontend for uploading files, following progress, downloading outputs, browsing drum parts and managing sample libraries. Route-level code splitting keeps the initial bundle small.
+- 6-stem Demucs separation (`htdemucs_6s`: vocals / drums / bass / other / piano / guitar), per-instrument Basic Pitch MIDI with full GM controllers (CC7/CC10/CC11/CC64/CC74/CC91/CC93, pitch bend), and a 19-part drum detector that emits per-part MIDI plus a JSON event list for the browser-side sample player.
+- Velocity-layered sample libraries: filenames like `kick_pp.wav` / `snare_ff.wav` map to MIDI velocity ranges so the front-end picks the right sample per hit strength.
 - A web-audio sample player that decodes user-uploaded drum samples and re-renders the detected hits through the active sample library.
 - Local fallback paths for development when Demucs or Basic Pitch cannot produce full-quality output.
 - **User accounts**: bcrypt + HS256 JWTs (access + refresh), per-user task ownership, per-user quotas (active tasks + upload bytes). Auth is **opt-in** via `AUTH_REQUIRED` so existing e2e keeps working; flip it on in any environment real users can reach.
-- **Live progress over WebSocket**: `WS /api/ws/tasks/{id}/progress` publishes a `snapshot` then relays every `task:{id}` pub/sub message from the worker. The frontend patches the React Query cache in place — no more "wait 1.5 s for the next poll".
+- **Live progress over WebSocket**: `WS /api/ws/tasks/{id}/progress` publishes a `snapshot` then relays every `task:{id}` pub/sub message from the worker. The frontend patches the React Query cache in place — no more "wait 1.5 s for the next poll". Per-IP connection cap and ownership check enforced.
 - **Health probes + metrics**: `GET /healthz` (liveness), `GET /readyz` (probes Postgres + Redis), `GET /metrics` (Prometheus exposition with a per-status task gauge).
-- **CI on every PR**: GitHub Actions runs the backend pytest suite, type-checks + builds the frontend, and runs the Playwright e2e flow against Postgres + Redis service containers.
+- **LLM commentary**: `llm_service.py` ships a mock provider and an OpenAI-compatible provider, rendered in the UI as a `CommentaryCard`.
+- **i18n + dark mode**: react-i18next (zh/en) with localStorage persistence; class-based dark mode with cross-tab sync.
+- **Security hardening**: Redis-backed rate limiting on login/register/upload/task endpoints, zip-bomb protection, upload size limits, non-root Docker user, Docker compose resource limits (CPU + memory).
+- **CI on every PR**: GitHub Actions runs the backend pytest suite against Postgres + Redis service containers, runs the frontend Vitest unit tests, type-checks + builds the frontend, and runs the Playwright e2e flow.
 - **Production deployment docs**: see [`DEPLOY.md`](./DEPLOY.md) for the compose path and the bare-metal systemd + nginx path, plus a production hardening checklist.
 
 ## Architecture
@@ -34,7 +38,7 @@ Processing flow:
 1. `POST /api/audio/upload` stores the audio under `storage/uploads/<task_id>/`.
 2. `POST /api/tasks/{task_id}/process` queues a Celery job.
 3. The worker:
-   - runs Demucs → 4 stems (vocals / drums / bass / other)
+   - runs Demucs → 6 stems (vocals / drums / bass / other / piano / guitar)
    - runs the instrument classifier on `other` → per-instrument stems
    - runs Basic Pitch → per-instrument MIDI with full GM controllers
    - runs the drum detector → 19 per-part MIDI files + `drums_events.json`
@@ -104,7 +108,7 @@ With backend dependencies installed:
 
 ```bash
 cd backend
-.venv/bin/pytest                      # 134 tests covering services, repos, MIDI, drum detection, sample library, auth, WebSocket, health
+.venv/bin/pytest                      # 221 tests covering services, repos, MIDI, drum detection, sample library, auth, WebSocket, rate limiting, health
 python -m compileall app scripts
 ```
 
@@ -112,6 +116,7 @@ With frontend dependencies installed:
 
 ```bash
 cd frontend
+npm run test                          # Vitest unit tests (upload util, ApiError)
 npm run build                         # type-checks the whole TS tree
 ```
 
@@ -152,8 +157,7 @@ Copy `.env.example` to `.env` and adjust as needed.
 ## Current Gaps
 
 - Demucs and Basic Pitch are heavy; first production-quality processing can be slow on CPU-only machines.
-- There is no auth, quota system or per-user task ownership yet.
 - Uploaded files are stored locally; production needs object storage or a managed persistent volume strategy.
-- Analysis is deterministic and local; `llm_service.py` is still a placeholder for a future LLM commentary pass.
+- Frontend test coverage is limited to pure utils and the API client layer; component-level tests are still TODO.
 
 See [`FEATURES.md`](./FEATURES.md) for the full product-level feature breakdown.
