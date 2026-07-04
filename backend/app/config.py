@@ -151,6 +151,19 @@ class Settings(BaseSettings):
     # can reconnect and re-snapshot.
     ws_max_lifetime_seconds: int = 1800  # 30 minutes
 
+    # ---- database pool -----------------------------------------------------
+    # SQLAlchemy connection-pool sizing. `pool_size` is the steady-state
+    # number of connections held open per engine; `max_overflow` is the
+    # number of extra connections allowed under burst load before
+    # requests block. `pool_recycle` discards a connection after this
+    # many seconds so we never hand out a connection that the server has
+    # already closed (Postgres' default `idle_session_timeout` is 0 but
+    # `tcp_keepalive` is what catches dead peers — recycling is the
+    # belt-and-suspenders complement to `pool_pre_ping`).
+    db_pool_size: int = 10
+    db_max_overflow: int = 20
+    db_pool_recycle_seconds: int = 60 * 30  # 30 minutes
+
     # ---- celery / redis ----------------------------------------------------
     # The Celery broker (queue transport) and result backend share the same
     # Redis instance by default. Override `celery_broker_url` /
