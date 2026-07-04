@@ -41,8 +41,8 @@ from .drum_midi_service import (
     DrumMidiService,
     _GM_DRUM_NOTES,
     _NOTE_LENGTHS_SECONDS,
-    _velocity_from_strength,
 )
+from .midi_cc import velocity_from_strength
 
 logger = logging.getLogger(__name__)
 
@@ -174,7 +174,7 @@ class ADTDrumService:
             # Velocity is not part of the ADTOS contract; we derive it
             # from the model's confidence so soft predictions produce
             # softer hits in the GM velocity curve.
-            velocity = _velocity_from_strength(adt.confidence)
+            velocity = velocity_from_strength(adt.confidence)
             drum_hits.append(
                 DrumHit(
                     time_s=float(adt.time_s),

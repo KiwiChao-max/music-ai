@@ -18,6 +18,8 @@ CC reference:
 """
 from __future__ import annotations
 
+import math
+
 from mido import Message
 
 
@@ -85,7 +87,5 @@ def sustain_messages(channel: int, *, down_at: int, up_at: int) -> list[Message]
 
 # Velocity curve: maps a [0, 1] normalized signal to a 1..127 velocity.
 def velocity_from_strength(normalized: float) -> int:
-    import math
-
     normalized = max(0.0, min(1.0, normalized))
     return max(35, min(127, int(round(40 + 87 * math.sqrt(normalized)))))

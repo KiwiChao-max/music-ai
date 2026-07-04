@@ -33,6 +33,8 @@ import math
 from dataclasses import dataclass
 from pathlib import Path
 
+from .midi_cc import velocity_from_strength
+
 logger = logging.getLogger(__name__)
 
 # Minimum confidence below which the classifier falls back to a
@@ -368,7 +370,7 @@ class DrumMidiService:
                     time_s=float(time_s),
                     part=part,
                     midi_note=_GM_DRUM_NOTES[part],
-                    velocity=_velocity_from_strength(min(1.0, strength / ref_strength)),
+                    velocity=velocity_from_strength(min(1.0, strength / ref_strength)),
                     confidence=confidence,
                     spectral_centroid=centroid,
                     spectral_flux=flux,
@@ -734,8 +736,3 @@ def _dedupe_times(times: list[float], *, min_gap_s: float) -> list[float]:
         if not deduped or time_s - deduped[-1] >= min_gap_s:
             deduped.append(time_s)
     return deduped
-
-
-def _velocity_from_strength(normalized: float) -> int:
-    normalized = max(0.0, min(1.0, normalized))
-    return max(35, min(127, int(round(40 + 87 * math.sqrt(normalized)))))
