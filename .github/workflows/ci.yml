@@ -20,14 +20,32 @@ jobs:
         working-directory: backend
     env:
       # CI runs in dev mode with auth disabled so the existing tests
-      # (and the suite's in-memory SQLite) keep working without a token
-      # dance. Production deployments must set these explicitly.
+      # keep working without a token dance. Production deployments must
+      # set these explicitly.
       APP_ENV: test
       AUTH_REQUIRED: "false"
-      DATABASE_URL: sqlite:///./ci_test.db
+      # Point the test suite at the real Postgres service so
+      # Postgres-specific SQL (enums, timestamptz, array columns) is
+      # exercised before merge. The app's own DATABASE_URL is still set
+      # below for any code path that reads it directly.
+      TEST_DATABASE_URL: postgresql+psycopg2://ci:ci@localhost:5432/music_ai_test
+      DATABASE_URL: postgresql+psycopg2://ci:ci@localhost:5432/music_ai_test
       REDIS_URL: redis://localhost:6379/0
       JWT_SECRET: ci-jwt-secret-do-not-use-in-prod
     services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: music_ai_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d music_ai_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
       redis:
         image: redis:7-alpine
         ports:

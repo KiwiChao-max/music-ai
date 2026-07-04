@@ -7,6 +7,7 @@ sees the same task rows the test inserted.
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 
 import pytest
@@ -29,16 +30,24 @@ PWD = "hunter22hunter"
 
 @pytest.fixture()
 def ws_engine():
-    """Per-test in-memory SQLite engine."""
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-        future=True,
-    )
+    """Per-test DB engine — Postgres when ``TEST_DATABASE_URL`` is set
+    (CI), in-memory SQLite otherwise (local dev)."""
     from app.db.base import Base
     from app.db import models  # noqa: F401  (registers models on Base.metadata)
-    Base.metadata.create_all(engine)
+
+    test_url = os.environ.get("TEST_DATABASE_URL")
+    if test_url:
+        engine = create_engine(test_url, future=True)
+        Base.metadata.drop_all(engine)
+        Base.metadata.create_all(engine)
+    else:
+        engine = create_engine(
+            "sqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+            future=True,
+        )
+        Base.metadata.create_all(engine)
     return engine
 
 

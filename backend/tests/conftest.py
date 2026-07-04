@@ -1,10 +1,11 @@
 """Pytest configuration and shared fixtures.
 
-Strategy: keep the test DB on an in-memory SQLite. The production app targets
-PostgreSQL but every business-logic test in this repo only exercises portable
-SQLAlchemy constructs (BigInteger, JSON, native enum via CHECK constraint,
-DateTime). The Alembic migrations themselves are not run here — the test
-session creates the schema straight from the model metadata.
+Strategy: default to an in-memory SQLite for fast local runs. When the
+env var ``TEST_DATABASE_URL`` is set (e.g. to a Postgres URL in CI), the
+fixtures connect to that database instead, so Postgres-specific SQL
+issues are caught before merge. The Alembic migrations themselves are
+not run here — the test session creates the schema straight from the
+model metadata.
 """
 from __future__ import annotations
 
@@ -27,6 +28,10 @@ os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 from app.config import settings  # noqa: E402  (imports must come after env setup)
 from app.db.base import Base  # noqa: E402
 from app.db import models  # noqa: E402, F401  -- ensure models register on Base.metadata
+
+# When set, the test suite connects to this database instead of in-memory
+# SQLite. Used by CI to run the suite against real Postgres.
+TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
 
 
 @pytest.fixture()
@@ -53,18 +58,38 @@ def storage_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 @pytest.fixture()
 def db_session() -> Generator[Session, None, None]:
-    """In-memory SQLite session bound to a fresh schema for each test."""
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-        future=True,
+    """Per-test DB session.
+
+    * Local dev (no ``TEST_DATABASE_URL``): in-memory SQLite with
+      ``StaticPool`` — fast, no setup, isolated per test.
+    * CI (``TEST_DATABASE_URL`` set): a real Postgres database. Each
+      test drops and recreates the schema from the model metadata so
+      tests stay isolated. Slower, but catches Postgres-specific SQL
+      issues (enum vs CHECK, array columns, timestamptz, etc.).
+    """
+    if TEST_DATABASE_URL:
+        engine = create_engine(TEST_DATABASE_URL, future=True)
+        # Drop + recreate the schema for each test so tests don't leak
+        # rows into each other. `drop_all` is safe here because the
+        # Postgres DB is dedicated to the test run.
+        Base.metadata.drop_all(engine)
+        Base.metadata.create_all(engine)
+    else:
+        engine = create_engine(
+            "sqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+            future=True,
+        )
+        Base.metadata.create_all(engine)
+
+    SessionTesting = sessionmaker(
+        bind=engine, autoflush=False, autocommit=False, expire_on_commit=False
     )
-    Base.metadata.create_all(engine)
-    SessionTesting = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
     session = SessionTesting()
     try:
         yield session
     finally:
         session.close()
         engine.dispose()
+
