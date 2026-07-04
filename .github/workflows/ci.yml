@@ -79,7 +79,7 @@ jobs:
         run: pytest -q --tb=short --maxfail=3
 
   frontend:
-    name: frontend · tsc + build
+    name: frontend · tsc + vitest + build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -96,6 +96,8 @@ jobs:
         run: npm ci
       - name: Type-check
         run: npx tsc --noEmit
+      - name: Run unit tests
+        run: npm run test
       - name: Build
         # `npm run build` runs `tsc -b && vite build` so we get both
         # type errors and bundle errors in one step.
