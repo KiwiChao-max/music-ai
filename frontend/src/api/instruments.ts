@@ -1,4 +1,4 @@
-import { api } from "./axios";
+import { api, API_BASE_URL } from "./axios";
 
 export interface SampleFileInfo {
   id?: number;
@@ -179,7 +179,7 @@ export const instrumentsApi = {
   removeSample: (libraryId: number, sampleId: number): Promise<SampleLibraryInfo> =>
     api.delete<SampleLibraryInfo>(`/instruments/libraries/${libraryId}/samples/${sampleId}`).then((r) => r.data),
   sampleUrl: (libraryId: number, note: number) =>
-    `/api/instruments/libraries/${libraryId}/files/${note}`,
+    `${API_BASE_URL}/instruments/libraries/${libraryId}/files/${note}`,
   classify: (file: File): Promise<SampleClassification> => {
     const form = new FormData();
     form.append("file", file);
@@ -234,5 +234,5 @@ export const instrumentsApi = {
   deleteSoundFont: (id: number): Promise<void> =>
     api.delete(`/instruments/soundfonts/${id}`).then(() => undefined),
   exportLibrary: (libraryId: number): string =>
-    `/api/instruments/libraries/${libraryId}/export`,
+    `${API_BASE_URL}/instruments/libraries/${libraryId}/export`,
 };
