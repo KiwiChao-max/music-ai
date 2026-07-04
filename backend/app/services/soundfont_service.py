@@ -496,38 +496,47 @@ class SoundFontService:
         Handles the common case where each preset header maps to exactly
         one instrument.  Complex SF2 files with multiple zones per preset
         should use sf2utils instead.
+
+        Uses ``mmap`` instead of ``f.read()`` so a 200 MB SF2 file
+        doesn't allocate a 200 MB Python `bytes` object — the OS pages
+        the file in on demand as we touch the phdr chunk.
         """
+        import mmap
+
         presets: list[PresetInfo] = []
 
         try:
             with open(sf2_path, "rb") as f:
-                data = f.read()
+                # `fileno()` gives us the raw OS file descriptor; mmap
+                # maps it into the address space without copying.
+                with mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as data:
+                    if len(data) < 4 or data[:4] != b"RIFF":
+                        return []
 
-            if not data.startswith(b"RIFF"):
-                return []
+                    preset_start = data.find(b"phdr")
+                    if preset_start == -1:
+                        return []
 
-            preset_start = data.find(b"phdr")
-            if preset_start == -1:
-                return []
+                    offset = preset_start + 8
+                    while offset + 38 <= len(data):
+                        name = data[offset:offset+20].decode("ascii", errors="ignore").strip("\x00")
+                        preset = int.from_bytes(data[offset+20:offset+22], "little")
+                        bank = int.from_bytes(data[offset+22:offset+24], "little")
+                        offset += 38
 
-            offset = preset_start + 8
-            while offset + 38 <= len(data):
-                name = data[offset:offset+20].decode("ascii", errors="ignore").strip("\x00")
-                preset = int.from_bytes(data[offset+20:offset+22], "little")
-                bank = int.from_bytes(data[offset+22:offset+24], "little")
-                offset += 38
+                        if name and preset >= 0 and preset <= 127:
+                            bank_msb = (bank >> 8) & 0xFF
+                            bank_lsb = bank & 0xFF
+                            presets.append(PresetInfo(
+                                bank_msb=bank_msb,
+                                bank_lsb=bank_lsb,
+                                program=preset,
+                                name=name,
+                            ))
 
-                if name and preset >= 0 and preset <= 127:
-                    bank_msb = (bank >> 8) & 0xFF
-                    bank_lsb = bank & 0xFF
-                    presets.append(PresetInfo(
-                        bank_msb=bank_msb,
-                        bank_lsb=bank_lsb,
-                        program=preset,
-                        name=name,
-                    ))
-
-        except Exception as exc:
+        except (ValueError, OSError) as exc:
+            # ValueError: empty file (mmap can't map 0 bytes)
+            # OSError: file too large / permission denied
             logger.debug("soundfont: simplified parser failed: %s", exc)
 
         return presets
