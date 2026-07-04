@@ -176,12 +176,30 @@ _BUILTIN_VOICES: dict[str, VoiceMapping] = {
     ),
 }
 
+# XG-specific melodic voice variations. XG uses bank MSB=0 for normal melodic
+# voices and the LSB to select documented variations (0 = base voice = GM
+# fallback, 1 = "Live!"/"Sweet!"/"Stereo" variation, etc.). Stems absent from
+# this table fall through to the GM voice (bank 0:0), which is always a valid
+# XG voice. Channel / volume / pan are inherited from the base voice at apply
+# time, so only label / bank / program need to be set here.
+# Reference: Yamaha XG Specification rev 1.97 voice tables.
+_BUILTIN_XG_MELODIC_VOICES: dict[str, VoiceMapping] = {
+    "original": VoiceMapping("Live! Grand Piano", program=0, bank_msb=0, bank_lsb=1),
+    "piano": VoiceMapping("Live! Grand Piano", program=0, bank_msb=0, bank_lsb=1),
+    "guitar": VoiceMapping("Nylon Guitar", program=24, bank_msb=0, bank_lsb=1),
+    "strings": VoiceMapping("Stereo Strings", program=48, bank_msb=0, bank_lsb=1),
+    # bass / synth / other / vocals: no widely-supported XG variation, keep
+    # the GM voice (bank 0:0) — XG players will still accept it.
+}
 
-def _load_voices_config() -> tuple[dict[str, VoiceMapping], tuple[int, int]]:
-    """Load voice mappings and XG drum bank from the user-editable JSON config.
 
-    Returns (voices, xg_drum_bank). Missing keys fall back to `_BUILTIN_VOICES`
-    and `_DEFAULT_XG_DRUM_BANK`. If the config file is absent or unparseable,
+def _load_voices_config() -> tuple[dict[str, VoiceMapping], tuple[int, int], dict[str, VoiceMapping]]:
+    """Load voice mappings, XG drum bank, and XG melodic voices from the
+    user-editable JSON config.
+
+    Returns ``(voices, xg_drum_bank, xg_melodic_voices)``. Missing keys fall
+    back to `_BUILTIN_VOICES`, `_DEFAULT_XG_DRUM_BANK`, and
+    `_BUILTIN_XG_MELODIC_VOICES`. If the config file is absent or unparseable,
     the built-in defaults are returned as-is.
 
     The result is cached for the lifetime of the process via
@@ -194,11 +212,15 @@ def _load_voices_config() -> tuple[dict[str, VoiceMapping], tuple[int, int]]:
 
 
 @lru_cache(maxsize=1)
-def _load_voices_config_cached() -> tuple[dict[str, VoiceMapping], tuple[int, int]]:
+def _load_voices_config_cached() -> tuple[dict[str, VoiceMapping], tuple[int, int], dict[str, VoiceMapping]]:
     try:
         raw = json.loads(_VOICES_CONFIG_PATH.read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError, OSError):
-        return dict(_BUILTIN_VOICES), _DEFAULT_XG_DRUM_BANK
+        return (
+            dict(_BUILTIN_VOICES),
+            _DEFAULT_XG_DRUM_BANK,
+            dict(_BUILTIN_XG_MELODIC_VOICES),
+        )
 
     # --- XG drum bank ---
     drum_bank_raw = raw.get("xg_drum_bank", {}) if isinstance(raw, dict) else {}
@@ -211,7 +233,7 @@ def _load_voices_config_cached() -> tuple[dict[str, VoiceMapping], tuple[int, in
     voices: dict[str, VoiceMapping] = dict(_BUILTIN_VOICES)
     user_voices = raw.get("voices", {}) if isinstance(raw, dict) else {}
     if not isinstance(user_voices, dict):
-        return voices, xg_drum_bank
+        user_voices = {}
 
     for stem_key, entry in user_voices.items():
         if not isinstance(entry, dict):
@@ -232,19 +254,50 @@ def _load_voices_config_cached() -> tuple[dict[str, VoiceMapping], tuple[int, in
             logger.warning("midi-mapping: skipping invalid voice entry for stem=%s", stem_key)
             continue
 
-    return voices, xg_drum_bank
+    # --- XG melodic voice variations ---
+    xg_melodic: dict[str, VoiceMapping] = dict(_BUILTIN_XG_MELODIC_VOICES)
+    user_xg_melodic = raw.get("xg_melodic_voices", {}) if isinstance(raw, dict) else {}
+    if not isinstance(user_xg_melodic, dict):
+        user_xg_melodic = {}
+
+    for stem_key, entry in user_xg_melodic.items():
+        if not isinstance(entry, dict):
+            continue
+        try:
+            xg_melodic[stem_key] = VoiceMapping(
+                label=str(entry.get("label", stem_key)),
+                program=int(entry.get("program", 0)),
+                bank_msb=int(entry.get("bank_msb", 0)),
+                bank_lsb=int(entry.get("bank_lsb", 0)),
+            )
+        except (ValueError, TypeError):
+            logger.warning(
+                "midi-mapping: skipping invalid XG melodic voice entry for stem=%s",
+                stem_key,
+            )
+            continue
+
+    return voices, xg_drum_bank, xg_melodic
 
 
 def _get_voices() -> dict[str, VoiceMapping]:
     """Return the active voice mappings (user config merged over built-in defaults)."""
-    voices, _ = _load_voices_config()
+    voices, _, _ = _load_voices_config()
     return voices
 
 
 def _get_xg_drum_bank() -> tuple[int, int]:
     """Return the configured XG drum bank as (MSB, LSB)."""
-    _, bank = _load_voices_config()
+    _, bank, _ = _load_voices_config()
     return bank
+
+
+def _get_xg_melodic_voices() -> dict[str, VoiceMapping]:
+    """Return the XG-specific melodic voice variations (user config merged
+    over built-in defaults). Stems absent from this dict fall through to
+    the GM voice when applying the XG profile."""
+    _, _, xg_melodic = _load_voices_config()
+    return xg_melodic
 
 
 def midi_profile_from_name(name: str) -> str:
@@ -419,7 +472,7 @@ class MidiMappingService:
 
                 stem_key = _detect_stem_key(source_path.stem, track)
                 base_voice = _get_voices()[stem_key]
-                voice = _voice_for_profile(base_voice, profile)
+                voice = _voice_for_profile(base_voice, stem_key, profile)
                 voice = _apply_soundfont_override(voice, stem_key, overrides_by_stem)
                 if voice.source == "soundfont":
                     applied_overrides.append(
@@ -562,8 +615,26 @@ def _detect_stem_key(source_stem: str, track) -> str:
     return "other"
 
 
-def _voice_for_profile(voice: VoiceMapping, profile: MidiProfile) -> VoiceMapping:
-    if profile is MidiProfile.XG and voice.is_drum:
+def _voice_for_profile(
+    voice: VoiceMapping,
+    stem_key: str,
+    profile: MidiProfile,
+) -> VoiceMapping:
+    """Apply profile-specific bank/program selection on top of the base voice.
+
+    - GM profile: returns the voice unchanged.
+    - XG profile, drum stem: swaps in the configured XG drum bank
+      (`_get_xg_drum_bank`).
+    - XG profile, melodic stem: if a documented XG variation exists for this
+      stem in `_get_xg_melodic_voices`, the bank/program/label are replaced
+      while the channel / volume / expression / pan (mixer settings) are
+      preserved from the base voice. Stems without an XG variation fall
+      through to the GM voice (bank 0:0), which is always a valid XG voice.
+    """
+    if profile is not MidiProfile.XG:
+        return voice
+
+    if voice.is_drum:
         msb, lsb = _get_xg_drum_bank()
         return VoiceMapping(
             label=voice.label,
@@ -576,7 +647,25 @@ def _voice_for_profile(voice: VoiceMapping, profile: MidiProfile) -> VoiceMappin
             expression=voice.expression,
             pan=voice.pan,
         )
-    return voice
+
+    # XG melodic stem — look up a documented XG variation voice.
+    xg_voice = _get_xg_melodic_voices().get(stem_key)
+    if xg_voice is None:
+        return voice
+    # Preserve the mixer settings (channel / volume / expression / pan) from
+    # the base voice — those are per-stem mixer decisions, not part of the
+    # voice selection.
+    return VoiceMapping(
+        label=xg_voice.label,
+        program=xg_voice.program,
+        bank_msb=xg_voice.bank_msb,
+        bank_lsb=xg_voice.bank_lsb,
+        channel=voice.channel,
+        is_drum=False,
+        volume=voice.volume,
+        expression=voice.expression,
+        pan=voice.pan,
+    )
 
 
 def _resolve_channel(

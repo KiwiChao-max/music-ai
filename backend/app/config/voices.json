@@ -5,6 +5,33 @@
     "msb": 127,
     "lsb": 0
   },
+  "xg_melodic_voices": {
+    "_comment": "XG-specific melodic voice variations (bank MSB=0, LSB selects variation). LSB=0 is the GM fallback voice; LSB=1 typically selects the 'Live!'/'Sweet!'/'Stereo' variation. Stems not listed here fall through to the GM voice (bank 0:0). Reference: Yamaha XG Specification rev 1.97.",
+    "original": {
+      "label": "Live! Grand Piano",
+      "program": 0,
+      "bank_msb": 0,
+      "bank_lsb": 1
+    },
+    "piano": {
+      "label": "Live! Grand Piano",
+      "program": 0,
+      "bank_msb": 0,
+      "bank_lsb": 1
+    },
+    "guitar": {
+      "label": "Nylon Guitar",
+      "program": 24,
+      "bank_msb": 0,
+      "bank_lsb": 1
+    },
+    "strings": {
+      "label": "Stereo Strings",
+      "program": 48,
+      "bank_msb": 0,
+      "bank_lsb": 1
+    }
+  },
   "voices": {
     "original": {
       "label": "Acoustic Grand Piano",
