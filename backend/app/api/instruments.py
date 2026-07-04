@@ -59,6 +59,8 @@ def _auth_user(user: OptionalUser):
 _MAX_SAMPLES_PER_LIBRARY = 80
 _MAX_SAMPLE_BYTES = 5 * 1024 * 1024  # 5 MB per sample
 _MAX_TOTAL_BYTES = 80 * 1024 * 1024  # 80 MB total per upload
+_MAX_SF2_BYTES = 200 * 1024 * 1024  # 200 MB per SF2 upload
+_MAX_CSV_BYTES = 1 * 1024 * 1024    # 1 MB per CSV preset table
 
 
 def _safe_zip_read(
@@ -447,6 +449,11 @@ async def classify_sample(
     from app.services.sample_classifier_service import SampleClassifierService
 
     content = await file.read()
+    if len(content) > _MAX_SAMPLE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"sample exceeds {_MAX_SAMPLE_BYTES} bytes",
+        )
     classifier = SampleClassifierService()
     result = classifier.classify_bytes(content, file.filename or "sample.wav")
 
@@ -514,6 +521,11 @@ async def import_preset_table(
     from app.services.soundfont_service import SoundFontService
 
     content = await file.read()
+    if len(content) > _MAX_CSV_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"CSV file exceeds {_MAX_CSV_BYTES} bytes",
+        )
     service = SoundFontService()
     presets = service.import_preset_table(content, name)
 
@@ -544,6 +556,11 @@ async def import_soundfont(
     from app.services.soundfont_service import SoundFontService
 
     content = await file.read()
+    if len(content) > _MAX_SF2_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"SF2 file exceeds {_MAX_SF2_BYTES} bytes",
+        )
     service = SoundFontService()
     sf_info = service.import_soundfont(name, content, description)
 
