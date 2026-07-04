@@ -54,6 +54,15 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+    # Resource limits keep a single API container from starving the
+    # worker or DB. Tune via env in compose.override.yml for your host.
+    deploy:
+      resources:
+        limits:
+          cpus: "${API_CPUS:-2.0}"
+          memory: ${API_MEMORY:-1g}
+        reservations:
+          memory: 256m
     depends_on:
       postgres:
         condition: service_healthy
@@ -76,6 +85,16 @@ services:
     volumes:
       - backend_storage:/app/storage
     command: ["celery", "-A", "app.celery_app:celery", "worker", "--loglevel=info", "--concurrency=2"]
+    # Demucs is memory-hungry: a 5-minute track peaks ~3 GB resident.
+    # Cap at 4 GB so an OOM kills the worker (and the task is
+    # re-queued via `task_reject_on_worker_lost`) rather than the host.
+    deploy:
+      resources:
+        limits:
+          cpus: "${WORKER_CPUS:-2.0}"
+          memory: ${WORKER_MEMORY:-4g}
+        reservations:
+          memory: 512m
     depends_on:
       postgres:
         condition: service_healthy
