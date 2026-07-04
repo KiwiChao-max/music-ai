@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -462,6 +462,23 @@ function LibraryCard({ library, isActive, onActivate, onDelete, onUpdated, drumT
       audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
     }
     return audioCtxRef.current;
+  }, []);
+
+  // Close the AudioContext on unmount so we don't leak a browser audio
+  // graph per library card. Each card that the user expanded+played a
+  // sample on would otherwise keep its context (and decoded buffers)
+  // alive for the lifetime of the page.
+  useEffect(() => {
+    return () => {
+      const ctx = audioCtxRef.current;
+      if (ctx) {
+        audioCtxRef.current = null;
+        bufferCacheRef.current.clear();
+        void ctx.close().catch(() => {
+          // ignore — already closed or suspended
+        });
+      }
+    };
   }, []);
 
   const playSample = useCallback(
