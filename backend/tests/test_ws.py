@@ -69,6 +69,11 @@ def ws_session_factory(ws_engine):
 @pytest.fixture()
 def client(ws_session_factory) -> TestClient:
     """Plain TestClient — no DB dependency overrides needed for WS."""
+    # Reset the per-IP connection counter so a leaked slot in a prior
+    # test can't poison the next one.
+    from app.api import ws as ws_mod
+    with ws_mod._ws_lock:
+        ws_mod._ws_connections.clear()
     return TestClient(app)
 
 
@@ -249,6 +254,94 @@ def test_ws_allows_anonymous_for_legacy_task(
         snapshot = json.loads(ws.receive_text())
         assert snapshot["type"] == "snapshot"
         assert snapshot["task_id"] == task_id
+
+
+def test_ws_rejects_anonymous_for_owned_task(
+    client: TestClient, ws_session_factory
+) -> None:
+    """Anonymous callers (no token) must NOT be able to watch a task
+    that belongs to a user. Previously the ownership check only fired
+    when a token was present, so anonymous clients could subscribe to
+    anyone's task — including ones carrying private error messages."""
+    with ws_session_factory() as db:
+        bob = user_service.create_user(
+            db, email=EMAIL_B, username="bob", password=PWD
+        )
+        db.commit()
+        task = AudioTask(
+            filename="private.wav",
+            status=AudioTaskStatus.UPLOADED,
+            user_id=bob.id,
+        )
+        db.add(task)
+        db.commit()
+        task_id = task.id
+
+    with client.websocket_connect(
+        f"/api/ws/tasks/{task_id}/progress"
+    ) as ws:
+        event = json.loads(ws.receive_text())
+        assert event["type"] == "error"
+        assert event["code"] == "forbidden"
+        with pytest.raises(Exception):
+            ws.receive_text()
+
+
+def test_ws_allows_admin_to_watch_any_task(
+    client: TestClient, ws_session_factory
+) -> None:
+    """Admins can watch any task regardless of ownership."""
+    with ws_session_factory() as db:
+        bob = user_service.create_user(
+            db, email=EMAIL_B, username="bob", password=PWD
+        )
+        db.commit()
+        task = AudioTask(
+            filename="bob_private.wav",
+            status=AudioTaskStatus.UPLOADED,
+            user_id=bob.id,
+        )
+        db.add(task)
+        db.commit()
+        task_id = task.id
+
+    admin_token = _issue_token(1, email="[email protected]", role="admin")
+    with client.websocket_connect(
+        f"/api/ws/tasks/{task_id}/progress?token={admin_token}"
+    ) as ws:
+        snapshot = json.loads(ws.receive_text())
+        assert snapshot["type"] == "snapshot"
+        assert snapshot["task_id"] == task_id
+
+
+# ---- connection limits ---------------------------------------------------
+def test_ws_rejects_too_many_connections_per_ip(
+    client: TestClient, ws_session_factory, monkeypatch
+) -> None:
+    """When the per-IP concurrent-connection cap is 0, any connect is
+    rejected with a `too_many_connections` error and closed."""
+    from app.api import ws as ws_mod
+
+    monkeypatch.setattr(ws_mod.settings, "ws_max_connections_per_ip", 0)
+
+    with ws_session_factory() as db:
+        task = AudioTask(
+            filename="legacy.wav",
+            status=AudioTaskStatus.UPLOADED,
+            user_id=None,
+        )
+        db.add(task)
+        db.commit()
+        task_id = task.id
+
+    with client.websocket_connect(
+        f"/api/ws/tasks/{task_id}/progress"
+    ) as ws:
+        event = json.loads(ws.receive_text())
+        assert event["type"] == "error"
+        assert event["code"] == "too_many_connections"
+        with pytest.raises(Exception):
+            ws.receive_text()
 
 
 # ---- helpers -------------------------------------------------------------

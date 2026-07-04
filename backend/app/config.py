@@ -140,6 +140,17 @@ class Settings(BaseSettings):
     # and CI where many requests are fired in rapid succession.
     rate_limit_enabled: bool = True
 
+    # ---- websocket ---------------------------------------------------------
+    # Hard cap on concurrent WS progress connections per client IP. Prevents
+    # a single client (or botnet) from opening thousands of sockets and
+    # exhausting the event loop / DB pool.
+    ws_max_connections_per_ip: int = 10
+    # Maximum lifetime of a single WS progress connection, in seconds. A
+    # progress stream that never reaches a terminal state (worker crashed
+    # without publishing) is force-closed after this duration so the client
+    # can reconnect and re-snapshot.
+    ws_max_lifetime_seconds: int = 1800  # 30 minutes
+
     # ---- celery / redis ----------------------------------------------------
     # The Celery broker (queue transport) and result backend share the same
     # Redis instance by default. Override `celery_broker_url` /
