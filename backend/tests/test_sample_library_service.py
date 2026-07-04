@@ -182,6 +182,37 @@ def test_list_libraries_returns_all_libraries_with_files(
     assert {sample.midi_note for sample in by_id[b.id].files} == {38}
 
 
+def test_list_libraries_preserves_velocity_layers_through_schema(
+    db_session: Session, storage_dir: Path
+) -> None:
+    """The SampleFileInfo schema must surface velocity_min/velocity_max.
+
+    Regression test: previously these fields were dropped at the API
+    boundary because SampleFileInfo did not declare them, so the
+    frontend's sample-based drum player could never pick the right
+    velocity layer.
+    """
+    service = SampleLibraryService(root=storage_dir / "sample-libraries")
+    info = service.create_library(
+        db_session,
+        name="Velocity kit",
+        files=[
+            ("kick_vel_001_064.wav", b"soft"),
+            ("kick_vel_065_127.wav", b"hard"),
+        ],
+    )
+    db_session.commit()
+
+    listed = service.list_libraries(db_session)
+    by_id = {lib.id: lib for lib in listed}
+    files = by_id[info.id].files
+    # Both layers present, each carrying its parsed velocity range.
+    ranges = sorted(
+        (sample.velocity_min, sample.velocity_max) for sample in files
+    )
+    assert ranges == [(1, 64), (65, 127)]
+
+
 def test_export_library_returns_mapping(
     db_session: Session, storage_dir: Path
 ) -> None:

@@ -14,6 +14,8 @@ class SampleFileInfo(BaseModel):
     midi_note: int = Field(ge=35, le=81)
     relative_path: str
     velocity_offset: int = 0
+    velocity_min: int = Field(ge=1, le=127, default=1)
+    velocity_max: int = Field(ge=1, le=127, default=127)
 
 
 class UpdateLibrary(BaseModel):
