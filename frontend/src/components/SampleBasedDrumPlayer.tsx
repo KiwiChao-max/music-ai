@@ -113,7 +113,7 @@ export function SampleBasedDrumPlayer({
         if (!cancelled) {
           setState({
             kind: "error",
-            message: err instanceof Error ? err.message : "failed to load samples",
+            message: err instanceof Error ? err.message : t("errors.loadSamples"),
           });
         }
       }
@@ -122,7 +122,7 @@ export function SampleBasedDrumPlayer({
     return () => {
       cancelled = true;
     };
-  }, [library, hasSamples]);
+  }, [library, hasSamples, t]);
 
   // Fetch the event list whenever the URL changes.
   useEffect(() => {
@@ -149,7 +149,7 @@ export function SampleBasedDrumPlayer({
         if (!cancelled) {
           setState({
             kind: "error",
-            message: err instanceof Error ? err.message : "failed to load events",
+            message: err instanceof Error ? err.message : t("errors.loadEvents"),
           });
         }
       }
@@ -157,7 +157,7 @@ export function SampleBasedDrumPlayer({
     return () => {
       cancelled = true;
     };
-  }, [eventsUrl]);
+  }, [eventsUrl, t]);
 
   // Stop all scheduled sources — used on pause and on unmount.
   const stopAllScheduled = useCallback(() => {

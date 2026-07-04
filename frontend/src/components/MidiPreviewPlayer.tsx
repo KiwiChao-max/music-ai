@@ -271,11 +271,11 @@ export function MidiPreviewPlayer({ url }: MidiPreviewPlayerProps) {
       const data = parseMidi(response.data);
       setMidiData(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load MIDI");
+      setError(err instanceof Error ? err.message : t("errors.loadMidi"));
     } finally {
       setIsLoading(false);
     }
-  }, [url, midiData]);
+  }, [url, midiData, t]);
 
   const playFrom = useCallback((fromSec: number) => {
     if (!midiDataRef.current) return;

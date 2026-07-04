@@ -7,12 +7,14 @@
  * go light) and a moon in light mode (click to go dark) — the
  * classic convention.
  */
+import { useTranslation } from "react-i18next";
 import { useDarkMode } from "@/hooks/useDarkMode";
 
 export function ThemeToggle() {
+  const { t } = useTranslation();
   const { theme, toggle } = useDarkMode();
   const isDark = theme === "dark";
-  const label = isDark ? "Switch to light theme" : "Switch to dark theme";
+  const label = isDark ? t("player.switchToLight") : t("player.switchToDark");
 
   return (
     <button

@@ -293,6 +293,14 @@
     "fill": "加花"
   },
   "errors": {
-    "generic": "出错了"
+    "generic": "出错了",
+    "boundary": {
+      "title": "页面出错了",
+      "description": "页面组件渲染失败。应用的其余部分仍可使用——尝试刷新当前视图。",
+      "retry": "重试"
+    },
+    "loadMidi": "MIDI 加载失败",
+    "loadSamples": "采样加载失败",
+    "loadEvents": "事件加载失败"
   }
 }

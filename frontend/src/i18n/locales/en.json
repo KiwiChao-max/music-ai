@@ -293,6 +293,14 @@
     "fill": "Fill"
   },
   "errors": {
-    "generic": "Something went wrong"
+    "generic": "Something went wrong",
+    "boundary": {
+      "title": "Something went wrong",
+      "description": "A page component failed to render. The rest of the app should still work — try reloading this view.",
+      "retry": "Try again"
+    },
+    "loadMidi": "Failed to load MIDI",
+    "loadSamples": "failed to load samples",
+    "loadEvents": "failed to load events"
   }
 }

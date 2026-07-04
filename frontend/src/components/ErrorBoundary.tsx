@@ -8,6 +8,7 @@
  * keeps working.
  */
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import i18next from "i18next";
 
 interface Props {
   children: ReactNode;
@@ -47,11 +48,10 @@ export class ErrorBoundary extends Component<Props, State> {
           className="mx-auto my-12 max-w-md rounded-lg border border-rose-200 bg-rose-50 p-6 text-center"
         >
           <h2 className="text-lg font-semibold text-rose-900">
-            Something went wrong
+            {i18next.t("errors.boundary.title")}
           </h2>
           <p className="mt-2 text-sm text-rose-800">
-            A page component failed to render. The rest of the app should
-            still work — try reloading this view.
+            {i18next.t("errors.boundary.description")}
           </p>
           <p className="mt-3 break-words rounded bg-rose-100 px-2 py-1 text-left font-mono text-xs text-rose-900">
             {this.state.error.message}
@@ -61,7 +61,7 @@ export class ErrorBoundary extends Component<Props, State> {
             onClick={this.reset}
             className="mt-4 inline-flex items-center justify-center rounded-md bg-rose-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-700"
           >
-            Try again
+            {i18next.t("errors.boundary.retry")}
           </button>
         </div>
       );
