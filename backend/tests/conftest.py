@@ -21,6 +21,8 @@ from sqlalchemy.pool import StaticPool
 # anywhere in the test process. The default would resolve to `<repo>/storage`
 # which then leaks test artifacts into the repo tree.
 os.environ.setdefault("STORAGE_DIR", str(Path(__file__).resolve().parent / ".tmp-storage"))
+# Disable rate limiting for the full test suite (many auth/login calls).
+os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 
 from app.config import settings  # noqa: E402  (imports must come after env setup)
 from app.db.base import Base  # noqa: E402

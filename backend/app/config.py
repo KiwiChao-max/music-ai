@@ -135,6 +135,11 @@ class Settings(BaseSettings):
     # (the most common cymbal in a GM kit) without spectral refinement.
     adt_cymbal_confidence_threshold: float = 0.6
 
+    # ---- rate limiting -----------------------------------------------------
+    # When false, the rate-limit middleware is a no-op. Useful for tests
+    # and CI where many requests are fired in rapid succession.
+    rate_limit_enabled: bool = True
+
     # ---- celery / redis ----------------------------------------------------
     # The Celery broker (queue transport) and result backend share the same
     # Redis instance by default. Override `celery_broker_url` /

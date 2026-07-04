@@ -15,10 +15,15 @@ from app.api.instruments import router as instruments_router
 from app.api.tasks import router as tasks_router
 from app.api.ws import router as ws_router
 from app.config import settings
+from app.middleware.rate_limit import RateLimitMiddleware
 
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="music-ai", version="0.1.0")
+
+# Rate limiting must be added before CORS so 429 responses also get
+# CORS headers (middleware order is last-added-first-executed).
+app.add_middleware(RateLimitMiddleware)
 
 if settings.cors_origins:
     app.add_middleware(
