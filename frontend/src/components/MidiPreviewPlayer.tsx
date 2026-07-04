@@ -213,7 +213,7 @@ interface MidiPreviewPlayerProps {
   label?: string;
 }
 
-export function MidiPreviewPlayer({ url, label }: MidiPreviewPlayerProps) {
+export function MidiPreviewPlayer({ url }: MidiPreviewPlayerProps) {
   const { t } = useTranslation();
   const [midiData, setMidiData] = useState<MidiData | null>(null);
   const [isLoading, setIsLoading] = useState(false);

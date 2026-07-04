@@ -274,7 +274,7 @@ export function SampleBasedDrumPlayer({
   const fileCount = library?.files.length ?? 0;
   const layerCount = library?.files.filter(
     (f) => (f.velocity_min ?? 1) > 1 || (f.velocity_max ?? 127) < 127,
-  ).length;
+  ).length ?? 0;
 
   return (
     <section className="space-y-4 rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
