@@ -18,6 +18,7 @@ import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import Enum
+from functools import lru_cache
 from pathlib import Path
 from typing import Mapping
 
@@ -182,7 +183,18 @@ def _load_voices_config() -> tuple[dict[str, VoiceMapping], tuple[int, int]]:
     Returns (voices, xg_drum_bank). Missing keys fall back to `_BUILTIN_VOICES`
     and `_DEFAULT_XG_DRUM_BANK`. If the config file is absent or unparseable,
     the built-in defaults are returned as-is.
+
+    The result is cached for the lifetime of the process via
+    `functools.lru_cache` — the file is small and read on every request
+    that maps a stem to a GM program, so hitting the disk each time is
+    wasteful. Restart the process (or call `_load_voices_config.cache_clear()`)
+    to pick up config edits.
     """
+    return _load_voices_config_cached()
+
+
+@lru_cache(maxsize=1)
+def _load_voices_config_cached() -> tuple[dict[str, VoiceMapping], tuple[int, int]]:
     try:
         raw = json.loads(_VOICES_CONFIG_PATH.read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError, OSError):
