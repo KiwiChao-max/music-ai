@@ -78,6 +78,7 @@ class BasicPitchService:
         min_frequency: float | None,
         max_frequency: float | None,
     ) -> BasicPitchResult:
+        from basic_pitch import ICASSP_2022_MODEL_PATH
         from basic_pitch.inference import predict
 
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -94,19 +95,16 @@ class BasicPitchService:
             min_note_length_ms,
         )
 
-        _, _midi_data, note_events = predict(
+        _, midi_data, note_events = predict(
             str(audio_path),
+            model_or_model_path=ICASSP_2022_MODEL_PATH,
             onset_threshold=onset_threshold,
             frame_threshold=frame_threshold,
             minimum_note_length=min_note_length_ms,
             minimum_frequency=min_frequency,
             maximum_frequency=max_frequency,
-            save_midi=True,
-            midi_path=str(midi_path),
-            sonify_midi=False,
-            save_model_outputs=False,
-            save_notes=False,
         )
+        midi_data.write(str(midi_path))
         note_count = self._write_notes_csv(note_events, notes_csv_path)
 
         # Inject GM setup + expressive CCs into the Basic Pitch output.

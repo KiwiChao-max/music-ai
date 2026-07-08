@@ -201,6 +201,7 @@ function AdviceList({ title, items }: { title: string; items: string[] }) {
 }
 
 function formatInstrumentName(name: string): string {
+  if (!name) return "Unknown";
   return name
     .split("_")
     .map((token) => token.charAt(0).toUpperCase() + token.slice(1))
