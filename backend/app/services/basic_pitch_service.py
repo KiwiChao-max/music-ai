@@ -66,6 +66,15 @@ class BasicPitchService:
                 min_frequency=min_frequency,
                 max_frequency=max_frequency,
             )
+        except Exception as exc:
+            logger.warning("basic-pitch failed: %s; using librosa fallback", exc)
+            return self._transcribe_with_librosa(
+                audio_path,
+                output_dir,
+                min_note_length_ms=min_note_length_ms,
+                min_frequency=min_frequency,
+                max_frequency=max_frequency,
+            )
 
     def _transcribe_with_basic_pitch(
         self,
