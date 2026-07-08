@@ -95,6 +95,11 @@ class MusicSection(BaseModel):
     suggestion: str
 
 
+class DetectedInstrument(BaseModel):
+    instrument: str
+    probability: float
+
+
 class MusicAnalysisResponse(BaseModel):
     bpm: int | None = None
     bpm_confidence: float = 0.0
@@ -117,7 +122,7 @@ class MusicAnalysisResponse(BaseModel):
     commentary: str | None = None
     commentary_model: str | None = None
     commentary_generated_at: str | None = None
-    detected_instruments: list[list] | None = None
+    detected_instruments: list[DetectedInstrument] | None = None
     dominant_instrument: str | None = None
 
     model_config = ConfigDict(extra="ignore")
