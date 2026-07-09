@@ -218,6 +218,7 @@ function UploadCard() {
   });
 
   const handleFilesChange = (files: File[]) => {
+    setError(null);
     setPickedFiles(files);
     if (files.length > 0) {
       classifyFiles.mutate(files);
@@ -299,7 +300,7 @@ function UploadCard() {
           accept=".zip,application/zip"
           multiple={false}
           files={zipFile ? [zipFile] : []}
-          onFiles={(files) => setZipFile(files[0] ?? null)}
+          onFiles={(files) => { setError(null); setZipFile(files[0] ?? null); }}
           inputRef={zipInputRef}
         />
       </div>
@@ -315,26 +316,32 @@ function UploadCard() {
           <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">
             {t("samples.classificationPreview")}
           </h3>
+          <div className="flex items-center gap-4 px-3 py-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">
+            <span className="flex-1">{t("samples.colFile")}</span>
+            <span className="w-32">{t("samples.colType")}</span>
+            <span className="w-12 text-right">{t("samples.colNote")}</span>
+            <span className="w-12 text-right">{t("samples.colConfidence")}</span>
+          </div>
           <ul className="space-y-2 text-xs">
             {pickedFiles.map((file, index) => {
               const classification = classifications.get(file);
               return (
                 <li
                   key={index}
-                  className="flex items-center justify-between gap-4 rounded bg-white px-3 py-2 dark:bg-slate-700"
+                  className="flex items-center gap-4 rounded bg-white px-3 py-2 dark:bg-slate-700"
                 >
-                  <span className="truncate text-slate-700 dark:text-slate-200">
+                  <span className="truncate flex-1 text-slate-700 dark:text-slate-200">
                     {file.name}
                   </span>
                   {classification ? (
                     <>
-                      <span className="font-medium text-slate-900 dark:text-slate-100">
+                      <span className="w-32 truncate font-medium text-slate-900 dark:text-slate-100">
                         {classification.drum_type_label}
                       </span>
-                      <span className="font-mono text-slate-500 dark:text-slate-400">
+                      <span className="w-12 text-right font-mono text-slate-500 dark:text-slate-400">
                         #{classification.midi_note}
                       </span>
-                      <span className={`font-mono ${getConfidenceColor(classification.confidence)}`}>
+                      <span className={`w-12 text-right font-mono ${getConfidenceColor(classification.confidence)}`}>
                         {(classification.confidence * 100).toFixed(0)}%
                       </span>
                     </>
