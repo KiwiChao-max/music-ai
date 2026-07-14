@@ -158,7 +158,7 @@ function AnalysisPanel({ analysis }: { analysis: MusicAnalysis }) {
                   {formatRange(section.start, section.end)} ·{" "}
                   {t("detail.analysis.density", { value: section.density })}
                 </p>
-                <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{section.suggestion}</p>
+                <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{parseI18n(section.suggestion, t)}</p>
               </div>
             ))}
           </div>
@@ -177,7 +177,7 @@ function AnalysisPanel({ analysis }: { analysis: MusicAnalysis }) {
           </h3>
           <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-amber-900 dark:text-amber-200">
             {analysis.warnings.map((warning) => (
-              <li key={warning}>{warning}</li>
+              <li key={warning}>{parseI18n(warning, t)}</li>
             ))}
           </ul>
         </div>
@@ -187,13 +187,14 @@ function AnalysisPanel({ analysis }: { analysis: MusicAnalysis }) {
 }
 
 function AdviceList({ title, items }: { title: string; items: string[] }) {
+  const { t } = useTranslation();
   if (items.length === 0) return null;
   return (
     <div className="rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 p-4">
       <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{title}</h3>
       <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700 dark:text-slate-300">
         {items.map((item) => (
-          <li key={item}>{item}</li>
+          <li key={item}>{parseI18n(item, t)}</li>
         ))}
       </ul>
     </div>
@@ -205,6 +206,23 @@ function formatInstrumentName(name: string): string {
     .split("_")
     .map((token) => token.charAt(0).toUpperCase() + token.slice(1))
     .join(" ");
+}
+
+function parseI18n(item: string, t: (key: string, params?: Record<string, string>) => string): string {
+  if (!item.startsWith("$")) {
+    return item;
+  }
+  // Format: $key||param1||param2||...
+  const parts = item.slice(1).split("||");
+  const key = `analysis.${parts[0]}`;
+  if (parts.length === 1) {
+    return t(key);
+  }
+  const params: Record<string, string> = {};
+  parts.slice(1).forEach((p, i) => {
+    params[`p${i + 1}`] = p;
+  });
+  return t(key, params);
 }
 
 function DetectedInstrumentsPanel({

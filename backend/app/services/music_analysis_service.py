@@ -102,7 +102,7 @@ class MusicAnalysisService:
     def analyze_notes(self, notes: list[NoteEvent]) -> MusicAnalysis:
         warnings: list[str] = []
         if not notes:
-            warnings.append("No notes were detected, so the analysis is a placeholder.")
+            warnings.append(_i18n("warn_no_notes"))
             return MusicAnalysis(
                 bpm=None,
                 bpm_confidence=0.0,
@@ -114,8 +114,8 @@ class MusicAnalysisService:
                 pitch_range=None,
                 chords=[],
                 sections=[],
-                instrumentation=["Try a clean piano or guitar source to improve pitch detection."],
-                arrangement=["Run the analysis again after a stronger Audio To MIDI result is available."],
+                instrumentation=[_i18n("no_notes_instrumentation")],
+                arrangement=[_i18n("no_notes_arrangement")],
                 warnings=warnings,
             )
 
@@ -128,11 +128,11 @@ class MusicAnalysisService:
         pitch_range = f"{_pitch_name(min(n.pitch for n in notes))}-{_pitch_name(max(n.pitch for n in notes))}"
 
         if len(notes) < 8:
-            warnings.append("Only a few notes were detected; BPM, key and chord confidence may be low.")
+            warnings.append(_i18n("warn_few_notes"))
         if key_confidence < 0.18:
-            warnings.append("Key confidence is low because the pitch-class distribution is ambiguous.")
+            warnings.append(_i18n("warn_low_key_confidence"))
         if bpm is None:
-            warnings.append("BPM could not be estimated from note onsets.")
+            warnings.append(_i18n("warn_no_bpm"))
 
         instrumentation = _instrumentation_advice(notes, key_name, scale)
         arrangement = _arrangement_advice(notes, bpm, key_name, scale, sections, chords)
@@ -314,6 +314,13 @@ def _name_chord(notes: list[NoteEvent]) -> tuple[str | None, float]:
     return best[1], max(0.0, min(1.0, best[0]))
 
 
+def _i18n(key: str, *params: str) -> str:
+    """Build an i18n-friendly advice string: $key||param1||param2||..."""
+    if params:
+        return "$" + key + "||" + "||".join(params)
+    return "$" + key
+
+
 def _instrumentation_advice(notes: list[NoteEvent], key_name: str | None, scale: str | None) -> list[str]:
     low = sum(1 for note in notes if note.pitch < 48)
     mid = sum(1 for note in notes if 48 <= note.pitch <= 72)
@@ -322,22 +329,22 @@ def _instrumentation_advice(notes: list[NoteEvent], key_name: str | None, scale:
     advice = []
 
     if low / total < 0.18:
-        advice.append("Add a simple electric bass or synth bass layer to anchor the low end.")
+        advice.append(_i18n("bass_add"))
     else:
-        advice.append("Keep bass focused and avoid doubling too many low notes below C2.")
+        advice.append(_i18n("bass_focus"))
 
     if mid / total >= 0.45:
-        advice.append("Use piano, clean guitar, or warm pad for the main harmonic body.")
+        advice.append(_i18n("midrange_use"))
     else:
-        advice.append("Add midrange chords with piano or strings so the arrangement feels fuller.")
+        advice.append(_i18n("midrange_add"))
 
     if high / total >= 0.22:
-        advice.append("Use bells, pluck, or light strings to support the existing high-register motion.")
+        advice.append(_i18n("high_use"))
     else:
-        advice.append("Add a small top-line counter melody after the first section.")
+        advice.append(_i18n("high_add"))
 
     if key_name and scale:
-        advice.append(f"Keep lead and pad material close to {key_name} {scale} for a coherent first pass.")
+        advice.append(_i18n("key_center", key_name, scale))
     return advice
 
 
@@ -352,42 +359,42 @@ def _arrangement_advice(
     advice = []
     if bpm:
         groove = "half-time" if bpm >= 145 else "steady 4/4" if bpm >= 95 else "laid-back"
-        advice.append(f"Start with a {groove} drum groove around {bpm} BPM, then vary hats between sections.")
+        advice.append(_i18n("drum_groove", groove, str(bpm)))
     else:
-        advice.append("Set a click manually first; the detected onsets were not regular enough for BPM locking.")
+        advice.append(_i18n("click_manual"))
 
     if chords:
         progression = " - ".join(chord.chord for chord in chords[:4])
-        advice.append(f"Use the first chord loop as the harmonic motif: {progression}.")
+        advice.append(_i18n("chord_motif", progression))
     elif key_name and scale:
-        advice.append(f"Build a four-bar progression in {key_name} {scale}; start with tonic, fifth, sixth, fourth.")
+        advice.append(_i18n("build_progression", key_name, scale))
 
     if sections:
         low_sections = [section.label for section in sections if section.energy == "low"]
         high_sections = [section.label for section in sections if section.energy == "high"]
         if low_sections:
-            advice.append(f"Keep section {low_sections[0]} sparse, then introduce bass or drums as the lift.")
+            advice.append(_i18n("sparse_intro", low_sections[0]))
         if high_sections:
-            advice.append(f"Treat section {high_sections[0]} as the hook or chorus and widen the stereo image there.")
+            advice.append(_i18n("hook_chorus", high_sections[0]))
 
     avg_velocity = sum(note.velocity for note in notes) / max(1, len(notes))
     if avg_velocity < 55:
-        advice.append("Raise MIDI velocities or add compression because the transcription is dynamically soft.")
+        advice.append(_i18n("velocity_soft"))
     elif avg_velocity > 100:
-        advice.append("Humanize velocities downward in dense passages to avoid a stiff MIDI feel.")
+        advice.append(_i18n("velocity_hard"))
     else:
-        advice.append("Keep velocity variation; it is in a usable range for expressive playback.")
+        advice.append(_i18n("velocity_ok"))
     return advice
 
 
 def _section_suggestion(index: int, energy: str, note_count: int) -> str:
     if index == 0 and energy == "low":
-        return "Use as intro: start with pad or piano, delay full drums."
+        return _i18n("section_intro")
     if energy == "high":
-        return "Use as hook: add drums, bass and a wider lead/pad layer."
+        return _i18n("section_hook")
     if note_count < 4:
-        return "Sparse material: consider a fill, pickup, or transition effect."
-    return "Use as verse/bridge material with moderate accompaniment."
+        return _i18n("section_sparse")
+    return _i18n("section_verse")
 
 
 def _profile_score(histogram: list[float], profile: list[float]) -> float:

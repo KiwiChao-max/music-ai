@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { api } from "@/api/axios";
+import axios from "axios";
 
 interface MidiNote {
   note: number;
@@ -267,7 +267,7 @@ export function MidiPreviewPlayer({ url }: MidiPreviewPlayerProps) {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await api.get<ArrayBuffer>(url, { responseType: "arraybuffer" });
+      const response = await axios.get<ArrayBuffer>(url, { responseType: "arraybuffer" });
       const data = parseMidi(response.data);
       setMidiData(data);
     } catch (err) {
@@ -414,7 +414,7 @@ export function MidiPreviewPlayer({ url }: MidiPreviewPlayerProps) {
       >
         <div className="h-full bg-indigo-500 transition-all" style={{ width: `${pct}%` }} aria-hidden="true" />
       </div>
-      {error && <span className="text-[10px] text-red-500">{t("player.playerError")}</span>}
+      {error && <span className="text-[10px] text-red-500" title={error}>{t("player.playerError")}: {error}</span>}
     </div>
   );
 }
