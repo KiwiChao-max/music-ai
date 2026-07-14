@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { instrumentsApi, type SampleLibraryInfo } from "@/api/instruments";
-import { api } from "@/api/axios";
+import { api, ApiError } from "@/api/axios";
 
 interface DrumEvent {
   t: number; // seconds from start
@@ -111,10 +111,14 @@ export function SampleBasedDrumPlayer({
         layerMetaRef.current = meta;
       } catch (err) {
         if (!cancelled) {
-          setState({
-            kind: "error",
-            message: err instanceof Error ? err.message : t("errors.loadSamples"),
-          });
+          if (err instanceof ApiError && err.status === 404) {
+            // Sample file not found on disk — skip silently.
+          } else {
+            setState({
+              kind: "error",
+              message: err instanceof Error ? err.message : t("errors.loadSamples"),
+            });
+          }
         }
       }
     })();
@@ -147,10 +151,15 @@ export function SampleBasedDrumPlayer({
         setState({ kind: "ready" });
       } catch (err) {
         if (!cancelled) {
-          setState({
-            kind: "error",
-            message: err instanceof Error ? err.message : t("errors.loadEvents"),
-          });
+          // 404 means the track simply has no drum events — not a real error.
+          if (err instanceof ApiError && err.status === 404) {
+            setState({ kind: "idle" });
+          } else {
+            setState({
+              kind: "error",
+              message: err instanceof Error ? err.message : t("errors.loadEvents"),
+            });
+          }
         }
       }
     })();

@@ -90,6 +90,12 @@ export function SampleLibraryPage() {
       queryClient.invalidateQueries({ queryKey: QUERY_KEY });
     },
   });
+  const deactivate = useMutation({
+    mutationFn: (id: number) => instrumentsApi.deactivate(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: QUERY_KEY });
+    },
+  });
   const remove = useMutation({
     mutationFn: (id: number) => instrumentsApi.remove(id),
     onSuccess: () => {
@@ -159,6 +165,7 @@ export function SampleLibraryPage() {
                   library={library}
                   isActive={activeId === library.id}
                   onActivate={() => activate.mutate(library.id)}
+                  onDeactivate={() => deactivate.mutate(library.id)}
                   onDelete={() => {
                     if (confirm(t("samples.deleteConfirm", { name: library.name }))) {
                       remove.mutate(library.id);
@@ -208,20 +215,17 @@ function UploadCard() {
       }
       return results;
     },
-    onSuccess: (results) => {
-      const newClassifications = new Map(classifications);
-      for (const [file, result] of results) {
-        newClassifications.set(file, result);
-      }
-      setClassifications(newClassifications);
-    },
   });
 
   const handleFilesChange = (files: File[]) => {
     setError(null);
     setPickedFiles(files);
     if (files.length > 0) {
-      classifyFiles.mutate(files);
+      classifyFiles.mutate(files, {
+        onSuccess: (results) => {
+          setClassifications(results);
+        },
+      });
     }
   };
 
@@ -446,12 +450,13 @@ interface LibraryCardProps {
   library: SampleLibraryInfo;
   isActive: boolean;
   onActivate: () => void;
+  onDeactivate: () => void;
   onDelete: () => void;
   onUpdated: () => void;
   drumTypes: DrumTypeInfo[];
 }
 
-function LibraryCard({ library, isActive, onActivate, onDelete, onUpdated, drumTypes }: LibraryCardProps) {
+function LibraryCard({ library, isActive, onActivate, onDeactivate, onDelete, onUpdated, drumTypes }: LibraryCardProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
@@ -711,6 +716,15 @@ function LibraryCard({ library, isActive, onActivate, onDelete, onUpdated, drumT
               className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
             >
               {t("samples.activate")}
+            </button>
+          )}
+          {isActive && (
+            <button
+              type="button"
+              onClick={onDeactivate}
+              className="rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-700 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300 dark:hover:bg-amber-900/60"
+            >
+              {t("samples.deactivate")}
             </button>
           )}
           <button

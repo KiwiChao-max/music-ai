@@ -246,6 +246,20 @@ def get_task_analysis(
     # side by side so the UI can show "the AI's take" without a second
     # round-trip.
     payload = dict(analysis)
+    # Normalize detected_instruments: support both
+    # [{"instrument":..., "probability":...}] (dict) and
+    # [[name, prob], ...] (list) formats.
+    raw_instruments = payload.get("detected_instruments")
+    if isinstance(raw_instruments, list) and raw_instruments:
+        normalized = []
+        for item in raw_instruments:
+            if isinstance(item, dict) and "instrument" in item:
+                normalized.append({"instrument": item["instrument"], "probability": item.get("probability", 0)})
+            elif isinstance(item, (list, tuple)) and len(item) >= 2:
+                normalized.append({"instrument": str(item[0]), "probability": float(item[1])})
+            else:
+                normalized.append(item)
+        payload["detected_instruments"] = normalized
     payload["commentary"] = task.commentary
     payload["commentary_model"] = task.commentary_model
     payload["commentary_generated_at"] = (

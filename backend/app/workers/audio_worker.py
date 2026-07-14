@@ -365,8 +365,7 @@ def _split_instruments(
     if target is None or not target.is_file() or target.stat().st_size <= 1024:
         target = audio_path
     try:
-        result = _INSTRUMENT_CLASSIFIER.split_instrument_stem(target, output_dir)
-        return result.detection
+        return _INSTRUMENT_CLASSIFIER.split_instrument_stem(target, output_dir)
     except Exception as exc:  # noqa: BLE001 - downstream steps must still run
         logger.warning("instrument-classifier failed; continuing without split: %s", exc)
         return instrument_classifier_service.InstrumentDetection(
@@ -388,10 +387,7 @@ def _analyze_music(
     import json
     with analysis_path.open("r", encoding="utf-8") as f:
         data = json.load(f)
-    data["detected_instruments"] = [
-        {"instrument": k, "probability": v}
-        for k, v in detection.probabilities.items()
-    ]
+    data["detected_instruments"] = list(detection.probabilities.items())
     data["dominant_instrument"] = detection.dominant
     if mapping is not None:
         data["soundfont_overrides"] = list(mapping.applied_overrides)

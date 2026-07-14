@@ -137,6 +137,12 @@ export const instrumentsApi = {
         `/instruments/libraries/${libraryId}/activate`,
       )
       .then((r) => r.data),
+  deactivate: (libraryId: number) =>
+    api
+      .post<SampleLibraryInfo>(
+        `/instruments/libraries/${libraryId}/deactivate`,
+      )
+      .then((r) => r.data),
   remove: async (libraryId: number): Promise<void> => {
     await api.delete(`/instruments/libraries/${libraryId}`);
   },

@@ -215,6 +215,18 @@ def activate_library(
     return LibraryInfo.model_validate(info)
 
 
+@router.post("/libraries/{library_id}/deactivate", response_model=LibraryInfo)
+def deactivate_library(
+    library_id: int,
+    db: Session = Depends(get_db),
+    user: Annotated[object | None, Depends(_auth_user)] = None,
+) -> LibraryInfo:
+    info = sample_library_service.SampleLibraryService().deactivate(db, library_id)
+    if info is None:
+        raise HTTPException(status_code=404, detail="library not found")
+    return LibraryInfo.model_validate(info)
+
+
 @router.patch("/libraries/{library_id}", response_model=LibraryInfo)
 def update_library(
     library_id: int,

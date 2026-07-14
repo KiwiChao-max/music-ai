@@ -201,7 +201,6 @@ function AdviceList({ title, items }: { title: string; items: string[] }) {
 }
 
 function formatInstrumentName(name: string): string {
-  if (!name) return "Unknown";
   return name
     .split("_")
     .map((token) => token.charAt(0).toUpperCase() + token.slice(1))
@@ -590,6 +589,7 @@ export function AudioDetailPage() {
           <SampleBasedDrumPlayer
             eventsUrl={`/storage/outputs/task_${task.id}/drums_events.json`}
             library={activeLibraryQuery.data ?? null}
+            forceShow
           />
 
           {analysisQuery.isLoading && (

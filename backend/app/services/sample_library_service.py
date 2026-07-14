@@ -230,6 +230,15 @@ class SampleLibraryService:
         db.refresh(library)
         return self.get_library(db, library_id)
 
+    def deactivate(self, db: Session, library_id: int) -> LibraryInfo | None:
+        library = db.get(SampleLibrary, library_id)
+        if library is None:
+            return None
+        library.is_active = 0
+        db.commit()
+        db.refresh(library)
+        return self.get_library(db, library_id)
+
     def delete_library(self, db: Session, library_id: int) -> bool:
         library = db.get(SampleLibrary, library_id)
         if library is None:
