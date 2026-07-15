@@ -124,5 +124,6 @@ class MusicAnalysisResponse(BaseModel):
     commentary_generated_at: str | None = None
     detected_instruments: list[DetectedInstrument] | None = None
     dominant_instrument: str | None = None
+    soundfont_overrides: list[dict] | None = None
 
     model_config = ConfigDict(extra="ignore")
