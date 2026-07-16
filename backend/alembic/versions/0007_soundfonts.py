@@ -6,10 +6,10 @@ Create Date: 2026-07-01
 
 Adds two new tables for SoundFont management:
 
-* ``soundfonts`` — one row per imported SoundFont file or CSV preset table.
+* ``soundfonts`` --- one row per imported SoundFont file or CSV preset table.
   Tracks name, description, type (sf2/preset_table), file path, preset count,
   and active state.
-* ``soundfont_presets`` — individual presets within a SoundFont, keyed by
+* ``soundfont_presets`` --- individual presets within a SoundFont, keyed by
   bank_msb/bank_lsb/program per the MIDI MTC spec.
 """
 from __future__ import annotations

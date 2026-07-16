@@ -52,13 +52,13 @@ def test_build_user_prompt_truncates_chord_list() -> None:
         ]
     }
     prompt = build_user_prompt(analysis)
-    assert "C – Am – F" in prompt
+    assert "C - Am - F" in prompt
 
 
 def test_build_user_prompt_accepts_string_chords() -> None:
-    analysis = {"chord_progression": "C – G – Am – F"}
+    analysis = {"chord_progression": "C - G - Am - F"}
     prompt = build_user_prompt(analysis)
-    assert "Chord progression: C – G – Am – F" in prompt
+    assert "Chord progression: C - G - Am - F" in prompt
 
 
 def test_build_user_prompt_ranks_top_instruments() -> None:

@@ -37,8 +37,8 @@ describe("ApiError", () => {
 });
 
 // Mirror the unexported `buildErrorMessage` logic to lock in the
-// contract callers depend on (detail string → detail, object detail →
-// JSON, no detail → status fallback, no response → "Network error").
+// contract callers depend on (detail string -> detail, object detail ->
+// JSON, no detail -> status fallback, no response -> "Network error").
 describe("buildErrorMessage contract (via ApiError fields)", () => {
   function fakeResponse(detail: unknown, status: number): AxiosResponse {
     return {
@@ -52,7 +52,7 @@ describe("buildErrorMessage contract (via ApiError fields)", () => {
 
   it("uses the `detail` string when present", () => {
     // The interceptor would call buildErrorMessage(fakeResponse("boom", 400))
-    // → "boom". We assert the data shape callers read instead.
+    // -> "boom". We assert the data shape callers read instead.
     const err = new ApiError("boom", 400, { detail: "boom" });
     expect(err.message).toBe("boom");
     expect(err.data).toEqual({ detail: "boom" });

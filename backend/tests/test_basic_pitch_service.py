@@ -4,9 +4,9 @@ The heavy transcription paths (Basic Pitch ONNX, librosa pyin) need real
 audio + model files and are covered by the E2E suite. This module tests
 the pure helpers that the transcription pipeline delegates to:
 
-* `_track_has_notes` — predicate used to decide which tracks get GM setup
-* `_write_notes_csv` — CSV sidecar writer
-* `_inject_gm_setup` — post-processing that prepends GM/CC messages to
+* `_track_has_notes` --- predicate used to decide which tracks get GM setup
+* `_write_notes_csv` --- CSV sidecar writer
+* `_inject_gm_setup` --- post-processing that prepends GM/CC messages to
   every note-bearing track in a Basic Pitch MIDI output
 """
 from __future__ import annotations
@@ -26,7 +26,7 @@ from app.services.basic_pitch_service import (
 def _make_midi_with_note_track(tmp_path: Path, *, with_note: bool = True) -> Path:
     """Build a minimal MIDI file with one note track + one empty track."""
     midi = MidiFile(ticks_per_beat=480)
-    # Track 0: tempo / time-sig only — no notes.
+    # Track 0: tempo / time-sig only --- no notes.
     setup_track = MidiTrack()
     setup_track.append(MetaMessage("track_name", name="setup", time=0))
     setup_track.append(MetaMessage("set_tempo", tempo=500000, time=0))
@@ -87,13 +87,13 @@ def test_write_notes_csv_round_trips_rows(tmp_path: Path) -> None:
 
 def test_write_notes_csv_skips_malformed_events(tmp_path: Path) -> None:
     # Malformed rows (wrong arity) must be skipped via the IndexError
-    # guard in the unpacking try/except — Basic Pitch fallback can emit
+    # guard in the unpacking try/except --- Basic Pitch fallback can emit
     # odd tuples. Note: the conversion `float(start)` is not in the
     # guarded block, so non-numeric strings still raise; that's the
     # documented contract.
     events = [
         (0.0, 1.0, 60, 80),  # valid
-        (1.0, 2.0),  # missing fields — IndexError on unpack
+        (1.0, 2.0),  # missing fields --- IndexError on unpack
         (2.0, 3.0, 64, 90),  # valid
         None,  # TypeError on unpack
     ]
@@ -119,13 +119,13 @@ def test_inject_gm_setup_prepends_cc_messages_to_note_track(tmp_path: Path) -> N
     BasicPitchService._inject_gm_setup(midi_path, stem_key="piano")
 
     midi = MidiFile(str(midi_path))
-    # Track 0 has no notes — must not have any CC inserted.
+    # Track 0 has no notes --- must not have any CC inserted.
     setup_track = midi.tracks[0]
     cc_types = [m.type for m in setup_track if not m.is_meta]
     assert "control_change" not in cc_types
     assert "program_change" not in cc_types
 
-    # Track 1 has notes — must start with track_name, then GM setup, then
+    # Track 1 has notes --- must start with track_name, then GM setup, then
     # the original note_on/note_off.
     note_track = midi.tracks[1]
     msg_types = [m.type for m in note_track]

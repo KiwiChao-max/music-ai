@@ -18,6 +18,7 @@ import { useTranslation } from "react-i18next";
 import WaveSurfer from "wavesurfer.js";
 
 import { usePlayer } from "@/contexts/PlayerContext";
+import { getAccessToken } from "@/api/axios";
 import { MidiPreviewPlayer } from "@/components/MidiPreviewPlayer";
 import { useArtifactUrl } from "@/hooks/useArtifactUrl";
 import type { StemInfo } from "@/types/audio";
@@ -235,9 +236,7 @@ export function StemMixer({ stems }: StemMixerProps) {
       pause();
     } else {
       // Append token for the actual audio element load.
-      const token = (() => {
-        try { return localStorage.getItem("music-ai.token"); } catch { return null; }
-      })();
+      const token = getAccessToken();
       const sep = stem.url.includes("?") ? "&" : "?";
       const authUrl = token ? `${stem.url}${sep}token=${encodeURIComponent(token)}` : stem.url;
       play({ url: authUrl, title: stemLabel(t, stem.name), kind: "audio" });

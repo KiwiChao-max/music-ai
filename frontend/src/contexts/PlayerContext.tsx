@@ -5,7 +5,7 @@
  * the user most recently pushed into it. Pages push tracks in with
  * `usePlayer().play(url, title)`, the bar at the bottom of the screen
  * shows waveform + transport controls, and playback survives route
- * changes — exactly the behaviour a real music app has.
+ * changes --- exactly the behaviour a real music app has.
  *
  * Why a context and not per-page <audio> elements? Three reasons:
  *
@@ -22,7 +22,7 @@
  *     can never disagree.
  *
  * The state machine is intentionally simple: play/pause/stop/seek. No
- * queue, no shuffle, no crossfade — the app already has 4-stem
+ * queue, no shuffle, no crossfade --- the app already has 4-stem
  * separation, an LLM commentary engine, and a sample-based drum
  * player; "Spotify" is not the goal.
  */
@@ -157,7 +157,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
     if (current && current.url === track.url) {
       audio.play().catch(() => {
         // Autoplay can be blocked until the user clicks the page; that's
-        // fine — they'll see the bar in a paused state and can hit play.
+        // fine --- they'll see the bar in a paused state and can hit play.
       });
       return;
     }

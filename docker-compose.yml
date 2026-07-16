@@ -8,7 +8,7 @@ services:
     # Production: PostgreSQL is only reachable from the compose internal
     # network (`api` and `worker`).  If you need host access for
     # diagnostics, uncomment the ports block below and set
-    # POSTGRES_PORT=5432 in your .env — but never in production.
+    # POSTGRES_PORT=5432 in your .env --- but never in production.
     # ports:
     #   - "${POSTGRES_PORT:-5432}:5432"
     volumes:
@@ -26,7 +26,7 @@ services:
     #
     # Production: Redis is internal-only and requires a password.  If you
     # need host access for diagnostics, uncomment the ports block below
-    # and set REDIS_PORT=6379 in your .env — but never in production.
+    # and set REDIS_PORT=6379 in your .env --- but never in production.
     image: redis:7-alpine
     command:
       - "redis-server"
@@ -45,6 +45,41 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # ---------------------------------------------------------------------
+  # MinIO --- S3-compatible object storage (optional, for production).
+  #
+  # Uncomment this block and set ``STORAGE_BACKEND=s3`` in .env to
+  # decouple the API and worker from a shared volume.  With MinIO,
+  # each container talks to the storage service over the compose
+  # network --- no shared mount needed.
+  #
+  # Lifecycle policy: configure a bucket lifecycle rule in the MinIO
+  # console (or via mc admin) to auto-delete objects older than N days.
+  # For MinIO, use:
+  #
+  #   mc ilm rule add --expire-days 30 music-ai/uploads/
+  #   mc ilm rule add --expire-days 30 music-ai/outputs/
+  #
+  # For AWS S3, use the console or CloudFormation/Terraform.
+  # ---------------------------------------------------------------------
+  # minio:
+  #   image: minio/minio:RELEASE.2024-12-11T06-41-27Z
+  #   command: server /data --console-address ":9001"
+  #   environment:
+  #     MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+  #     MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?err}
+  #   ports:
+  #     - "${MINIO_API_PORT:-9000}:9000"
+  #     - "${MINIO_CONSOLE_PORT:-9001}:9001"
+  #   volumes:
+  #     - minio_data:/data
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #   restart: unless-stopped
+
   api:
     build: ./backend
     environment:
@@ -55,6 +90,14 @@ services:
       DB_NAME: ${POSTGRES_DB:-music_ai}
       REDIS_URL: redis://:${REDIS_PASSWORD:?err}@redis:6379/0
       STORAGE_DIR: /app/storage
+      # Storage backend: ``local`` (default) or ``s3``.
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+      STORAGE_S3_ENDPOINT_URL: ${STORAGE_S3_ENDPOINT_URL:-}
+      STORAGE_S3_ACCESS_KEY: ${STORAGE_S3_ACCESS_KEY:-}
+      STORAGE_S3_SECRET_KEY: ${STORAGE_S3_SECRET_KEY:-}
+      STORAGE_S3_BUCKET: ${STORAGE_S3_BUCKET:-music-ai}
+      STORAGE_S3_REGION: ${STORAGE_S3_REGION:-us-east-1}
+      STORAGE_LIFECYCLE_DAYS: ${STORAGE_LIFECYCLE_DAYS:-0}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:
@@ -80,9 +123,26 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  worker:
-    # Celery consumer. No HTTP port; only logs. Reuses the same image as
-    # the API; only the entrypoint differs.
+  # ---------------------------------------------------------------------
+  # Worker: heavy audio pipeline (Demucs / Basic Pitch / ADTOS).
+  #
+  # Consumes the ``audio_heavy`` queue.  Concurrency is *not* hard-coded;
+  # the worker probes CPU / memory / GPU at startup and computes a safe
+  # value automatically (see ``worker_probe.py``).  Set
+  # ``WORKER_CONCURRENCY`` to a positive integer to override.
+  #
+  # Memory protection (three layers):
+  #   1. Pre-task gate (``WORKER_MEMORY_GATE_MB``) --- rejects task if RSS
+  #      is already too high, re-queues to a fresh child.
+  #   2. Post-task recycling (``WORKER_MAX_MEMORY_PER_CHILD_MB``) ---
+  #      gracefully replaces bloated children after the task finishes.
+  #   3. Max-tasks-per-child (``WORKER_MAX_TASKS_PER_CHILD``) ---
+  #      forced recycling after N tasks, belt-and-suspenders.
+  #
+  # GPU: set ``DEMUCS_DEVICE=cuda`` and uncomment the ``deploy`` block
+  # below.  Requires nvidia-container-toolkit on the host.
+  # ---------------------------------------------------------------------
+  worker-heavy:
     build: ./backend
     environment:
       DB_HOST: postgres
@@ -92,16 +152,94 @@ services:
       DB_NAME: ${POSTGRES_DB:-music_ai}
       REDIS_URL: redis://:${REDIS_PASSWORD:?err}@redis:6379/0
       STORAGE_DIR: /app/storage
+      # Storage backend: ``local`` (default) or ``s3``.
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+      STORAGE_S3_ENDPOINT_URL: ${STORAGE_S3_ENDPOINT_URL:-}
+      STORAGE_S3_ACCESS_KEY: ${STORAGE_S3_ACCESS_KEY:-}
+      STORAGE_S3_SECRET_KEY: ${STORAGE_S3_SECRET_KEY:-}
+      STORAGE_S3_BUCKET: ${STORAGE_S3_BUCKET:-music-ai}
+      STORAGE_S3_REGION: ${STORAGE_S3_REGION:-us-east-1}
+      # Worker resource tuning (override via .env).
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-0}
+      WORKER_MAX_MEMORY_PER_CHILD_MB: ${WORKER_MAX_MEMORY_PER_CHILD_MB:-3500}
+      WORKER_MEMORY_GATE_MB: ${WORKER_MEMORY_GATE_MB:-3000}
+      WORKER_MAX_TASKS_PER_CHILD: ${WORKER_MAX_TASKS_PER_CHILD:-10}
+      # Device placement.
+      DEMUCS_DEVICE: ${DEMUCS_DEVICE:-cpu}
+      BASIC_PITCH_DEVICE: ${BASIC_PITCH_DEVICE:-cpu}
+      ADT_DEVICE: ${ADT_DEVICE:-cpu}
+    # When using S3 storage, the shared volume is not needed but kept
+    # for the worker's temp download directory.  Remove this volume
+    # mount and use a tmpfs instead for pure S3 deployments.
     volumes:
       - backend_storage:/app/storage
-    command: ["celery", "-A", "app.celery_app:celery", "worker", "--loglevel=info", "--concurrency=2"]
+    command: >
+      celery -A app.celery_app:celery worker
+      --loglevel=info
+      --queues=audio_heavy
+      --hostname=heavy@%h
     deploy:
       resources:
         limits:
-          cpus: "${WORKER_CPUS:-2.0}"
-          memory: ${WORKER_MEMORY:-4g}
+          cpus: "${WORKER_HEAVY_CPUS:-4.0}"
+          memory: ${WORKER_HEAVY_MEMORY:-8g}
         reservations:
-          memory: 512m
+          cpus: "${WORKER_HEAVY_RESERVE_CPUS:-2.0}"
+          memory: ${WORKER_HEAVY_RESERVE_MEMORY:-4g}
+      # Uncomment for GPU support:
+      #   resources:
+      #     reservations:
+      #       devices:
+      #         - driver: nvidia
+      #           count: 1
+      #           capabilities: [gpu]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------
+  # Worker: lightweight tasks (health checks, future housekeeping).
+  #
+  # Consumes the ``celery`` default queue.  High concurrency is safe
+  # because these tasks are short-lived and low-memory.
+  # ---------------------------------------------------------------------
+  worker-light:
+    build: ./backend
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?err}
+      DB_NAME: ${POSTGRES_DB:-music_ai}
+      REDIS_URL: redis://:${REDIS_PASSWORD:?err}@redis:6379/0
+      STORAGE_DIR: /app/storage
+      # Storage backend: ``local`` (default) or ``s3``.
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+      STORAGE_S3_ENDPOINT_URL: ${STORAGE_S3_ENDPOINT_URL:-}
+      STORAGE_S3_ACCESS_KEY: ${STORAGE_S3_ACCESS_KEY:-}
+      STORAGE_S3_SECRET_KEY: ${STORAGE_S3_SECRET_KEY:-}
+      STORAGE_S3_BUCKET: ${STORAGE_S3_BUCKET:-music-ai}
+      STORAGE_S3_REGION: ${STORAGE_S3_REGION:-us-east-1}
+      # Light workers don't need the heavy models --- keep concurrency
+      # modest but higher than the heavy worker.
+      WORKER_CONCURRENCY: ${WORKER_LIGHT_CONCURRENCY:-4}
+    volumes:
+      - backend_storage:/app/storage
+    command: >
+      celery -A app.celery_app:celery worker
+      --loglevel=info
+      --queues=celery
+      --hostname=light@%h
+    deploy:
+      resources:
+        limits:
+          cpus: "${WORKER_LIGHT_CPUS:-1.0}"
+          memory: ${WORKER_LIGHT_MEMORY:-512m}
+        reservations:
+          memory: 128m
     depends_on:
       postgres:
         condition: service_healthy
@@ -113,3 +251,4 @@ volumes:
   postgres_data:
   backend_storage:
   redis_data:
+  # minio_data:  # uncomment when using S3 storage backend

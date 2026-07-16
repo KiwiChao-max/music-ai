@@ -1,4 +1,4 @@
-"""Shared network utilities — IP extraction, proxy trust, etc."""
+"""Shared network utilities --- IP extraction, proxy trust, etc."""
 
 
 from __future__ import annotations
@@ -42,10 +42,10 @@ def get_client_ip(
     """Extract the real client IP, only trusting ``X-Forwarded-For``
     from known reverse-proxy addresses.
 
-    * ``remote_addr`` — the direct TCP peer (e.g. ``request.client.host``,
+    * ``remote_addr`` --- the direct TCP peer (e.g. ``request.client.host``,
       ``websocket.client.host``).
-    * ``x_forwarded_for`` — the raw ``X-Forwarded-For`` header value.
-    * ``trusted_proxies`` — list of IPs / CIDRs that are allowed to set
+    * ``x_forwarded_for`` --- the raw ``X-Forwarded-For`` header value.
+    * ``trusted_proxies`` --- list of IPs / CIDRs that are allowed to set
       ``X-Forwarded-For``.  If the direct peer is NOT in this list, the
       header is ignored entirely (it could be spoofed by the client).
 

@@ -39,7 +39,7 @@ class AudioTaskRead(AudioTaskBase):
 
 class AudioTaskCreate(AudioTaskBase):
     """Payload used by internal callers; the public upload endpoint
-    does not accept this — the filename comes from the multipart upload."""
+    does not accept this --- the filename comes from the multipart upload."""
 
 
 class UploadResponse(BaseModel):
@@ -50,7 +50,7 @@ class UploadResponse(BaseModel):
 class ProcessResponse(BaseModel):
     """Returned by `POST /api/tasks/{id}/process` after the worker is spawned.
 
-    The task's `status` is whatever the DB held when the call was made —
+    The task's `status` is whatever the DB held when the call was made ---
     typically UPLOADED (just uploaded) or FAILED (retry). The worker
     immediately flips it to PROCESSING in the background; the caller should
     poll `/status` to follow along.
@@ -70,7 +70,7 @@ class StemInfo(BaseModel):
 
     `kind` tells the frontend whether to render a play/pause button (`audio`)
     or just a download button (`midi`). New kinds (e.g. `pdf` for sheet
-    music) can be added without breaking existing callers — the frontend
+    music) can be added without breaking existing callers --- the frontend
     defaults to a download link for anything it doesn't recognize.
     """
     name: str   # e.g. "drums" or "original"

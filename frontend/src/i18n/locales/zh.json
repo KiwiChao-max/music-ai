@@ -339,5 +339,27 @@
     "loadMidi": "MIDI 加载失败",
     "loadSamples": "采样加载失败",
     "loadEvents": "事件加载失败"
+  },
+  "auth": {
+    "loginTitle": "登录",
+    "registerTitle": "注册",
+    "identifier": "邮箱或用户名",
+    "identifierPlaceholder": "请输入邮箱或用户名",
+    "password": "密码",
+    "passwordTooShort": "密码至少需要 8 个字符",
+    "email": "邮箱",
+    "emailPlaceholder": "请输入邮箱地址",
+    "username": "用户名",
+    "usernamePlaceholder": "请输入用户名",
+    "fullName": "姓名",
+    "fullNamePlaceholder": "选填",
+    "optional": "选填",
+    "login": "登录",
+    "register": "注册",
+    "logout": "退出登录",
+    "noAccount": "还没有账号？",
+    "hasAccount": "已有账号？",
+    "loginError": "登录失败，请检查凭据",
+    "registerError": "注册失败，请重试"
   }
 }

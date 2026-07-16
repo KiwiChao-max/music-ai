@@ -1,6 +1,6 @@
 """Tests for `app.services.drum_midi_service`.
 
-The detector is a heuristic spectral classifier — we can't pin exact hit
+The detector is a heuristic spectral classifier --- we can't pin exact hit
 counts, but we *can* assert that:
   * the combined MIDI and per-part files are all written;
   * the CC7/CC10/CC11 setup messages are present on the drum channel;
@@ -52,10 +52,10 @@ def _write_drum_signal(
     separated bursts across 3.5 seconds so each one survives onset
     detection and lands in a different classifier bucket:
 
-      * 0.10s — low-end kick (centroid ~80 Hz, peak below 200 Hz)
-      * 0.80s — mid-band snare (centroid ~2.5 kHz, strong attack)
-      * 1.60s — closed hat (centroid > 6 kHz, very short envelope)
-      * 2.50s — open hat (centroid ~5 kHz, long sustain)
+      * 0.10s --- low-end kick (centroid ~80 Hz, peak below 200 Hz)
+      * 0.80s --- mid-band snare (centroid ~2.5 kHz, strong attack)
+      * 1.60s --- closed hat (centroid > 6 kHz, very short envelope)
+      * 2.50s --- open hat (centroid ~5 kHz, long sustain)
     """
     t = np.arange(int(seconds * sample_rate)) / sample_rate
     rng = np.random.default_rng(0)
@@ -74,7 +74,7 @@ def _write_drum_signal(
     )
 
     # High-band noise shared by both hat variants. Built once and reused so
-    # the two hits share the same high-frequency content — only the
+    # the two hits share the same high-frequency content --- only the
     # envelope and sustain differ.
     high = np.fft.rfft(noise)
     freqs = np.fft.rfftfreq(noise.size, d=1.0 / sample_rate)
@@ -198,12 +198,12 @@ def test_drum_classifier_emits_multiple_distinct_parts(
     payload = json.loads(json_path.read_text(encoding="utf-8"))
     distinct_event_parts = {ev["part"] for ev in payload["events"]}
     # The synthetic signal mixes kick + snare + (at least one hat). Anything
-    # ≥2 means the classifier is dispatching on spectral shape, not
+    # >=2 means the classifier is dispatching on spectral shape, not
     # collapsing every hit to the same part.
     assert len(distinct_event_parts) >= 2, (
         f"classifier produced only {len(distinct_event_parts)} part(s): "
         f"{sorted(distinct_event_parts)}"
     )
     # All parts emitted by the classifier must be one of the documented
-    # DRUM_PARTS buckets — protects against a future typo'd class label.
+    # DRUM_PARTS buckets --- protects against a future typo'd class label.
     assert distinct_event_parts <= set(DRUM_PARTS)

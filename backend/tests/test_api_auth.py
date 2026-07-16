@@ -281,7 +281,7 @@ def test_logout_returns_message(client: TestClient) -> None:
     assert resp.json() == {"message": "logged out"}
 
 
-# ---- end-to-end: register → me → login → refresh → me -------------------
+# ---- end-to-end: register -> me -> login -> refresh -> me -------------------
 def test_full_auth_flow(client: TestClient) -> None:
     import time
 

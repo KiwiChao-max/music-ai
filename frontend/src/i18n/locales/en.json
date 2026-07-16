@@ -339,5 +339,27 @@
     "loadMidi": "Failed to load MIDI",
     "loadSamples": "failed to load samples",
     "loadEvents": "failed to load events"
+  },
+  "auth": {
+    "loginTitle": "Sign in",
+    "registerTitle": "Create account",
+    "identifier": "Email or username",
+    "identifierPlaceholder": "Enter your email or username",
+    "password": "Password",
+    "passwordTooShort": "Password must be at least 8 characters",
+    "email": "Email",
+    "emailPlaceholder": "Enter your email",
+    "username": "Username",
+    "usernamePlaceholder": "Choose a username",
+    "fullName": "Full name",
+    "fullNamePlaceholder": "Optional",
+    "optional": "optional",
+    "login": "Sign in",
+    "register": "Sign up",
+    "logout": "Sign out",
+    "noAccount": "Don't have an account?",
+    "hasAccount": "Already have an account?",
+    "loginError": "Sign in failed. Check your credentials.",
+    "registerError": "Registration failed. Please try again."
   }
 }

@@ -1,35 +1,28 @@
 """WebSocket progress channel.
 
-`GET /api/ws/tasks/{id}/progress` opens a long-lived connection that
+``GET /api/ws/tasks/{id}/progress`` opens a long-lived connection that
 streams every progress update for the task until it reaches a terminal
 state (FINISHED / FAILED) or the client disconnects.
 
-The worker writes each progress update to the DB (`task.progress` /
-`task.current_step`) AND publishes a JSON event on a Redis pub/sub
-channel named `task:{id}`. This module subscribes to that channel,
-relays events to the WS client, and adds a `type: "snapshot"` event
-right after connect so the client always has a fresh baseline.
+Architecture
+------------
+The worker publishes progress events on a Redis Pub/Sub channel named
+``task:{id}``. When the task finishes, the worker publishes a
+``task_finished`` event on the same channel.  This module subscribes to
+that channel, relays events to the WS client, and closes the connection
+when it receives ``task_finished``.
 
-The DB polling thread is the source of truth for the "final" event:
-the Redis pub/sub message can be lost if the worker is mid-restart
-when the client connects, so we always re-check the DB after a short
-delay and emit a `task_finished` event if the task is already
-FINISHED / FAILED.
+A low-frequency (5-second) DB poll serves as a safety net for the rare
+edge case where the worker crashes after writing the terminal state to
+the DB but before publishing the event.  This eliminates the 1-second
+DB poll that was the primary source of database pressure under load.
 
 Security notes
 --------------
-* Per-IP connection cap (`settings.ws_max_connections_per_ip`) — a
-  single client cannot exhaust the event loop by opening thousands of
-  sockets.
-* Hard lifetime cap (`settings.ws_max_lifetime_seconds`) — a stream
-  that never reaches a terminal state (worker crashed without
-  publishing) is force-closed so the client can reconnect.
-* Ownership check matches the REST policy: anonymous callers can only
-  watch `user_id IS NULL` (legacy/public) tasks; authenticated
-  non-admin callers can only watch their own tasks; admins see all.
-* DB sessions are opened per-query rather than held for the WS
-  lifetime, so a long-lived socket doesn't pin a connection from the
-  pool.
+* Per-IP connection cap (``settings.ws_max_connections_per_ip``).
+* Hard lifetime cap (``settings.ws_max_lifetime_seconds``).
+* Ownership check matches the REST policy.
+* DB sessions are opened per-query rather than held for the WS lifetime.
 """
 from __future__ import annotations
 
@@ -41,13 +34,13 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 
-import redis
 from fastapi import APIRouter, Query, WebSocket, status
 
 from app.config import settings
 from app.db.models import AudioTaskStatus
 from app.db.session import SessionLocal
 from app.services import auth_service, task_service
+from app.services.event_bus import get_event_bus
 from app.utils.network import get_client_ip
 
 logger = logging.getLogger(__name__)
@@ -55,22 +48,25 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Two events per second is plenty for a progress bar; sending more just
-# burns CPU on the client. The pub/sub layer is the throttle.
+# burns CPU on the client.
 _SEND_INTERVAL = 0.25
 
-# Names of terminal statuses — once we see one of these, we send the
-# final event and close.
+# How often the DB poll runs as a safety net (seconds).  This is *not*
+# the primary mechanism for detecting terminal state --- the worker
+# publishes a ``task_finished`` event on Redis.  The DB poll only
+# catches the rare case where the worker crashes between committing to
+# the DB and publishing the event.
+_SAFETY_POLL_INTERVAL = max(1.0, settings.ws_safety_poll_interval)
+
+# Names of terminal statuses.
 _TERMINAL = {AudioTaskStatus.FINISHED.value, AudioTaskStatus.FAILED.value}
 
-# Per-IP connection counter. WebSocket accept/disconnect can run on
-# different event-loop threads, so we guard the dict with a plain lock.
+# Per-IP connection counter.
 _ws_connections: dict[str, int] = {}
 _ws_lock = threading.Lock()
 
 
 def _ws_acquire(ip: str) -> bool:
-    """Try to claim a WS slot for `ip`. Returns False if the per-IP cap
-    is already reached."""
     with _ws_lock:
         current = _ws_connections.get(ip, 0)
         if current >= settings.ws_max_connections_per_ip:
@@ -89,8 +85,6 @@ def _ws_release(ip: str) -> None:
 
 
 def _client_ip(websocket: WebSocket) -> str:
-    """Extract the real client IP, only trusting ``X-Forwarded-For``
-    from known reverse-proxy addresses (see ``settings.trusted_proxies``)."""
     return get_client_ip(
         websocket.client.host if websocket.client else None,
         websocket.headers.get("x-forwarded-for", ""),
@@ -109,7 +103,7 @@ def _serialize_dt(value: datetime | None) -> str | None:
 async def _send(websocket: WebSocket, payload: dict[str, Any]) -> None:
     try:
         await websocket.send_text(json.dumps(payload, ensure_ascii=False))
-    except Exception as exc:  # noqa: BLE001 - client may have gone away
+    except Exception as exc:  # noqa: BLE001
         logger.debug("ws: send failed: %s", exc)
 
 
@@ -139,15 +133,6 @@ def _terminal_event(task) -> dict[str, Any]:
 
 
 def _decode_token_or_none(token: str | None) -> tuple[int | None, str | None]:
-    """Return ``(user_id, role)`` from a valid access token, or
-    ``(None, None)`` on failure.
-
-    The WebSocket auth model is "best-effort" — if the token is
-    missing / invalid we still allow the connection so the SPA can
-    probe the channel during a refresh. The server filters progress
-    events by ownership: an anonymous caller gets only public state
-    for legacy tasks; an authenticated non-owner is rejected outright.
-    """
     if not token:
         return None, None
     try:
@@ -158,12 +143,6 @@ def _decode_token_or_none(token: str | None) -> tuple[int | None, str | None]:
 
 
 def _allowed_to_watch(task, user_id: int | None, role: str | None) -> bool:
-    """Ownership gate matching the REST endpoints.
-
-    * admins see everything;
-    * legacy tasks (`user_id IS NULL`) are watchable by anyone;
-    * otherwise the caller must own the task.
-    """
     if role == "admin":
         return True
     if task.user_id is None:
@@ -177,26 +156,21 @@ async def task_progress(
     task_id: int,
     token: str | None = Query(default=None),
 ) -> None:
-    """Stream progress events for `task_id` to the client.
-
-    The client may supply the JWT either as a `token` query parameter
-    (the WebSocket spec can't carry custom headers reliably across
-    browsers) or implicitly via the `Authorization` header on the
-    upgrade request.
-    """
-    # Combine query token + header token. The OAuth2PasswordBearer does
-    # not know about query params, so we read the header ourselves.
+    """Stream progress events for ``task_id`` to the client."""
+    # Combine three token sources (in priority order):
+    #   1. ``token`` query parameter (legacy)
+    #   2. ``Authorization`` header
+    #   3. ``Sec-WebSocket-Protocol`` header (browser-native, no URL leakage)
     header_token = websocket.headers.get("Authorization", "")
     if header_token.lower().startswith("bearer "):
         header_token = header_token[7:]
     else:
         header_token = None
-    user_id, role = _decode_token_or_none(token or header_token)
+    protocol_token = websocket.headers.get("Sec-WebSocket-Protocol", "")
+    user_id, role = _decode_token_or_none(token or header_token or protocol_token)
 
     client_ip = _client_ip(websocket)
     if not _ws_acquire(client_ip):
-        # Reject before accept — the test client raises on accept+close
-        # without a receive, so we use the policy-violation close code.
         await websocket.accept()
         await _send(
             websocket,
@@ -211,20 +185,14 @@ async def task_progress(
 
     await websocket.accept()
     try:
-        # Short-lived DB session for the initial snapshot + ownership
-        # check. We don't hold it for the WS lifetime — that would pin
-        # a pool connection for as long as the client stays subscribed.
+        # Ownership check + initial snapshot.
         with SessionLocal() as db:
             task = task_service.get_task(db, task_id)
 
         if task is None:
             await _send(
                 websocket,
-                {
-                    "type": "error",
-                    "code": "not_found",
-                    "message": f"task {task_id} not found",
-                },
+                {"type": "error", "code": "not_found", "message": f"task {task_id} not found"},
             )
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
@@ -232,17 +200,11 @@ async def task_progress(
         if not _allowed_to_watch(task, user_id, role):
             await _send(
                 websocket,
-                {
-                    "type": "error",
-                    "code": "forbidden",
-                    "message": "you don't own this task",
-                },
+                {"type": "error", "code": "forbidden", "message": "you don't own this task"},
             )
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
 
-        # Always send a snapshot first so the client has the current
-        # status even if the worker is between updates.
         await _send(websocket, _snapshot(task))
 
         if task.status.value in _TERMINAL:
@@ -251,45 +213,26 @@ async def task_progress(
             return
 
         deadline = time.monotonic() + settings.ws_max_lifetime_seconds
-        pubsub = _open_pubsub(task_id)
+        pubsub = get_event_bus().subscribe(task_id)
         if pubsub is not None:
             try:
                 await _pump_pubsub(websocket, pubsub, task_id, deadline)
             finally:
-                # Close both the pubsub and the underlying Redis client
-                # — `pubsub.close()` only closes the subscription, not
-                # the connection, so leaking it accumulates FDs.
                 try:
                     pubsub.close()
                 except Exception:  # noqa: BLE001
                     pass
-                client = getattr(pubsub, "client", None)
+                client = getattr(pubsub, "connection_pool", None)
                 if client is not None:
                     try:
-                        client.close()
+                        client.disconnect()
                     except Exception:  # noqa: BLE001
                         pass
         else:
-            # Redis not reachable — fall back to DB polling so the
-            # endpoint still works in degraded environments.
-            await _poll_db(websocket, task_id, deadline)
+            # Redis not reachable --- fall back to DB-only polling.
+            await _poll_db_fallback(websocket, task_id, deadline)
     finally:
         _ws_release(client_ip)
-
-
-def _open_pubsub(task_id: int):
-    """Open a Redis pub/sub connection. Returns `None` on failure so
-    the caller can switch to DB polling."""
-    try:
-        client = redis.Redis.from_url(settings.redis_url)
-        pubsub = client.pubsub(ignore_subscribe_messages=True)
-        pubsub.subscribe(f"task:{task_id}")
-        return pubsub
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            "ws: redis pub/sub unavailable, falling back to polling: %s", exc
-        )
-        return None
 
 
 async def _pump_pubsub(
@@ -298,11 +241,13 @@ async def _pump_pubsub(
     task_id: int,
     deadline: float,
 ) -> None:
-    """Forward every message on `task:{id}` to the WS client.
+    """Forward Redis Pub/Sub events to the WS client.
 
-    The DB is polled once a second to detect the terminal state — the
-    pub/sub channel doesn't carry a "this is the last event" signal,
-    so the DB row is the source of truth.
+    The worker publishes ``task_finished`` when the task reaches a
+    terminal state, so we no longer need to poll the DB every second.
+    A low-frequency (5-second) safety poll catches the rare edge case
+    where the worker crashes between committing the terminal state to
+    the DB and publishing the event.
     """
     last_db_check = 0.0
     loop = asyncio.get_event_loop()
@@ -318,9 +263,8 @@ async def _pump_pubsub(
             )
             await websocket.close(code=status.WS_1001_GOING_AWAY)
             return
-        # Drain the queue with a short timeout so we can also poll the
-        # DB for terminal-state changes (the pub/sub doesn't emit a
-        # "final" message by itself).
+
+        # Drain the pub/sub queue with a short timeout.
         message = await loop.run_in_executor(
             None, _pubsub_get, pubsub, _SEND_INTERVAL
         )
@@ -331,11 +275,17 @@ async def _pump_pubsub(
                 event = {"type": "progress", "raw": str(message)}
             await _send(websocket, event)
 
+            # If the worker published a terminal event, close the
+            # connection immediately --- no need to poll the DB.
+            if event.get("type") == "task_finished":
+                await websocket.close(code=status.WS_1000_NORMAL_CLOSURE)
+                return
+
+        # Low-frequency safety poll: check the DB in case the worker
+        # crashed after committing to the DB but before publishing.
         now = time.monotonic()
-        if now - last_db_check >= 1.0:
+        if now - last_db_check >= _SAFETY_POLL_INTERVAL:
             last_db_check = now
-            # Open a short-lived session for the DB poll — holding one
-            # for the whole WS lifetime pins a pool connection.
             with SessionLocal() as db:
                 task = task_service.get_task(db, task_id)
             if task is None:
@@ -348,7 +298,7 @@ async def _pump_pubsub(
 
 
 def _pubsub_get(pubsub, timeout: float):
-    """Blocking `get_message` moved to a worker thread so the asyncio
+    """Blocking ``get_message`` moved to a worker thread so the asyncio
     loop stays responsive."""
     try:
         return pubsub.get_message(timeout=timeout)
@@ -356,11 +306,14 @@ def _pubsub_get(pubsub, timeout: float):
         return None
 
 
-async def _poll_db(websocket: WebSocket, task_id: int, deadline: float) -> None:
-    """DB-only fallback used when Redis pub/sub is unavailable.
+async def _poll_db_fallback(
+    websocket: WebSocket, task_id: int, deadline: float
+) -> None:
+    """DB-only fallback used when Redis Pub/Sub is unavailable.
 
     Polls the task every 0.5 s and sends a snapshot if the
-    progress/status changed since the last emit."""
+    progress/status changed since the last emit.
+    """
     last_progress = None
     last_status = None
     while True:
@@ -381,10 +334,7 @@ async def _poll_db(websocket: WebSocket, task_id: int, deadline: float) -> None:
         if task is None:
             await websocket.close(code=status.WS_1000_NORMAL_CLOSURE)
             return
-        if (
-            task.progress != last_progress
-            or task.status.value != last_status
-        ):
+        if task.progress != last_progress or task.status.value != last_status:
             await _send(websocket, _snapshot(task))
             last_progress = task.progress
             last_status = task.status.value

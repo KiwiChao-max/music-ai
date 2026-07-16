@@ -1,9 +1,9 @@
 """Health check + Prometheus metrics.
 
 Three endpoints:
-  * `GET /healthz`   — liveness. Always 200 if the process is up.
-  * `GET /readyz`    — readiness. Probes Postgres + Redis + Celery.
-  * `GET /metrics`   — Prometheus text format (request count, latency
+  * `GET /healthz`   --- liveness. Always 200 if the process is up.
+  * `GET /readyz`    --- readiness. Probes Postgres + Redis + Celery.
+  * `GET /metrics`   --- Prometheus text format (request count, latency
                         histogram, in-flight task gauge, etc.)
 
 The metrics module keeps a couple of counters / histograms registered
@@ -126,7 +126,7 @@ async def metrics(db: Annotated[Session, Depends(get_db)]) -> Response:
             TASKS_TOTAL.labels(status=status_name).set(count)
     except Exception:
         # The /metrics endpoint must never fail because the DB is
-        # briefly unavailable — Prometheus would stop scraping us.
+        # briefly unavailable --- Prometheus would stop scraping us.
         pass
 
     payload = generate_latest(REGISTRY)
@@ -139,7 +139,7 @@ async def root() -> dict[str, str]:
     return {"message": "music-ai backend", "docs": "/docs"}
 
 
-# Convenience helper for tests / readiness dashboards — used by the
+# Convenience helper for tests / readiness dashboards --- used by the
 # `/readyz` body and exported so the E2E scripts can probe it.
 def ping_redis(url: str | None = None) -> bool:
     """Return True iff `PING` succeeds on the configured Redis URL."""

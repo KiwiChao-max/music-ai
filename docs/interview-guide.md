@@ -16,8 +16,8 @@
 2. **乐器识别与 MIDI 转录** - 对 other 轨二次分类（piano / guitar / strings / synth / other_melodic），用 Basic Pitch 转成 polyphonic MIDI
 3. **鼓组 19 件精细拆分** - kick / snare / hi-hat / 5 个 toms / 5 种 cymbals / 小打 / fill 加花
 4. **GM / XG 音色映射** - 生成 GM 和 XG 两个标准变体，带完整 Bank Select + Program Change + CC 控制器
-5. **自定义采样库** - 用户上传鼓采样，文件名映射或频谱自动识别 → GM 音符，浏览器 Web Audio 播放
-6. **SoundFont / CSV 音色表导入** - 支持 SF2 文件和电子琴 CSV 音色表，自动映射 GM → 自定义预设
+5. **自定义采样库** - 用户上传鼓采样，文件名映射或频谱自动识别 -> GM 音符，浏览器 Web Audio 播放
+6. **SoundFont / CSV 音色表导入** - 支持 SF2 文件和电子琴 CSV 音色表，自动映射 GM -> 自定义预设
 7. **音乐分析** - BPM、调式、和弦、段落检测 + LLM AI 点评
 8. **用户系统** - JWT 认证、配额管理、数据隔离
 9. **实时进度** - WebSocket 推送处理进度（Redis pub/sub + DB 兜底）
@@ -33,11 +33,11 @@
 
 **GM 是通用 MIDI 标准**，规定了 128 种乐器的编号映射和 47 个打击乐音符映射。
 
-- **旋律声部**：Program Change 0-127 对应 128 种乐器（0=大钢琴，24=尼龙吉他，40=小提琴…）
+- **旋律声部**：Program Change 0-127 对应 128 种乐器（0=大钢琴，24=尼龙吉他，40=小提琴...）
 - **打击声部**：固定使用 **第 10 通道（Channel 9，从 0 开始数）**，音符 35-81 对应不同鼓件
 - **意义**：保证同一个 MIDI 文件在任何支持 GM 的音源/合成器/DAW 上听起来音色正确
 
-> 项目中所有生成的 MIDI 都带有完整的 GM setup sequence（Bank MSB/LSB → Program Change → CC7 音量 → CC11 表情 → CC10 声像 → CC64 延音 → CC74 亮度 → CC91 混响 → CC93 合唱），确保在任意 DAW 中音色正确。
+> 项目中所有生成的 MIDI 都带有完整的 GM setup sequence（Bank MSB/LSB -> Program Change -> CC7 音量 -> CC11 表情 -> CC10 声像 -> CC64 延音 -> CC74 亮度 -> CC91 混响 -> CC93 合唱），确保在任意 DAW 中音色正确。
 
 ### Q3: 什么是 XG？和 GM 是什么关系？
 
@@ -75,9 +75,9 @@
 
 - **Program Change**：在当前 Bank 内选择具体乐器（0-127）
 - **Bank Select**：先选库，再选具体音色
-- **顺序**：先发 Bank MSB (CC0) → Bank LSB (CC32) → 再发 Program Change
+- **顺序**：先发 Bank MSB (CC0) -> Bank LSB (CC32) -> 再发 Program Change
 
-> 为什么要分两步？因为 128 个音色不够用，用 Bank 可以扩展到 128×128=16384 个音色。XG 标准用 LSB 选择同一乐器的不同变奏（如 Bank 0:0 = 标准 Grand Piano, Bank 0:1 = "Live! Grand Piano"）。
+> 为什么要分两步？因为 128 个音色不够用，用 Bank 可以扩展到 128x128=16384 个音色。XG 标准用 LSB 选择同一乐器的不同变奏（如 Bank 0:0 = 标准 Grand Piano, Bank 0:1 = "Live! Grand Piano"）。
 
 ### Q6: 鼓组 MIDI 为什么用第 10 通道？
 
@@ -149,10 +149,10 @@
 3. **映射到 GM 音符**：通过 `_DRUM_TYPE_TO_GM_NOTE` 字典分配标准 GM 打击乐音符
 
 典型规则：
-- 低频能量 > 25% + 峰值频率 < 300Hz → kick
-- 中频为主 + 高频有噪声 + attack > 10 → snare
-- 高频 > 40% + 质心 > 4000Hz + 时长 < 0.08s → hihat_closed
-- 高频 > 25% + 滚降 > 3000Hz + 时长 > 0.3s → crash
+- 低频能量 > 25% + 峰值频率 < 300Hz -> kick
+- 中频为主 + 高频有噪声 + attack > 10 -> snare
+- 高频 > 40% + 质心 > 4000Hz + 时长 < 0.08s -> hihat_closed
+- 高频 > 25% + 滚降 > 3000Hz + 时长 > 0.3s -> crash
 
 > 用户上传任意命名的采样文件，系统先尝试文件名映射（60+ 别名），匹配失败后通过音频内容自动识别类型并分配正确的 MIDI 音符。这解决了"采样文件名不规范"的真实痛点。
 
@@ -189,9 +189,9 @@
 项目中 `soundfont_service.py` 支持：
 1. **SF2 导入**：优先用 `sf2utils` 库完整解析（pbag/pgen/pmod 链），fallback 到简化 phdr chunk 解析（mmap 避免大文件内存爆炸）
 2. **CSV 音色表导入**：支持电子琴音色表（bank_msb, bank_lsb, program, name, category, instrument_type）
-3. **GM → 自定义映射**：三级匹配策略（instrument_type 精确匹配 → program 精确匹配 → 名称 token 模糊匹配）
+3. **GM -> 自定义映射**：三级匹配策略（instrument_type 精确匹配 -> program 精确匹配 -> 名称 token 模糊匹配）
 
-> 用户上传 SF2 或 CSV 音色表后，系统自动为每个 stem 找到最接近的自定义预设，在 MIDI 映射时替换默认 GM 音色。映射结果记录在 `analysis.json` 的 `soundfont_overrides` 字段中，前端显示"Stem X → Custom voice Y"。
+> 用户上传 SF2 或 CSV 音色表后，系统自动为每个 stem 找到最接近的自定义预设，在 MIDI 映射时替换默认 GM 音色。映射结果记录在 `analysis.json` 的 `soundfont_overrides` 字段中，前端显示"Stem X -> Custom voice Y"。
 
 ### Q14: BPM 和调式（Key）是怎么检测的？
 
@@ -205,9 +205,9 @@
 
 浏览器端播放鼓采样的流程：
 
-1. **加载**：`fetch()` 获取音频文件 → `AudioContext.decodeAudioData()` 解码成 `AudioBuffer`
+1. **加载**：`fetch()` 获取音频文件 -> `AudioContext.decodeAudioData()` 解码成 `AudioBuffer`
 2. **缓存**：解码后的 AudioBuffer 存在内存里，避免重复解码
-3. **调度**：`AudioBufferSourceNode` 调度播放 → `GainNode` 控制力度 → 连接到 `destination`
+3. **调度**：`AudioBufferSourceNode` 调度播放 -> `GainNode` 控制力度 -> 连接到 `destination`
 4. **时间精度**：用 `AudioContext.currentTime + offset` 精确调度（比 setTimeout 准得多）
 5. **力度控制**：通过 GainNode 的 gain 值实现 velocity 效果
 6. **Velocity 层选择**：前端根据 MIDI velocity 在同一 note 的多个采样层中选择最接近的（如 v1-50 选 soft 层，v51-100 选 hard 层）
@@ -242,7 +242,7 @@ API 层 (FastAPI)
 - Celery + Redis broker 可以后台异步执行，前端通过轮询或 WebSocket 看进度
 - 支持任务队列、重试、并发控制
 
-> 项目中 `audio_worker.py` 就是 Celery worker，处理流程是一个 pipeline：上传 → 分离 → 乐器分类 → 转 MIDI → GM/XG 映射 → 分析 → AI 点评 → 完成。每一步调用 `_report()` 更新进度并推送到 WebSocket。
+> 项目中 `audio_worker.py` 就是 Celery worker，处理流程是一个 pipeline：上传 -> 分离 -> 乐器分类 -> 转 MIDI -> GM/XG 映射 -> 分析 -> AI 点评 -> 完成。每一步调用 `_report()` 更新进度并推送到 WebSocket。
 
 ### Q18: 采样库的"单激活"（一个用户只能有一个活跃库）是怎么实现的？
 
@@ -313,7 +313,7 @@ API 层 (FastAPI)
 - 库元数据（名称、描述、版本）
 - 格式标识（`gm_percussion_mapping`）
 - 音符范围（35-81）
-- 映射表：`音符 → { label, velocity_offset, velocity_min, velocity_max, relative_path }`
+- 映射表：`音符 -> { label, velocity_offset, velocity_min, velocity_max, relative_path }`
 
 用途：备份、分享自定义鼓组、导入到其他设备或软件。
 
@@ -326,19 +326,19 @@ API 层 (FastAPI)
 ```
 音频上传
   ↓
-Demucs htdemucs_6s 分离 → vocals / drums / bass / piano / guitar / other
+Demucs htdemucs_6s 分离 -> vocals / drums / bass / piano / guitar / other
   ↓                                    ↓
   ↓                    instrument_classifier 对 other 二次分类
-  ↓                    → other_piano / other_guitar / other_strings
+  ↓                    -> other_piano / other_guitar / other_strings
   │                      / other_synth / other_melodic
   ↓
 Basic Pitch 逐轨转 MIDI：
-  - drums → drum_midi_service（19件拆分，见 Q26）
-  - bass / piano / guitar / vocals → Basic Pitch polyphonic
-  - other_piano / other_guitar / ... → Basic Pitch polyphonic
+  - drums -> drum_midi_service（19件拆分，见 Q26）
+  - bass / piano / guitar / vocals -> Basic Pitch polyphonic
+  - other_piano / other_guitar / ... -> Basic Pitch polyphonic
   ↓
 每条 MIDI 注入 GM setup：
-  - _normalize_stem_key("other_strings") → "strings" → program=48
+  - _normalize_stem_key("other_strings") -> "strings" -> program=48
   - _STEM_CC_CONFIG 查表获取 brightness/reverb/chorus
   - gm_setup_messages() 写入 CC0/CC32/Program/CC7/CC11/CC10/CC64/CC74/CC91/CC93
 ```
@@ -350,9 +350,9 @@ Basic Pitch 逐轨转 MIDI：
 ```
 drums.wav
   ↓
-_estimate_bpm → BPM 自适应 onset 参数
+_estimate_bpm -> BPM 自适应 onset 参数
   ↓
-librosa.onset.onset_detect → 时间戳列表
+librosa.onset.onset_detect -> 时间戳列表
   ↓
 _extract_features（每个 onset 提取 5 个特征）：
   - low_ratio / low_mid_ratio / mid_ratio / high_ratio / very_high_ratio
@@ -360,11 +360,11 @@ _extract_features（每个 onset 提取 5 个特征）：
   - sustain_ratio（attack vs tail 能量比）
   - spectral_flux（onset 后频谱变化）
   ↓
-_classify 规则引擎 → (part, confidence)
+_classify 规则引擎 -> (part, confidence)
   ↓
 置信度回退：confidence < 0.55 时按 _CONFIDENCE_FALLBACK 重映射
   ↓
-_derive_fills → 密集音簇标记为 fill
+_derive_fills -> 密集音簇标记为 fill
   ↓
 输出：drums.mid（合并）+ drums_kick.mid / drums_snare.mid / ...（19个分件）
       + drums_events.csv + drums_events.json（前端播放用）
@@ -385,10 +385,10 @@ _derive_fills → 密集音簇标记为 fill
 - XG profile：XG System On SysEx + XG drum bank (127:0) 或 XG melodic variation (0:1) + Program + CC7/10/11
 
 **XG 旋律变奏**（`_BUILTIN_XG_MELODIC_VOICES`）：
-- piano → "Live! Grand Piano" (bank 0:1)
-- guitar → "Nylon Guitar" (bank 0:1)
-- strings → "Stereo Strings" (bank 0:1)
-- bass/synth/other → 无变奏，使用 GM 兼容音色 (bank 0:0)
+- piano -> "Live! Grand Piano" (bank 0:1)
+- guitar -> "Nylon Guitar" (bank 0:1)
+- strings -> "Stereo Strings" (bank 0:1)
+- bass/synth/other -> 无变奏，使用 GM 兼容音色 (bank 0:0)
 
 **SoundFont 覆盖**：如果用户激活了 SoundFont，`build_soundfont_overrides` 会为每个 stem 找到最接近的预设，替换默认 GM 音色。
 
@@ -396,8 +396,8 @@ _derive_fills → 密集音簇标记为 fill
 
 三层兼容：
 
-**1. GM Setup（`midi_cc.py` → `gm_setup_messages`）**：
-每个 note track 头部写入完整控制器序列：CC0(Bank MSB) → CC32(Bank LSB) → Program Change → CC7(Volume) → CC11(Expression) → CC10(Pan) → CC64(Sustain) → CC74(Brightness) → CC91(Reverb) → CC93(Chorus) → CC1(Modulation)
+**1. GM Setup（`midi_cc.py` -> `gm_setup_messages`）**：
+每个 note track 头部写入完整控制器序列：CC0(Bank MSB) -> CC32(Bank LSB) -> Program Change -> CC7(Volume) -> CC11(Expression) -> CC10(Pan) -> CC64(Sustain) -> CC74(Brightness) -> CC91(Reverb) -> CC93(Chorus) -> CC1(Modulation)
 
 **2. Per-stem 控制器配置（`_STEM_CC_CONFIG`）**：
 每种乐器有不同的默认控制器值：
@@ -420,24 +420,24 @@ _derive_fills → 密集音簇标记为 fill
 
 **1. 文件名映射**（`_resolve_note_from_name`）：
 60+ 别名表覆盖 Roland/Yamaha 命名惯例：
-- `kick` / `bd` / `bass_drum` / `kik` → note 36
-- `snare` / `snr` / `sd` → note 38
-- `closed_hat` / `chh` / `hhc` → note 42
-- 支持尾部数字剥离：`kick_01` → `kick` → 36
-- 支持 token 匹配：`studio_kick` → 匹配 `kick` → 36
+- `kick` / `bd` / `bass_drum` / `kik` -> note 36
+- `snare` / `snr` / `sd` -> note 38
+- `closed_hat` / `chh` / `hhc` -> note 42
+- 支持尾部数字剥离：`kick_01` -> `kick` -> 36
+- 支持 token 匹配：`studio_kick` -> 匹配 `kick` -> 36
 
 **2. 频谱自动识别**（`sample_classifier_service.py`）：
 文件名匹配失败时，通过音频内容分类：
 - 提取 centroid / peak_freq / rolloff / ZCR / harmonicity / attack_ratio
-- 多候选规则引擎 → 取最高置信度
+- 多候选规则引擎 -> 取最高置信度
 - 识别 kick / snare / hihat / tom / cymbal / percussion 等 30+ 种
 
 **3. Velocity 层解析**（`_resolve_velocity_range`）：
 从文件名解析力度层：
-- `kick_vel_001_064.wav` → (1, 64)
-- `snare_v51-100.wav` → (51, 100)
-- `crash_pp.wav` → (1, 42)
-- `snare_hard.wav` → (64, 127)
+- `kick_vel_001_064.wav` -> (1, 64)
+- `snare_v51-100.wav` -> (51, 100)
+- `crash_pp.wav` -> (1, 42)
+- `snare_hard.wav` -> (64, 127)
 
 **电子琴音色表导入**：
 CSV 格式（`/api/instruments/preset-table/import`）：
@@ -448,10 +448,10 @@ bank_msb,bank_lsb,program,name,category,instrument_type
 0,0,24,Nylon Guitar,Guitar,guitar
 ```
 
-**GM → 自定义映射**（`map_gm_to_custom`）三级匹配：
-1. instrument_type 精确匹配（"piano" → 找 instrument_type="piano" 的预设）
-2. program 精确匹配（GM program 0 → 自定义 program 0）
-3. 名称 token 模糊匹配（Jaccard 相似度 ≥ 0.4）
+**GM -> 自定义映射**（`map_gm_to_custom`）三级匹配：
+1. instrument_type 精确匹配（"piano" -> 找 instrument_type="piano" 的预设）
+2. program 精确匹配（GM program 0 -> 自定义 program 0）
+3. 名称 token 模糊匹配（Jaccard 相似度 >= 0.4）
 
 ---
 
@@ -467,7 +467,7 @@ bank_msb,bank_lsb,program,name,category,instrument_type
 
 ### Q31: 这个项目的难点是什么？
 
-1. **音频处理流水线长**：分离 → 分类 → 转 MIDI → 映射 → 分析，每一步都可能失败，需要完善的错误处理和 fallback
+1. **音频处理流水线长**：分离 -> 分类 -> 转 MIDI -> 映射 -> 分析，每一步都可能失败，需要完善的错误处理和 fallback
 2. **多轨 MIDI 一致性**：各轨要对齐到同一时间轴，CC 控制器要按 stem 类型正确设置，通道不能冲突
 3. **实时性与准确性的权衡**：乐器分类用规则引擎而不是深度学习，就是为了快和无依赖
 4. **浏览器音频播放精度**：Web Audio API 的调度和缓存策略，velocity 层选择
@@ -536,7 +536,7 @@ bank_msb,bank_lsb,program,name,category,instrument_type
 4. **6 轨分离原理** - Demucs htdemucs_6s、二级乐器分类、soft mask 重建
 5. **Web Audio 播放机制** - AudioBuffer、调度方式、力度控制、velocity 层
 6. **系统架构** - 前后端分离 + Celery 异步任务 + WebSocket 实时推送 + Redis pub/sub
-7. **自定义采样** - 文件名映射、频谱自动识别、SF2/CSV 导入、GM→自定义三级匹配
+7. **自定义采样** - 文件名映射、频谱自动识别、SF2/CSV 导入、GM->自定义三级匹配
 8. **工程规范** - 256 测试、Alembic 迁移、rate limiting、Docker 非root、CI/CD
 
 ---

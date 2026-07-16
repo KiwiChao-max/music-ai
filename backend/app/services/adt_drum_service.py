@@ -6,7 +6,7 @@ transcription model (ADTOS, https://github.com/AMAAI-Lab/ADTOS) and
 then maps the model's coarse 9-class output to our internal 19-part
 ``DRUM_PARTS`` layout. Cymbal hits (the ADTOS ``CY`` / ``RD`` labels)
 are further sub-classified into crash / ride / china / splash /
-ride_bell via a light spectral pass — that is the only place spectral
+ride_bell via a light spectral pass --- that is the only place spectral
 heuristics remain in this path, and it is much smaller than the full
 19-way rule chain in ``DrumMidiService``.
 
@@ -59,8 +59,8 @@ ADTOS_LABELS: tuple[str, ...] = (
     "HT",  # High Tom
     "MT",  # Mid Tom
     "FT",  # Floor Tom
-    "CY",  # Crash (coarse — refined to crash/china/splash)
-    "RD",  # Ride  (coarse — refined to ride/ride_bell)
+    "CY",  # Crash (coarse --- refined to crash/china/splash)
+    "RD",  # Ride  (coarse --- refined to ride/ride_bell)
 )
 
 # Direct KD/SD/HH/OH/HT/MT/FT mapping. Cymbal labels are handled by
@@ -125,7 +125,7 @@ class ADTDrumService:
         self.sample_rate = sample_rate
         self.default_bpm = default_bpm
         self.cymbal_confidence_threshold = cymbal_confidence_threshold
-        # Lazy default backend — only constructed on first use so a
+        # Lazy default backend --- only constructed on first use so a
         # worker that never enables ADT never imports torch.
         self._backend: ADTModelBackend | None = backend
         self._model_path = model_path
@@ -157,14 +157,14 @@ class ADTDrumService:
 
         # Map ADTOS labels to our 19-part layout. Cymbal hits are refined
         # with a spectral pass when the model confidence is below the
-        # configured threshold (or unconditionally — the sub-classifier
+        # configured threshold (or unconditionally --- the sub-classifier
         # is cheap and gives china/splash/ride_bell coverage).
         drum_hits: list[DrumHit] = []
         for adt in adt_hits:
             if adt.label not in ADTOS_LABELS:
                 if not self._warned:
                     logger.warning(
-                        "ADTOS returned unknown label %r — ignoring", adt.label,
+                        "ADTOS returned unknown label %r --- ignoring", adt.label,
                     )
                     self._warned = True
                 continue
@@ -185,7 +185,7 @@ class ADTDrumService:
                 )
             )
 
-        # Fill overlay is model-agnostic — reuse the rule-based helper
+        # Fill overlay is model-agnostic --- reuse the rule-based helper
         # so a dense ADTOS burst still shows up as an editable fill bus.
         drum_hits = DrumMidiService._derive_fills(drum_hits)
 
@@ -247,7 +247,7 @@ class ADTDrumService:
 
         # Coarse cymbal: refine into the appropriate group. When the
         # model is highly confident, we still want china/splash/
-        # ride_bell coverage — the sub-classifier is cheap and the
+        # ride_bell coverage --- the sub-classifier is cheap and the
         # existing 19-part layout depends on it.
         try:
             return self._subclassify_cymbal(y, sr, adt.time_s, coarse=adt.label)
@@ -266,7 +266,7 @@ class ADTDrumService:
         """Refine a coarse ``CY``/``RD`` ADTOS label into one of
         ``crash`` / ``china`` / ``splash`` / ``ride`` / ``ride_bell``.
 
-        The classifier is intentionally simple — three spectral cues
+        The classifier is intentionally simple --- three spectral cues
         (centroid, sustain_ratio, very-high ratio) and a coarse lookup.
         ADTOS does the hard work (onset detection, kick/snare/hat/tom
         separation); this pass only differentiates among cymbal types
@@ -275,7 +275,7 @@ class ADTDrumService:
         import numpy as np
 
         group = _CRASH_GROUP if coarse == "CY" else _RIDE_GROUP
-        # Default — collapses to the most common cymbal in the group.
+        # Default --- collapses to the most common cymbal in the group.
         default = "crash" if coarse == "CY" else "ride"
 
         if y.size == 0:

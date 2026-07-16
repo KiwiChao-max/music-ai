@@ -9,21 +9,21 @@ per-instrument output.
 This is a pragmatic, dependency-light implementation. It works in three
 phases:
 
-  1. **Spectral fingerprinting** — short-time FFT, per-frame spectral
+  1. **Spectral fingerprinting** --- short-time FFT, per-frame spectral
      centroid, bandwidth, rolloff, flatness, zero-crossing rate, and MFCCs.
-  2. **Frame-level instrument posteriors** — a small, hand-coded rule
+  2. **Frame-level instrument posteriors** --- a small, hand-coded rule
      engine maps these features to per-instrument probabilities
      (piano / guitar / strings / synth / other). The rules are calibrated
      against common timbral signatures; not a trained model, but good
      enough to *separate* the dominant timbres.
-  3. **Soft mask reconstruction** — each frame's signal is mixed into the
+  3. **Soft mask reconstruction** --- each frame's signal is mixed into the
      target stems weighted by the posterior, so notes that overlap with
      several timbres are partially shared rather than dropped. This keeps
      the audio sounding natural instead of muddy.
 
 For each detected instrument with enough energy, the service writes:
-  * ``<instrument>.wav`` — the separated audio (24 kHz mono WAV).
-  * ``<instrument>.mid``  — Basic Pitch transcription with full GM CCs.
+  * ``<instrument>.wav`` --- the separated audio (24 kHz mono WAV).
+  * ``<instrument>.mid``  --- Basic Pitch transcription with full GM CCs.
 """
 from __future__ import annotations
 
@@ -54,7 +54,7 @@ class InstrumentDetection:
     """Probability mass for each instrument over the entire input.
 
     `total_frames` is the number of analysis frames the posteriors were
-    aggregated over — useful for confidence reporting.
+    aggregated over --- useful for confidence reporting.
     """
 
     probabilities: dict[str, float]
@@ -312,7 +312,7 @@ class InstrumentClassifierService:
         # Sustained strings: long rolloff, low flatness, low HF.
         if ro > 2500.0 and flat < 0.20 and hf < 0.10 and 250.0 < c < 2000.0:
             strings = min(1.0, 0.50 + (1.0 - flat) * 0.5)
-        # Bowed strings have characteristic vibrato — we don't try to model
+        # Bowed strings have characteristic vibrato --- we don't try to model
         # vibrato explicitly, so we rely on the brightness / rolloff
         # signature above.
 
@@ -320,7 +320,7 @@ class InstrumentClassifierService:
         # Synth / pad: high flatness, broad centroid, heavy HF.
         if flat > 0.30 and bw > 1800.0 and hf > 0.10:
             synth = min(1.0, 0.40 + (flat - 0.30) * 1.5)
-        # Pure tones (sine-wave synth leads) — high peakiness, very narrow.
+        # Pure tones (sine-wave synth leads) --- high peakiness, very narrow.
         if peak > 25.0 and bw < 600.0:
             synth += 0.30
 
@@ -363,7 +363,7 @@ class InstrumentClassifierService:
             for j, instrument in enumerate(INSTRUMENTS):
                 frame_masks[index, j] = float(frame_posterior[instrument]) * rms_weight
 
-        # Normalize per frame so the masks sum to ~1.0 — the reconstruction
+        # Normalize per frame so the masks sum to ~1.0 --- the reconstruction
         # preserves total energy that way.
         per_frame_sum = frame_masks.sum(axis=1, keepdims=True) + 1e-9
         frame_masks = frame_masks / per_frame_sum

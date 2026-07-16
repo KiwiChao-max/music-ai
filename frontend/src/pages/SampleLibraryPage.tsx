@@ -487,7 +487,7 @@ function LibraryCard({ library, isActive, onActivate, onDeactivate, onDelete, on
         audioCtxRef.current = null;
         bufferCacheRef.current.clear();
         void ctx.close().catch(() => {
-          // ignore — already closed or suspended
+          // ignore --- already closed or suspended
         });
       }
     };
@@ -754,7 +754,7 @@ function LibraryCard({ library, isActive, onActivate, onDeactivate, onDelete, on
             ·{" "}
             {t(missing.length === 1 ? "samples.missing" : "samples.missingPlural", {
               count: missing.length,
-              notes: missing.slice(0, 5).join(", ") + (missing.length > 5 ? "…" : ""),
+              notes: missing.slice(0, 5).join(", ") + (missing.length > 5 ? "..." : ""),
             })}
           </span>
         )}
@@ -869,7 +869,7 @@ function LibraryCard({ library, isActive, onActivate, onDeactivate, onDelete, on
                     {GM_DRUM_LABELS[note] ?? t("samples.noteFallback", { note })}
                   </span>
                   <span className="text-slate-400 dark:text-slate-500">
-                    {files.length > 1 ? `×${files.length}` : ""}
+                    {files.length > 1 ? `x${files.length}` : ""}
                   </span>
                 </li>
               ))}
@@ -892,8 +892,8 @@ function groupByNote(files: SampleFileInfo[]): Map<number, SampleFileInfo[]> {
 }
 
 // Recommend a small set of "core" notes for a usable drum kit. A library
-// missing any of these will still play — those hits just use the default
-// GM sound — but the warning helps users know what's missing.
+// missing any of these will still play --- those hits just use the default
+// GM sound --- but the warning helps users know what's missing.
 const CORE_DRUMS: number[] = [36, 38, 42, 46, 49, 51];
 function findMissingNotes(files: SampleFileInfo[]): number[] {
   const present = new Set(files.map((f) => f.midi_note));
@@ -1220,7 +1220,7 @@ function SoundFontPanel() {
                                 </td>
                                 <td className="px-2 py-1 text-slate-700 dark:text-slate-200">{p.name}</td>
                                 <td className="px-2 py-1 text-slate-500 dark:text-slate-400">
-                                  {p.category || "—"}
+                                  {p.category || "---"}
                                 </td>
                               </tr>
                             ))}

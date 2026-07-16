@@ -1,0 +1,57 @@
+# Auto-detect text files and normalize line endings to LF on commit
+* text=auto
+
+# Documentation and code
+*.md text diff=markdown
+*.py text diff=python
+*.ts text diff=typescript
+*.tsx text diff=typescript
+*.js text
+*.json text
+*.yml text
+*.yaml text
+*.toml text
+*.cfg text
+*.ini text
+*.env text
+*.txt text
+*.css text
+*.html text
+*.xml text
+*.sh text eol=lf
+*.sql text
+*.mjs text
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.wav binary
+*.mp3 binary
+*.ogg binary
+*.flac binary
+*.aiff binary
+*.mid binary
+*.midi binary
+*.sf2 binary
+*.zip binary
+*.gz binary
+*.tar binary
+*.onnx binary
+*.pt binary
+*.pth binary
+*.npy binary
+*.npz binary
+*.pdf binary
+*.ttf binary
+*.woff binary
+*.woff2 binary
+*.eot binary
+*.webp binary
+*.svg text
+
+# Windows-specific: ensure batch files use CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf

@@ -2,12 +2,12 @@
 
 Two backends:
 
-* **MockLlm** — runs locally, no network, deterministic-ish output. Used
+* **MockLlm** --- runs locally, no network, deterministic-ish output. Used
   in development and in any deployment that hasn't configured a
   provider yet. The mock still produces a *plausible* commentary string
   so the UI is never broken by an empty value.
 
-* **OpenAICompatibleLlm** — talks to any OpenAI-compatible chat
+* **OpenAICompatibleLlm** --- talks to any OpenAI-compatible chat
   completions endpoint (OpenAI, Together, DeepSeek, OpenRouter,
   local llama.cpp, etc.). Only HTTP POST + JSON, no SDK, so the
   dependency surface stays small.
@@ -73,7 +73,7 @@ def build_user_prompt(analysis: Mapping[str, Any], *, filename: str = "") -> str
                 if label:
                     labels.append(str(label))
             if labels:
-                bits.append("Chord progression: " + " – ".join(labels))
+                bits.append("Chord progression: " + " - ".join(labels))
         elif isinstance(chords, str):
             bits.append(f"Chord progression: {chords}")
     instruments = analysis.get("detected_instruments") or analysis.get("instruments")
@@ -165,7 +165,7 @@ class MockLlm:
         if not sentences:
             return (
                 "The track's analysis came back with very little signal, so there's "
-                "not much specific to say — re-run with a cleaner input and we can "
+                "not much specific to say --- re-run with a cleaner input and we can "
                 "be more useful."
             )
         return " ".join(sentences)

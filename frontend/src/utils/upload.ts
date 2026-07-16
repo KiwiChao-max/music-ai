@@ -1,6 +1,6 @@
 /**
  * Frontend upload constraints. Mirror the backend's
- * `app.api.audio._ALLOWED_AUDIO_EXTENSIONS` and `MAX_UPLOAD_BYTES` — keep
+ * `app.api.audio._ALLOWED_AUDIO_EXTENSIONS` and `MAX_UPLOAD_BYTES` --- keep
  * the two in sync when you change either side.
  *
  * `VITE_MAX_UPLOAD_BYTES` lets ops override the limit at deploy time without

@@ -6,11 +6,11 @@ Create Date: 2026-06-28
 
 Adds three nullable columns to ``audio_tasks``:
 
-* ``commentary`` (TEXT) — the LLM-generated human-readable blurb.
-* ``commentary_model`` (VARCHAR(64)) — which model produced it, e.g.
+* ``commentary`` (TEXT) --- the LLM-generated human-readable blurb.
+* ``commentary_model`` (VARCHAR(64)) --- which model produced it, e.g.
   ``mock`` or ``gpt-4o-mini``. Useful for both auditing and for
   telling users when the placeholder mock was used.
-* ``commentary_generated_at`` (TIMESTAMPTZ) — when the worker wrote
+* ``commentary_generated_at`` (TIMESTAMPTZ) --- when the worker wrote
   the commentary. Lets the frontend show a "generated 3 minutes ago"
   hint and lets ops run a query for "tasks that finished but never
   got a commentary" so they can re-run the LLM pass.

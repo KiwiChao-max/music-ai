@@ -26,7 +26,7 @@ PWD = "hunter22hunter"
 
 
 def _make_wav_bytes(duration_s: float = 0.05) -> bytes:
-    """Tiny valid WAV (mono 8 kHz 16-bit) — small enough to fit any
+    """Tiny valid WAV (mono 8 kHz 16-bit) --- small enough to fit any
     quota and parseable by `soundfile.info` for the duration probe.
     """
     sample_rate = 8000

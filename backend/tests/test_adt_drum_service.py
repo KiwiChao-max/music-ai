@@ -6,7 +6,7 @@ injecting a tiny in-memory ``ADTModelBackend`` that returns canned
 ``ADTHit`` predictions, then assert:
 
   * the 9-class output maps onto the expected ``DRUM_PARTS`` bucket
-    (KD → kick, SD → snare, HT → tom_high, …);
+    (KD -> kick, SD -> snare, HT -> tom_high, ...);
   * cymbal hits (``CY`` / ``RD``) are sub-classified into
     crash / china / splash / ride / ride_bell based on the spectral
     content of the audio around the onset;
@@ -85,7 +85,7 @@ def _build_audio_with_bursts(
 
 def test_adtos_direct_mapping_covers_eight_classes(tmp_path: Path) -> None:
     """KD/SD/HH/OH/HT/MT/FT must each map to the expected DRUM_PARTS
-    bucket — no spectral pass should touch them."""
+    bucket --- no spectral pass should touch them."""
     audio = tmp_path / "drums.wav"
     _build_audio_with_bursts(audio, bursts=[(0.10, 8000.0, 0.001, None)])
     out = tmp_path / "out"
@@ -106,8 +106,8 @@ def test_adtos_direct_mapping_covers_eight_classes(tmp_path: Path) -> None:
 
     events = json.loads((out / "drums_events.json").read_text(encoding="utf-8"))
     by_part = {ev["part"] for ev in events["events"]}
-    # KD → kick, SD → snare, HH → hihat_closed, OH → hihat_open,
-    # HT → tom_high, MT → tom_lomid, FT → tom_floor.
+    # KD -> kick, SD -> snare, HH -> hihat_closed, OH -> hihat_open,
+    # HT -> tom_high, MT -> tom_lomid, FT -> tom_floor.
     expected = {
         "kick", "snare", "hihat_closed", "hihat_open",
         "tom_high", "tom_lomid", "tom_floor",
@@ -117,15 +117,15 @@ def test_adtos_direct_mapping_covers_eight_classes(tmp_path: Path) -> None:
     for part in ("crash", "china", "splash", "ride", "ride_bell"):
         assert part not in by_part, f"unexpected cymbal part: {part}"
 
-    # Per-part files are written for every DRUM_PARTS bucket — keeps
+    # Per-part files are written for every DRUM_PARTS bucket --- keeps
     # the e2e pipeline and frontend intact.
     assert set(result.part_paths.keys()) == set(DRUM_PARTS)
     assert result.combined_path.is_file()
 
 
 def test_adtos_cymbal_subclassifier_picks_china_vs_ride(tmp_path: Path) -> None:
-    """A CY hit on a very-high-centroid long-sustain burst → china.
-    A RD hit on a 3-5 kHz short-sustain burst → ride_bell.
+    """A CY hit on a very-high-centroid long-sustain burst -> china.
+    A RD hit on a 3-5 kHz short-sustain burst -> ride_bell.
     """
     audio = tmp_path / "drums.wav"
     # Center 0.30: bright, long tail (china-like).  The envelope width
@@ -161,7 +161,7 @@ def test_adtos_cymbal_subclassifier_falls_back_to_default(
 ) -> None:
     """When the cymbal sub-classifier can't pick a refinement, the
     part must collapse to the default of the coarse group (crash for
-    CY, ride for RD) — never a non-cymbal bucket."""
+    CY, ride for RD) --- never a non-cymbal bucket."""
     audio = tmp_path / "drums.wav"
     # Build a low-energy cymbal-ish hit that has ambiguous features.
     _build_audio_with_bursts(audio, bursts=[(0.50, 5000.0, 0.01, None)])
@@ -218,7 +218,7 @@ def test_adtos_backend_predict_is_called_with_audio_path(
 ) -> None:
     """The service must hand the audio path to the backend verbatim
     so the backend can decide whether to load the audio or stream
-    spectrograms — we don't want the service layer to pre-process."""
+    spectrograms --- we don't want the service layer to pre-process."""
     audio = tmp_path / "drums.wav"
     _build_audio_with_bursts(audio, bursts=[(0.20, 4000.0, 0.001, None)])
     out = tmp_path / "out"

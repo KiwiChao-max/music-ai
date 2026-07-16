@@ -5,8 +5,8 @@ predates the RESP3 ``HELLO`` command, while redis-py 5+ defaults to RESP3
 handshake which fails with ``unknown command 'HELLO'``.
 
 We monkey-patch the redis library to force protocol=2 (RESP2) at every
-connection entry point — ``Redis.__init__``, ``Redis.from_url``, and
-``Connection``/``ConnectionPool`` constructors — so both the API (rate
+connection entry point --- ``Redis.__init__``, ``Redis.from_url``, and
+``Connection``/``ConnectionPool`` constructors --- so both the API (rate
 limit middleware, direct Redis usage) and the Celery worker (which uses
 kombu's ConnectionPool directly) can talk to the legacy server without
 downgrading redis-py.

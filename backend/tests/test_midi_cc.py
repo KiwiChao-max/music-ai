@@ -33,7 +33,7 @@ def test_gm_setup_messages_returns_controller_reset_in_canonical_order() -> None
         ("control_change", 10, None),
         ("control_change", 64, None),
     ]
-    # Every message must be on the requested channel with delta time 0 —
+    # Every message must be on the requested channel with delta time 0 ---
     # the caller is responsible for threading accumulated times.
     for msg in messages:
         assert msg.channel == 0
@@ -92,5 +92,5 @@ def test_velocity_from_strength_clamps_to_midi_range() -> None:
     assert velocity_from_strength(1.0) == 127
     assert velocity_from_strength(2.0) == 127
     # Mid-range produces a value strictly above the floor and below the
-    # ceiling — useful for the per-frame strength → velocity curve.
+    # ceiling --- useful for the per-frame strength -> velocity curve.
     assert 40 < velocity_from_strength(0.5) < 127

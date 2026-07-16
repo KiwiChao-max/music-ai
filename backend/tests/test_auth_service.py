@@ -36,7 +36,7 @@ def test_verify_password_rejects_empty_input() -> None:
 
 
 def test_verify_password_handles_malformed_hash() -> None:
-    # A garbage hash must not raise — it just returns False so login
+    # A garbage hash must not raise --- it just returns False so login
     # surfaces a clean "invalid credentials" error.
     assert auth_service.verify_password("anything", "not-a-bcrypt-hash") is False
     assert auth_service.verify_password("anything", "$2b$12$" + "x" * 60) is False

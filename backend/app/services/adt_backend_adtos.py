@@ -2,8 +2,8 @@
 
 This is a thin wrapper around the ADTOS Python package and its
 checkpoint. ADTOS is research code that is not on PyPI, so we lazy-
-import and tolerate every failure mode — missing torch, missing
-package, missing checkpoint — by raising a single
+import and tolerate every failure mode --- missing torch, missing
+package, missing checkpoint --- by raising a single
 :class:`ADTUnavailable` that the worker catches and falls back from.
 
 Activation sequence (only when ``Settings.adt_enabled`` is true):

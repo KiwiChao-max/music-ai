@@ -30,7 +30,7 @@ PWD = "hunter22hunter"
 
 @pytest.fixture()
 def ws_engine():
-    """Per-test DB engine — Postgres when ``TEST_DATABASE_URL`` is set
+    """Per-test DB engine --- Postgres when ``TEST_DATABASE_URL`` is set
     (CI), in-memory SQLite otherwise (local dev)."""
     from app.db.base import Base
     from app.db import models  # noqa: F401  (registers models on Base.metadata)
@@ -64,7 +64,7 @@ def ws_session_factory(ws_engine):
     real_session_local = db_session.SessionLocal
     db_session.SessionLocal = SessionTesting
     # `app/api/ws.py` did `from app.db.session import SessionLocal`,
-    # so the name is bound in *its* namespace too — patch there as well.
+    # so the name is bound in *its* namespace too --- patch there as well.
     from app.api import ws as ws_mod
     real_ws_session_local = ws_mod.SessionLocal
     ws_mod.SessionLocal = SessionTesting
@@ -77,7 +77,7 @@ def ws_session_factory(ws_engine):
 
 @pytest.fixture()
 def client(ws_session_factory) -> TestClient:
-    """Plain TestClient — no DB dependency overrides needed for WS."""
+    """Plain TestClient --- no DB dependency overrides needed for WS."""
     # Reset the per-IP connection counter so a leaked slot in a prior
     # test can't poison the next one.
     from app.api import ws as ws_mod
@@ -246,7 +246,7 @@ def test_ws_allows_anonymous_for_legacy_task(
     client: TestClient, ws_session_factory
 ) -> None:
     """Tasks with `user_id IS NULL` (legacy / pre-auth uploads) must be
-    watchable by anyone — the same policy the REST endpoints use."""
+    watchable by anyone --- the same policy the REST endpoints use."""
     with ws_session_factory() as db:
         task = AudioTask(
             filename="legacy.wav",
@@ -271,7 +271,7 @@ def test_ws_rejects_anonymous_for_owned_task(
     """Anonymous callers (no token) must NOT be able to watch a task
     that belongs to a user. Previously the ownership check only fired
     when a token was present, so anonymous clients could subscribe to
-    anyone's task — including ones carrying private error messages."""
+    anyone's task --- including ones carrying private error messages."""
     with ws_session_factory() as db:
         bob = user_service.create_user(
             db, email=EMAIL_B, username="bob", password=PWD

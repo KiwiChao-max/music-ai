@@ -61,7 +61,7 @@ def test_claim_for_processing_is_atomic_and_idempotent(db_session: Session) -> N
     assert claimed is not None
     assert claimed.status == AudioTaskStatus.PROCESSING
 
-    # A second claim on the same task must return None — the row is no
+    # A second claim on the same task must return None --- the row is no
     # longer in UPLOADED/FAILED, so the UPDATE is a no-op.
     again = task_service.claim_for_processing(db_session, task.id)
     assert again is None
@@ -91,7 +91,7 @@ def test_claim_for_processing_rejects_finished(db_session: Session) -> None:
     task.status = AudioTaskStatus.FINISHED
     db_session.commit()
 
-    # FINISHED is terminal — caller should re-upload rather than re-process.
+    # FINISHED is terminal --- caller should re-upload rather than re-process.
     assert task_service.claim_for_processing(db_session, task.id) is None
 
 
@@ -113,7 +113,7 @@ def test_mark_finished_sets_timestamps_and_error_message(db_session: Session) ->
 
 def test_mark_finished_preserves_progress_on_failure(db_session: Session) -> None:
     """A FAILED task must keep its last-known progress so the UI can show
-    how far the pipeline got before crashing — `mark_finished(success=False)`
+    how far the pipeline got before crashing --- `mark_finished(success=False)`
     must NOT clobber `progress`."""
     task = task_service.create_task(db_session, "song.wav")
     db_session.commit()
@@ -128,7 +128,7 @@ def test_mark_finished_preserves_progress_on_failure(db_session: Session) -> Non
 
 
 def test_mark_finished_overwrites_finished_at_on_retry(db_session: Session) -> None:
-    """A retry that succeeds must stamp a fresh `finished_at` — the
+    """A retry that succeeds must stamp a fresh `finished_at` --- the
     original failure timestamp is no longer accurate."""
     task = task_service.create_task(db_session, "song.wav")
     db_session.commit()

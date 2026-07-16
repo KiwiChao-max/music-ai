@@ -385,7 +385,7 @@ export function MidiPreviewPlayer({ url }: MidiPreviewPlayerProps) {
           className="inline-flex h-7 min-w-[56px] items-center justify-center rounded bg-indigo-600 px-2 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
           title={t("player.midiPlayback")}
         >
-          {isLoading ? "…" : position > 0 ? t("player.resume") : t("player.play")}
+          {isLoading ? "..." : position > 0 ? t("player.resume") : t("player.play")}
         </button>
       ) : (
         <button

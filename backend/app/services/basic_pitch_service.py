@@ -117,7 +117,7 @@ class BasicPitchService:
         note_count = self._write_notes_csv(note_events, notes_csv_path)
 
         # Inject GM setup + expressive CCs into the Basic Pitch output.
-        # Basic Pitch itself only writes raw note_on/note_off — without
+        # Basic Pitch itself only writes raw note_on/note_off --- without
         # this post-processing the melodic MIDI files are missing bank
         # select, program change, volume/expression/pan, and per-stem
         # expressive controllers (brightness, reverb, chorus).
@@ -353,7 +353,7 @@ class BasicPitchService:
         Demucs primary stems (bass/piano/guitar/vocals/other) match
         directly. The instrument classifier produces per-instrument
         files like ``other_strings``, ``other_piano``, ``other_guitar``,
-        ``other_synth`` — strip the ``other_`` prefix so they pick up
+        ``other_synth`` --- strip the ``other_`` prefix so they pick up
         the correct GM voice instead of falling through to "other"
         (Warm Pad, program 89).
         """

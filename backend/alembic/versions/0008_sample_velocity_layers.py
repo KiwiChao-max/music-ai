@@ -5,7 +5,7 @@ Revises: 0007_soundfonts
 Create Date: 2026-07-03
 
 Adds velocity-layer support to sample_files so a single GM drum note can
-map to multiple samples — one per dynamic range (pp / mf / ff). The
+map to multiple samples --- one per dynamic range (pp / mf / ff). The
 frontend sample player selects the best-matching sample by incoming MIDI
 velocity, falling back to the full-range default when no layer is defined.
 """

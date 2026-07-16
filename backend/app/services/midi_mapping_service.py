@@ -9,7 +9,7 @@ arrangement while preserving tempo and note timing.
 If a user-supplied SoundFont (or preset table) is active, the mapper can
 rewrite each stem's `program` / `bank_msb` / `bank_lsb` to point at the
 user's chosen instrument via the `soundfont_overrides` argument. The notes
-themselves are untouched — only the voice selection is overridden.
+themselves are untouched --- only the voice selection is overridden.
 """
 from __future__ import annotations
 
@@ -150,7 +150,7 @@ _VOICES_CONFIG_PATH: Path = Path(__file__).resolve().parent.parent / "config" / 
 # SFX Kit 2: bank MSB=126, LSB=0
 _DEFAULT_XG_DRUM_BANK: tuple[int, int] = (127, 0)
 
-# Built-in fallback voice mappings — used when the config file is missing or
+# Built-in fallback voice mappings --- used when the config file is missing or
 # a stem key is absent from the user config. All program values are zero-based.
 #   0  Acoustic Grand Piano
 #   24 Acoustic Guitar (nylon)
@@ -189,7 +189,7 @@ _BUILTIN_XG_MELODIC_VOICES: dict[str, VoiceMapping] = {
     "guitar": VoiceMapping("Nylon Guitar", program=24, bank_msb=0, bank_lsb=1),
     "strings": VoiceMapping("Stereo Strings", program=48, bank_msb=0, bank_lsb=1),
     # bass / synth / other / vocals: no widely-supported XG variation, keep
-    # the GM voice (bank 0:0) — XG players will still accept it.
+    # the GM voice (bank 0:0) --- XG players will still accept it.
 }
 
 
@@ -203,7 +203,7 @@ def _load_voices_config() -> tuple[dict[str, VoiceMapping], tuple[int, int], dic
     the built-in defaults are returned as-is.
 
     The result is cached for the lifetime of the process via
-    `functools.lru_cache` — the file is small and read on every request
+    `functools.lru_cache` --- the file is small and read on every request
     that maps a stem to a GM program, so hitting the disk each time is
     wasteful. Restart the process (or call `_load_voices_config.cache_clear()`)
     to pick up config edits.
@@ -648,12 +648,12 @@ def _voice_for_profile(
             pan=voice.pan,
         )
 
-    # XG melodic stem — look up a documented XG variation voice.
+    # XG melodic stem --- look up a documented XG variation voice.
     xg_voice = _get_xg_melodic_voices().get(stem_key)
     if xg_voice is None:
         return voice
     # Preserve the mixer settings (channel / volume / expression / pan) from
-    # the base voice — those are per-stem mixer decisions, not part of the
+    # the base voice --- those are per-stem mixer decisions, not part of the
     # voice selection.
     return VoiceMapping(
         label=xg_voice.label,

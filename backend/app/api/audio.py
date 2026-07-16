@@ -3,43 +3,26 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Annotated
 
-import soundfile as sf
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.api.deps import (
-    CurrentUser,
-    OptionalUser,
-    get_current_user,
-    get_current_user_optional,
+    OptionalAuthUser,
+    check_task_ownership,
 )
 from app.config import settings
 from app.db.session import get_db
+from app.db.models import AudioTaskStatus
 from app.schemas.audio import AudioTaskRead, UploadResponse
 from app.services import file_service, task_service, user_service
+from app.utils.audio_validation import probe_metadata
+from app.utils.errors import MSG_UPLOAD_TOO_LARGE, log_error
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/audio", tags=["audio"])
 
-
-def _auth_user(
-    user: OptionalUser,
-) -> CurrentUser | None:
-    """Optional auth gate: enforce the global `auth_required` flag.
-
-    Returns the resolved user (or `None` for anonymous calls) so the
-    endpoint can stamp `user_id` on newly created tasks.
-    """
-    if settings.auth_required and user is None:
-        raise HTTPException(
-            status_code=401,
-            detail="authentication required",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    return user
 
 _ALLOWED_AUDIO_EXTENSIONS = {
     ".aac",
@@ -71,7 +54,7 @@ def _cleanup_failed_upload(db: Session, task_id: int) -> None:
     DB and disk cleanup happen in two steps on purpose. We must commit the
     row deletion so a subsequent retry can create a fresh row with the same
     id, but we *also* want to remove the partially-written upload. If the
-    filesystem operation fails, we log it and move on — the next upload for
+    filesystem operation fails, we log it and move on --- the next upload for
     the same task will overwrite the partial file anyway, and
     `remove_task_files` is already best-effort (it uses
     `shutil.rmtree(ignore_errors=True)`).
@@ -87,32 +70,17 @@ def _cleanup_failed_upload(db: Session, task_id: int) -> None:
             )
 
 
-def _probe_duration(path: Path) -> float | None:
-    """Best-effort duration probe using `soundfile` (WAV/FLAC/OGG/...).
-
-    Returns `None` for formats soundfile cannot decode without an external
-    decoder (e.g. some MP3 builds) so the worker can re-probe if needed.
-    """
-    try:
-        info = sf.info(str(path))
-    except (OSError, RuntimeError):
-        return None
-    if info.samplerate <= 0 or info.frames <= 0:
-        return None
-    return round(info.frames / float(info.samplerate), 2)
-
-
 @router.post("/upload", response_model=UploadResponse, status_code=201)
 def upload_audio(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    user: Annotated[object | None, Depends(_auth_user)] = None,
+    user: OptionalAuthUser = None,
 ) -> UploadResponse:
     """Persist the uploaded file and create an `audio_tasks` row.
 
     Flow: insert DB row (flush so we get the id), stream file to disk, then
     commit once. If the file write fails we roll the row back so state and
-    disk stay in sync — no half-created task lingers in the DB.
+    disk stay in sync --- no half-created task lingers in the DB.
     """
     if not _looks_like_audio(file):
         raise HTTPException(
@@ -157,15 +125,43 @@ def upload_audio(
         )
     except file_service.UploadTooLargeError as exc:
         db.rollback()
-        raise HTTPException(status_code=413, detail=str(exc)) from exc
+        log_error(exc, context=f"upload too large for task {task.id}")
+        raise HTTPException(status_code=413, detail=MSG_UPLOAD_TOO_LARGE) from exc
     except Exception:
         db.rollback()
         raise
 
+    # Validate audio metadata *after* the file is on disk.  This catches
+    # decompression-bomb attacks (small compressed file, huge decoded PCM)
+    # and rejects files with absurd duration / sample rate / channel count
+    # before the worker ever sees them.
+    meta = probe_metadata(path)
+    if not meta.is_valid:
+        db.rollback()
+        try:
+            path.unlink(missing_ok=True)
+        except Exception:  # noqa: BLE001
+            pass
+        # Also clean up the uploaded file from the storage backend
+        # (S3 may already have a copy).
+        try:
+            file_service.remove_task_files(task)
+        except Exception:  # noqa: BLE001
+            pass
+        violations = "; ".join(meta.violations)
+        log_error(
+            ValueError(violations),
+            context=f"audio validation failed for task {task.id}",
+        )
+        raise HTTPException(
+            status_code=413,
+            detail=f"audio validation failed: {violations}",
+        )
+
     # Stamp the conventional output path and (best-effort) duration.
     output_dir = str(file_service.task_output_dir(task.id))
     task_service.set_output_dir(db, task, output_dir)
-    task_service.set_duration(db, task, _probe_duration(path))
+    task_service.set_duration(db, task, meta.duration_seconds)
     db.commit()
 
     return UploadResponse(task_id=task.id)
@@ -173,20 +169,22 @@ def upload_audio(
 
 @router.get("", response_model=list[AudioTaskRead])
 def list_tasks(
-    limit: int = 100,
+    limit: int = 50,
     offset: int = 0,
+    status: AudioTaskStatus | None = None,
     db: Session = Depends(get_db),
-    user: Annotated[object | None, Depends(_auth_user)] = None,
+    user: OptionalAuthUser = None,
 ) -> list[AudioTaskRead]:
-    """Return tasks, newest first. `limit` is clamped to [1, 500].
+    """Return tasks, newest first. `limit` is clamped to [1, 200].
 
     When auth is enabled, the list is filtered to the caller's own
-    tasks (admins see every task).
+    tasks (admins see every task).  Optional `status` filter narrows
+    results to a single status (e.g. PROCESSING, FAILED).
     """
     if limit < 1:
         limit = 1
-    elif limit > 500:
-        limit = 500
+    elif limit > 200:
+        limit = 200
     if offset < 0:
         offset = 0
     only_user_id = None
@@ -200,7 +198,7 @@ def list_tasks(
         AudioTaskRead.model_validate(t)
         for t in task_service.list_tasks(
             db, limit=limit, offset=offset, user_id=only_user_id,
-            public_only=public_only,
+            public_only=public_only, status=status,
         )
     ]
 
@@ -209,14 +207,13 @@ def list_tasks(
 def get_task(
     task_id: int,
     db: Session = Depends(get_db),
-    user: Annotated[object | None, Depends(_auth_user)] = None,
+    user: OptionalAuthUser = None,
 ) -> AudioTaskRead:
     """Return a single task by id."""
     task = task_service.get_task(db, task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="task not found")
-    if user is not None and getattr(user, "role", None) != "admin" and task.user_id not in (None, user.id):
-        raise HTTPException(status_code=403, detail="not your task")
+    check_task_ownership(task, user)
     return AudioTaskRead.model_validate(task)
 
 
@@ -224,14 +221,13 @@ def get_task(
 def delete_task(
     task_id: int,
     db: Session = Depends(get_db),
-    user: Annotated[object | None, Depends(_auth_user)] = None,
+    user: OptionalAuthUser = None,
 ) -> None:
     """Delete a task and its on-disk files (uploads + worker outputs)."""
     task = task_service.get_task(db, task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="task not found")
-    if user is not None and getattr(user, "role", None) != "admin" and task.user_id not in (None, user.id):
-        raise HTTPException(status_code=403, detail="not your task")
+    check_task_ownership(task, user)
     task_service.delete_task(db, task_id)
     db.commit()
     try:

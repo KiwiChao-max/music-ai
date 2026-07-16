@@ -1,6 +1,6 @@
 """Tests for `app.services.instrument_classifier_service`.
 
-The classifier is a dependency-light rule engine — we don't try to pin
+The classifier is a dependency-light rule engine --- we don't try to pin
 exact posterior values (they're tuned empirically) but we do assert:
 
   * every instrument is represented in the output posteriors;
@@ -60,7 +60,7 @@ def test_detect_on_silence_returns_zeroed_posteriors(
 ) -> None:
     """A signal that's *too short* to compute any features must short-circuit
     to the documented "other_melodic" fallback. A longer silent signal goes
-    through the rule engine — its posteriors are still all ~0 because the
+    through the rule engine --- its posteriors are still all ~0 because the
     per-frame rules never trigger on a dead-silent frame.
     """
     audio = tmp_path / "silent.wav"

@@ -2,7 +2,7 @@
 
 Basic Pitch lazily downloads its ONNX model the first time `predict()` is
 called. On a fresh container that's a network round-trip *during* the
-first user request — slow, and the first request might time out.
+first user request --- slow, and the first request might time out.
 
 Run this once at image build time (see the Dockerfile `RUN` step) to
 force the model to land in the package's `model/` directory. After that
@@ -21,7 +21,7 @@ log = logging.getLogger("warmup")
 
 
 def _build_tiny_wav(path: Path) -> None:
-    """Write a 0.5 s silent 16 kHz mono WAV — the model only needs *some*
+    """Write a 0.5 s silent 16 kHz mono WAV --- the model only needs *some*
     audio to load; the content is irrelevant for warm-up."""
     rate = 16000
     seconds = 0.5
@@ -33,7 +33,7 @@ def _build_tiny_wav(path: Path) -> None:
 
 
 def main() -> int:
-    from basic_pitch.inference import predict  # noqa: WPS433 — lazy import on purpose
+    from basic_pitch.inference import predict  # noqa: WPS433 --- lazy import on purpose
 
     with tempfile.TemporaryDirectory() as td:
         wav = Path(td) / "warmup.wav"
@@ -43,7 +43,7 @@ def main() -> int:
 
         log.info("running a no-op predict() to trigger model download")
         # `predict` writes a midi file as a side effect; we don't care about
-        # the result. We DO care that no exception is raised — that's the
+        # the result. We DO care that no exception is raised --- that's the
         # signal that the model is on disk and the ONNX runtime is happy.
         predict(
             str(wav),

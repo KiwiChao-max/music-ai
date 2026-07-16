@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     # The `storage_dir` itself defaults to `<repo>/storage`; you can point it
     # anywhere via the STORAGE_DIR env var. To override just the uploads or
     # outputs subdirectory (e.g. uploads on a faster SSD, outputs on a big
-    # HDD), set UPLOAD_DIR / OUTPUT_DIR directly — they take precedence over
+    # HDD), set UPLOAD_DIR / OUTPUT_DIR directly --- they take precedence over
     # the derived `<storage_dir>/{uploads,outputs}`.
     storage_dir: Path = Field(
         default=Path(__file__).resolve().parent.parent.parent / "storage"
@@ -57,7 +57,64 @@ class Settings(BaseSettings):
     output_dir: Path | None = None
     # Hard stop for a single uploaded audio file. The file writer enforces
     # this while streaming so large uploads are rejected before hitting disk.
-    max_upload_bytes: int = 200 * 1024 * 1024
+    max_upload_bytes: int = 200 * 1024 * 1024  # 200 MiB
+
+    # ---- storage backend ----------------------------------------------------
+    # Backend: ``local`` (filesystem, default) or ``s3`` (S3-compatible
+    # object storage).  Switching to ``s3`` decouples the API and worker
+    # containers from a shared volume, enabling horizontal scale-out.
+    storage_backend: str = "local"
+
+    # S3 endpoint URL.  Required for MinIO (e.g. ``http://minio:9000``).
+    # Leave empty for AWS S3 (the SDK auto-discovers the regional endpoint).
+    storage_s3_endpoint_url: str = ""
+
+    # S3 credentials.  Leave both empty to use IAM roles (EC2/ECS).
+    storage_s3_access_key: str = ""
+    storage_s3_secret_key: str = ""
+
+    # S3 bucket name.  Must already exist.
+    storage_s3_bucket: str = "music-ai"
+
+    # S3 region (ignored by MinIO, required for AWS signature v4).
+    storage_s3_region: str = "us-east-1"
+
+    # Auto-cleanup: delete completed task files older than this many days.
+    # 0 = disabled.  When using S3, prefer configuring a bucket lifecycle
+    # rule on the provider side instead of relying on application-level
+    # cleanup.  For local storage, a periodic cleanup task (Celery Beat)
+    # can call ``storage.cleanup_expired()``.
+    storage_lifecycle_days: int = 0  # 0 = disabled
+
+    # ---- audio metadata validation ------------------------------------------
+    # These limits prevent "decompression bomb" attacks where a small
+    # compressed file (e.g. a 10 MiB FLAC) decodes to hundreds of MiB of
+    # PCM data in the worker's memory.  Each limit is checked *after* the
+    # file is saved to disk (using soundfile metadata), so the raw upload
+    # must still pass ``max_upload_bytes`` first.
+    #
+    # Set any limit to 0 to disable that specific check.
+
+    # Maximum audio duration in seconds.  0 = disabled.
+    # Default 1 800 s (30 min) is generous for a single song but blocks
+    # multi-hour mixtapes / podcasts.
+    max_audio_duration_seconds: int = 1_800
+
+    # Maximum sample rate in Hz.  0 = disabled.
+    # Default 96 000 Hz (96 kHz) covers pro-audio masters while blocking
+    # absurd 384 kHz DSD rips that waste memory.
+    max_audio_sample_rate: int = 96_000
+
+    # Maximum channel count.  0 = disabled.
+    # Default 8 covers 7.1 surround while blocking 32-channel multitrack
+    # stems that don't need source separation.
+    max_audio_channels: int = 8
+
+    # Maximum decoded PCM size in bytes.  0 = disabled.
+    # Default 1 GiB: a 44.1 kHz / 16-bit / stereo / 100-minute track
+    # decodes to ~1.0 GiB.  Anything larger is likely a decompression
+    # bomb or a deliberately crafted oversized file.
+    max_audio_pcm_bytes: int = 1 * 1024 * 1024 * 1024  # 1 GiB
 
     # ---- auth ------------------------------------------------------------
     # JWT signing key. In production this MUST be set via JWT_SECRET (a long
@@ -66,8 +123,23 @@ class Settings(BaseSettings):
     # and the secret still matches the default.
     jwt_secret: str = "dev-only-secret-please-change-in-production"
     jwt_algorithm: str = "HS256"
-    access_token_ttl_minutes: int = 60 * 24  # 24 hours
-    refresh_token_ttl_minutes: int = 60 * 24 * 30  # 30 days
+    # Access token is kept in-memory only (no localStorage) --- short-lived
+    # so a stolen token has a narrow window of abuse.
+    access_token_ttl_minutes: int = 15
+    # Refresh token is stored in an HttpOnly / Secure / SameSite cookie so
+    # XSS cannot exfiltrate it.  7 days is a reasonable trade-off between
+    # user convenience and the window for a stolen refresh token.
+    refresh_token_ttl_minutes: int = 60 * 24 * 7  # 7 days
+    # Refresh-token cookie name.
+    refresh_token_cookie_name: str = "music_ai_refresh"
+    # Cookie domain (empty = current domain).  Set in production to the
+    # specific domain the SPA is served from.
+    refresh_token_cookie_domain: str = ""
+    # CSRF token cookie name (readable by JS so the SPA can send it back
+    # in a custom header).
+    csrf_cookie_name: str = "music_ai_csrf"
+    # CSRF token header name the SPA sends on state-changing requests.
+    csrf_header_name: str = "X-CSRF-Token"
 
     # Default quota applied to every user that has not overridden the value
     # on their row. 0 = unlimited.
@@ -109,7 +181,7 @@ class Settings(BaseSettings):
     # don't want to spend money on LLM calls.
     #
     # `llm_base_url` is the provider's root (no `/chat/completions`),
-    # so any OpenAI-compatible endpoint works — OpenAI, Together,
+    # so any OpenAI-compatible endpoint works --- OpenAI, Together,
     # DeepSeek, OpenRouter, or a local llama.cpp server.
     llm_api_key: str = ""
     llm_base_url: str = "https://api.openai.com/v1"
@@ -127,7 +199,7 @@ class Settings(BaseSettings):
     # checkpoint, missing torch, inference exception, low-confidence
     # sub-classifier crash).
     #
-    # The ADTOS package itself is research code (not on PyPI) — to enable,
+    # The ADTOS package itself is research code (not on PyPI) --- to enable,
     # install torch + torchaudio, clone https://github.com/AMAAI-Lab/ADTOS,
     # download a checkpoint, and set ADT_MODEL_PATH. The service is
     # deliberately opt-in so workers in lean environments (no torch)
@@ -159,6 +231,14 @@ class Settings(BaseSettings):
     # can reconnect and re-snapshot.
     ws_max_lifetime_seconds: int = 1800  # 30 minutes
 
+    # Interval (seconds) for the low-frequency DB safety poll in the
+    # WebSocket progress pump.  The primary mechanism is the Redis
+    # Pub/Sub ``task_finished`` event; the DB poll is a fallback for
+    # the rare case where the worker crashes between committing the
+    # terminal state to the DB and publishing the event.  Set to 0 to
+    # disable the safety poll entirely (rely solely on Pub/Sub).
+    ws_safety_poll_interval: float = 5.0
+
     # ---- database pool -----------------------------------------------------
     # SQLAlchemy connection-pool sizing. `pool_size` is the steady-state
     # number of connections held open per engine; `max_overflow` is the
@@ -166,7 +246,7 @@ class Settings(BaseSettings):
     # requests block. `pool_recycle` discards a connection after this
     # many seconds so we never hand out a connection that the server has
     # already closed (Postgres' default `idle_session_timeout` is 0 but
-    # `tcp_keepalive` is what catches dead peers — recycling is the
+    # `tcp_keepalive` is what catches dead peers --- recycling is the
     # belt-and-suspenders complement to `pool_pre_ping`).
     db_pool_size: int = 10
     db_max_overflow: int = 20
@@ -181,6 +261,51 @@ class Settings(BaseSettings):
     celery_broker_url: str | None = None
     celery_result_backend: str | None = None
 
+    # ---- worker resource management ----------------------------------------
+    # Explicit concurrency override.  When set to a positive integer, this
+    # bypasses the automatic resource probe and uses the given value directly.
+    # When 0 or unset, the worker probes CPU / memory / GPU at startup and
+    # computes a safe concurrency automatically (see ``worker_probe.py``).
+    worker_concurrency: int = 0
+
+    # Per-worker-child memory ceiling in MiB.  A Celery worker child that
+    # exceeds this RSS will be gracefully replaced *after* the current task
+    # finishes (Celery ``worker_max_memory_per_child``).  Set to 0 to disable
+    # automatic recycling.
+    #
+    # Default 3 500 MiB (~3.4 GiB) gives a comfortable ceiling for a single
+    # Demucs run + Python runtime overhead without hitting the typical 4 GiB
+    # container limit.
+    worker_max_memory_per_child_mb: int = 3_500
+
+    # Pre-task memory gate.  Before a heavy task begins, the worker checks
+    # its current RSS against this value.  If the RSS already exceeds it
+    # (e.g. a previous task leaked memory), the task is rejected and
+    # re-queued to a fresh child.  Set to 0 to disable the pre-task gate.
+    #
+    # Default mirrors ``worker_max_memory_per_child_mb`` so the two gates
+    # work together: the pre-task check *prevents* OOM, the post-task
+    # recycling *cleans up* after a near-miss.
+    worker_memory_gate_mb: int = 0  # 0 = disabled by default; set explicitly
+
+    # Max tasks per worker child before forced recycling.  Useful as a
+    # belt-and-suspenders defence against slow memory leaks (e.g. a
+    # reference cycle in a C extension that the GC doesn't collect).
+    # Set to 0 to disable (worker children live forever).
+    worker_max_tasks_per_child: int = 10
+
+    # Device preference for the three heavy models.  Each can be "cpu" or
+    # "cuda".  When a model is not installed (e.g. torch not available),
+    # the setting is silently ignored and CPU is used.
+    #
+    # In a Docker Compose setup with a single GPU, set:
+    #   DEMUCS_DEVICE=cuda
+    #   BASIC_PITCH_DEVICE=cpu     # ONNX is CPU-optimised
+    #   ADT_DEVICE=cuda
+    demucs_device: str = "cpu"
+    basic_pitch_device: str = "cpu"
+    adt_device: str = "cpu"
+
     # ---- HTTP --------------------------------------------------------------
     # Comma-separated string or repeated env value accepted by pydantic.
     cors_origins: list[str] = Field(
@@ -192,13 +317,13 @@ class Settings(BaseSettings):
 
     # IPs / CIDRs of trusted reverse proxies (Nginx, Traefik, load
     # balancers).  ``X-Forwarded-For`` is ONLY honoured when the
-    # direct TCP peer matches an entry here — otherwise the header is
+    # direct TCP peer matches an entry here --- otherwise the header is
     # ignored (it could be spoofed by the client).
     #
     # Comma-separated in the env, e.g.:
     #   TRUSTED_PROXIES="10.0.0.1,172.16.0.0/12"
     #
-    # Defaults to localhost only — safe for direct-uvicorn dev setups.
+    # Defaults to localhost only --- safe for direct-uvicorn dev setups.
     # In production behind a reverse proxy, set this to the proxy's IP
     # or the Docker network CIDR.
     trusted_proxies: list[str] = Field(
@@ -226,9 +351,9 @@ class Settings(BaseSettings):
 
         errors: list[str] = []
 
-        # 1. Force authentication — no anonymous access in production.
+        # 1. Force authentication --- no anonymous access in production.
         if not self.auth_required:
-            # Auto-corrected; no error raised — the remaining checks
+            # Auto-corrected; no error raised --- the remaining checks
             # below are what the operator must fix manually.
             self.auth_required = True
 
@@ -317,7 +442,7 @@ class Settings(BaseSettings):
 
     @property
     def admin_sqlalchemy_url(self) -> str:
-        """URL pointing at the default `postgres` database — used to bootstrap."""
+        """URL pointing at the default `postgres` database --- used to bootstrap."""
         if self.database_url:
             # If a full URL is provided, swap its dbname to `postgres`.
             url = self.database_url

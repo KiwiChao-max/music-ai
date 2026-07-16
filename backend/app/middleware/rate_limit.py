@@ -13,7 +13,7 @@ when the direct TCP peer matches ``settings.trusted_proxies``.
 Circuit-breaker
   A single Redis failure does NOT permanently disable rate limiting.
   Instead, consecutive failures trigger an exponential-backoff retry
-  schedule (1s → 2s → 4s → … → 60s).  On the next successful Redis
+  schedule (1s -> 2s -> 4s -> ... -> 60s).  On the next successful Redis
   operation the breaker resets immediately.
 
 Local fallback
@@ -229,7 +229,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 _cb_record_success()
             except Exception:  # noqa: BLE001
                 _cb_record_failure()
-                # For login/register, fail-closed — no rate limiting at
+                # For login/register, fail-closed --- no rate limiting at
                 # all is worse than a temporary 503.
                 if _is_fail_closed(path):
                     return JSONResponse(

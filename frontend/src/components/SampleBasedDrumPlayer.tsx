@@ -112,7 +112,7 @@ export function SampleBasedDrumPlayer({
       } catch (err) {
         if (!cancelled) {
           if (err instanceof ApiError && err.status === 404) {
-            // Sample file not found on disk — skip silently.
+            // Sample file not found on disk --- skip silently.
           } else {
             setState({
               kind: "error",
@@ -151,7 +151,7 @@ export function SampleBasedDrumPlayer({
         setState({ kind: "ready" });
       } catch (err) {
         if (!cancelled) {
-          // 404 means the track simply has no drum events — not a real error.
+          // 404 means the track simply has no drum events --- not a real error.
           if (err instanceof ApiError && err.status === 404) {
             setState({ kind: "idle" });
           } else {
@@ -168,7 +168,7 @@ export function SampleBasedDrumPlayer({
     };
   }, [eventsUrl, t]);
 
-  // Stop all scheduled sources — used on pause and on unmount.
+  // Stop all scheduled sources --- used on pause and on unmount.
   const stopAllScheduled = useCallback(() => {
     for (const source of activeSourcesRef.current) {
       try {

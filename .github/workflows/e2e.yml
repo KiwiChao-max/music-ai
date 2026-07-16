@@ -1,20 +1,19 @@
 name: e2e
 
 on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
-# NOTE: E2E tests are disabled for push/PR until Playwright test specs
-# are added to the repo. Run manually via "Run workflow" when needed.
-
-# Same concurrency group as the regular CI so we don't fight for the
-# same Redis/Postgres services.
 concurrency:
   group: e2e-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   e2e:
-    name: e2e · upload → process → detail
+    name: e2e · upload -> process -> detail
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -45,6 +44,7 @@ jobs:
       DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/music_ai
       REDIS_URL: redis://localhost:6379/0
       JWT_SECRET: e2e-jwt-secret
+      CORS_ORIGINS: "http://127.0.0.1:4173,http://127.0.0.1:5173,http://localhost:5173"
     steps:
       - uses: actions/checkout@v4
       - name: Setup Python
@@ -79,6 +79,9 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Build frontend
         working-directory: frontend
+        env:
+          # Point the built SPA at the backend API.
+          VITE_API_BASE_URL: http://127.0.0.1:8000/api
         run: npm run build
       - name: Start backend
         working-directory: backend
@@ -89,10 +92,15 @@ jobs:
           REDIS_URL: redis://localhost:6379/0
           JWT_SECRET: e2e-jwt-secret
         run: |
-          # Background the server; the next step waits for /healthz.
           nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 \
             > /tmp/backend.log 2>&1 &
           echo "backend pid: $!"
+      - name: Start frontend
+        working-directory: frontend
+        run: |
+          npx serve dist -s -l 4173 \
+            > /tmp/frontend.log 2>&1 &
+          echo "frontend pid: $!"
       - name: Wait for backend
         run: |
           for i in $(seq 1 30); do
@@ -105,10 +113,23 @@ jobs:
           echo "backend failed to start; logs:" >&2
           cat /tmp/backend.log >&2
           exit 1
+      - name: Wait for frontend
+        run: |
+          for i in $(seq 1 15); do
+            if curl -fs http://127.0.0.1:4173/ >/dev/null; then
+              echo "frontend is up"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "frontend failed to start; logs:" >&2
+          cat /tmp/frontend.log >&2
+          exit 1
       - name: Run Playwright e2e tests
         working-directory: frontend
         env:
           PLAYWRIGHT_API_BASE_URL: http://127.0.0.1:8000
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:4173
         run: npx playwright test
       - name: Upload Playwright report on failure
         if: failure()

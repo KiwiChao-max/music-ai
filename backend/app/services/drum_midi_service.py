@@ -10,20 +10,20 @@ The output covers:
 
   * Kick (35 / 36)
   * Snare + hand clap (37 / 38 / 39 / 40)
-  * Hi-hat (open, closed, pedal — 42 / 44 / 46)
-  * Toms (5 pieces: floor, low, low-mid, hi-mid, high — 41 / 43 / 45 / 47 / 48 / 50)
-  * Cymbals (crash 1+2, ride 1+2, china, splash, ride bell — 49 / 51-55 / 57 / 59)
-  * Small percussion (cowbell, tambourine, latin percussion — 54 / 56 / 60-81)
+  * Hi-hat (open, closed, pedal --- 42 / 44 / 46)
+  * Toms (5 pieces: floor, low, low-mid, hi-mid, high --- 41 / 43 / 45 / 47 / 48 / 50)
+  * Cymbals (crash 1+2, ride 1+2, china, splash, ride bell --- 49 / 51-55 / 57 / 59)
+  * Small percussion (cowbell, tambourine, latin percussion --- 54 / 56 / 60-81)
   * Fills (a separate ``fill`` track capturing dense bursts so drummers can
     edit them independently)
 
 The MIDI writer also outputs the standard GM controllers so the file is
 playable in any GM-aware DAW without manual re-mixing:
 
-  * CC7  (channel volume)   — 100
-  * CC10 (pan)              — 64
-  * CC11 (expression)       — 127
-  * CC64 (sustain pedal)    — only for melodic tracks; drums ignore
+  * CC7  (channel volume)   --- 100
+  * CC10 (pan)              --- 64
+  * CC11 (expression)       --- 127
+  * CC64 (sustain pedal)    --- only for melodic tracks; drums ignore
 """
 from __future__ import annotations
 
@@ -55,11 +55,11 @@ _CONFIDENCE_FALLBACK: dict[str, tuple[str, str]] = {
     "tom_lomid": ("tom_lomid", "tom_himid"),
     "tom_low": ("tom_low", "tom_lomid"),
     "tom_floor": ("tom_floor", "tom_low"),
-    # Cymbal family → primary member.
+    # Cymbal family -> primary member.
     "china": ("crash", "china"),
     "splash": ("crash", "splash"),
     "ride_bell": ("ride", "ride_bell"),
-    # Rare percussion → closest common part.
+    # Rare percussion -> closest common part.
     "sidestick": ("snare", "sidestick"),
     "cowbell": ("snare", "cowbell"),
     "tambourine": ("hihat_closed", "tambourine"),
@@ -119,7 +119,7 @@ _GM_DRUM_NOTES: dict[str, int] = {
     # Hand / small percussion
     "tambourine": 54,
     "cowbell": 56,
-    "percussion": 60,     # High Bongo — placeholder; the writer also accepts
+    "percussion": 60,     # High Bongo --- placeholder; the writer also accepts
                           # an explicit note for fine-grained hits.
     # "fill" is a heuristic overlay; it remaps to a low-mid tom so the part
     # MIDI is still playable on a default GM kit.
@@ -311,7 +311,7 @@ class DrumMidiService:
             post_avg = 3
 
         # `aggregate` is invoked by librosa as `aggregate(data_slice, axis=-1)`.
-        # We use the per-frame mean — the previous `np.median` over the whole
+        # We use the per-frame mean --- the previous `np.median` over the whole
         # matrix broadcast a single scalar to every frame and silently
         # disabled onset detection.
         def _mean_over_freq(matrix: np.ndarray, axis: int = -1) -> np.ndarray:
@@ -353,9 +353,9 @@ class DrumMidiService:
         # Velocity reference: use the 95th percentile rather than the
         # maximum so the relative dynamic range is preserved.  Per-track
         # normalisation (strength / max_strength) stretches every track
-        # to fill 35–127, destroying playing expression and dynamics.
+        # to fill 35-127, destroying playing expression and dynamics.
         # With the 95th-percentile reference, the softest ghost notes
-        # stay quiet and the loudest accents stay loud — only the top
+        # stay quiet and the loudest accents stay loud --- only the top
         # 5 % of hits are clamped to velocity 127.
         strengths = [feat[4] for feat in features]
         ref_strength = (
@@ -448,7 +448,7 @@ class DrumMidiService:
         # to a (primary, secondary) tuple. We use `primary` when the
         # classifier returned the secondary label with low confidence;
         # we use `secondary` when the classifier returned the primary
-        # label — that way ambiguous hits collapse to the nearest
+        # label --- that way ambiguous hits collapse to the nearest
         # well-defined part rather than defaulting to "tom_lomid".
         if confidence < _CLASSIFIER_CONFIDENCE_FLOOR and part in _CONFIDENCE_FALLBACK:
             primary, secondary = _CONFIDENCE_FALLBACK[part]
@@ -456,7 +456,7 @@ class DrumMidiService:
                 part = primary
             elif part == primary:
                 part = secondary
-            # Confidence stays low — the remap is a best-effort guess,
+            # Confidence stays low --- the remap is a best-effort guess,
             # not a confident classification.
             if confidence < 0.40:
                 confidence = max(confidence, 0.40)
@@ -527,7 +527,7 @@ class DrumMidiService:
         # Snare: mid+high content, attack-heavy, low sustain.
         if high_ratio > 0.35 and mid_ratio > 0.20 and sustain_ratio < 0.20:
             if strength < 0.04 and centroid > 6000.0:
-                # Tiny edge noise — not a snare.
+                # Tiny edge noise --- not a snare.
                 return "hihat_closed", 0.55
             return "snare", min(0.92, 0.46 + mid_ratio * 0.4 + high_ratio * 0.3)
 

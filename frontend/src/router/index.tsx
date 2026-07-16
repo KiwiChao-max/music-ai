@@ -22,6 +22,12 @@ const SampleLibraryPage = lazy(() =>
 const UploadPage = lazy(() =>
   import("@/pages/UploadPage").then((m) => ({ default: m.UploadPage })),
 );
+const LoginPage = lazy(() =>
+  import("@/pages/LoginPage").then((m) => ({ default: m.LoginPage })),
+);
+const RegisterPage = lazy(() =>
+  import("@/pages/RegisterPage").then((m) => ({ default: m.RegisterPage })),
+);
 
 function PageFallback() {
   return (
@@ -66,6 +72,22 @@ export const router = createBrowserRouter([
         element: (
           <Suspense fallback={<PageFallback />}>
             <SampleLibraryPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: "login",
+        element: (
+          <Suspense fallback={<PageFallback />}>
+            <LoginPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: "register",
+        element: (
+          <Suspense fallback={<PageFallback />}>
+            <RegisterPage />
           </Suspense>
         ),
       },

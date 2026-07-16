@@ -15,17 +15,20 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
+from app.api.deps import OptionalAuthUser, check_task_ownership
 from app.config import settings
-from app.api.deps import OptionalUser
 from app.db.models import AudioTaskStatus
 from app.db.session import get_db
 from app.schemas.audio import MusicAnalysisResponse, ProcessResponse, StemInfo, TaskStatusResponse
-from app.services import auth_service, file_service, midi_mapping_service, music_analysis_service, task_service, user_service
+from app.services import (
+    auth_service, file_service, midi_mapping_service,
+    music_analysis_service, task_service, user_service,
+)
 from app.tasks_audio import process_audio_task
 
 logger = logging.getLogger(__name__)
@@ -33,52 +36,26 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
 
-def _auth_user(user: OptionalUser):
-    """Optional auth gate matching audio.py's pattern."""
-    if settings.auth_required and user is None:
-        raise HTTPException(
-            status_code=401,
-            detail="authentication required",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    return user
-
-
-def _check_ownership(task, user) -> None:
-    """Raise 403 if the user is not the owner (or admin)."""
-    if user is not None and getattr(user, "role", None) != "admin" and task.user_id not in (None, user.id):
-        raise HTTPException(status_code=403, detail="not your task")
-
 # Suffixes that count as an "output file" the worker can produce.
-#   * `.wav/.mp3/.flac/.ogg/.m4a` — Demucs audio stems
-#   * `.mid/.midi`                — Basic Pitch MIDI transcription
+#   * `.wav/.mp3/.flac/.ogg/.m4a` --- Demucs audio stems
+#   * `.mid/.midi`                --- Basic Pitch MIDI transcription
 # The API sorts audio first, then MIDI, so the UI can group them visually.
 _AUDIO_SUFFIXES: set[str] = {".wav", ".mp3", ".flac", ".ogg", ".m4a"}
 _MIDI_SUFFIXES: set[str] = {".mid", ".midi"}
 _OUTPUT_SUFFIXES: set[str] = _AUDIO_SUFFIXES | _MIDI_SUFFIXES
 
 
-def _artifact_url(task_id: int, scope: str, file_path: Path) -> str:
+def _artifact_url(task_id: int, scope: str, filename: str) -> str:
     """Build a task-scoped artifact URL without exposing the storage layout."""
     from urllib.parse import quote
 
-    return f"/api/tasks/{task_id}/files/{scope}/{quote(file_path.name, safe='')}"
+    return f"/api/tasks/{task_id}/files/{scope}/{quote(filename, safe='')}"
 
 
-def _artifact_path(task_id: int, scope: str, filename: str) -> Path:
-    """Resolve one known task artifact while rejecting traversal attempts."""
+def _validate_artifact_filename(filename: str) -> None:
+    """Reject path traversal attempts in artifact filenames."""
     if filename != Path(filename).name:
         raise HTTPException(status_code=404, detail="artifact not found")
-    if scope == "upload":
-        directory = file_service.task_upload_dir(task_id)
-    elif scope == "output":
-        directory = file_service.task_output_dir(task_id)
-    else:
-        raise HTTPException(status_code=404, detail="artifact not found")
-    candidate = directory / filename
-    if not candidate.is_file():
-        raise HTTPException(status_code=404, detail="artifact not found")
-    return candidate
 
 
 # ---------------------------------------------------------------------------
@@ -92,7 +69,7 @@ def _artifact_path(task_id: int, scope: str, filename: str) -> Path:
 def start_processing(
     task_id: int,
     db: Session = Depends(get_db),
-    user: Annotated[object | None, Depends(_auth_user)] = None,
+    user: OptionalAuthUser = None,
 ) -> ProcessResponse:
     """Kick off the Demucs pipeline for an uploaded task.
 
@@ -111,7 +88,7 @@ def start_processing(
     existing = task_service.get_task(db, task_id)
     if existing is None:
         raise HTTPException(status_code=404, detail="task not found")
-    _check_ownership(existing, user)
+    check_task_ownership(existing, user)
 
     task = task_service.claim_for_processing(db, task_id)
     if task is None:
@@ -127,15 +104,29 @@ def start_processing(
     # PROCESSING by `claim_for_processing`, so the worker just runs the
     # pipeline and writes progress / stems / final status. If the worker is
     # not running, the message sits in Redis and is processed when one comes
-    # up — the frontend will keep polling /status and see PROCESSING + 0%.
+    # up --- the frontend will keep polling /status and see PROCESSING + 0%.
+    #
+    # If the broker is unreachable (Redis down, DNS error, etc.), we
+    # atomically roll the task back to UPLOADED so it doesn't get stuck in
+    # PROCESSING forever.  The rollback is conditional on the task still
+    # being in PROCESSING --- if the worker somehow already picked it up,
+    # we fall back to marking it FAILED.
     try:
         async_result = process_audio_task.delay(task.id)
     except Exception as exc:  # broker down, DNS issue, etc.
         logger.exception("failed to dispatch task %s to celery: %s", task.id, exc)
+        reason = "celery dispatch failed --- service unavailable"
+        rolled_back = task_service.rollback_claim(db, task.id, reason=reason)
+        if rolled_back is None:
+            # The task was already claimed by a worker (unlikely but
+            # possible).  Mark it FAILED so the user knows something
+            # went wrong rather than seeing it stuck in PROCESSING.
+            task_service.mark_failed_quick(db, task.id, reason=reason)
         raise HTTPException(
             status_code=503,
             detail=(
-                f"task is queued in the database but could not be dispatched: {exc}"
+                "task could not be dispatched to the worker. "
+                "The task has been reset --- please try again."
             ),
         )
     logger.info(
@@ -155,13 +146,13 @@ def start_processing(
 def get_task_status(
     task_id: int,
     db: Session = Depends(get_db),
-    user: Annotated[object | None, Depends(_auth_user)] = None,
+    user: OptionalAuthUser = None,
 ) -> TaskStatusResponse:
     """Lightweight status snapshot for polling UIs."""
     task = task_service.get_task(db, task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="task not found")
-    _check_ownership(task, user)
+    check_task_ownership(task, user)
     return TaskStatusResponse(status=task.status, progress=task.progress)
 
 
@@ -175,7 +166,7 @@ def get_task_status(
 def list_stems(
     task_id: int,
     db: Session = Depends(get_db),
-    user: Annotated[object | None, Depends(_auth_user)] = None,
+    user: OptionalAuthUser = None,
 ) -> list[StemInfo]:
     """Return the separated stems once the task has FINISHED.
 
@@ -185,43 +176,49 @@ def list_stems(
     task = task_service.get_task(db, task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="task not found")
-    _check_ownership(task, user)
+    check_task_ownership(task, user)
     if task.status != AudioTaskStatus.FINISHED:
         raise HTTPException(
             status_code=409,
             detail=f"task not ready (status={task.status.value})",
         )
-    if not task.output_dir:
-        return []
-
-    out_dir = Path(task.output_dir)
-    if not out_dir.is_dir():
-        return []
 
     audio_stems: list[StemInfo] = []
     midi_stems: list[StemInfo] = []
 
-    upload_dir = file_service.task_upload_dir(task.id)
-    for candidate in sorted(upload_dir.glob("original.*")):
-        if candidate.is_file() and candidate.suffix.lower() in _AUDIO_SUFFIXES:
+    # Uploaded original file(s).
+    for name in file_service.list_upload_files(task):
+        suffix = Path(name).suffix.lower()
+        if suffix in _AUDIO_SUFFIXES:
             audio_stems.append(
-                StemInfo(name="original", url=_artifact_url(task.id, "upload", candidate), kind="audio"),
+                StemInfo(
+                    name="original",
+                    url=_artifact_url(task.id, "upload", name),
+                    kind="audio",
+                )
             )
             break
 
-    for f in sorted(out_dir.iterdir()):
-        if not f.is_file():
-            continue
-        suffix = f.suffix.lower()
+    # Worker output files.
+    for name in file_service.list_output_files(task):
+        suffix = Path(name).suffix.lower()
         if suffix in _AUDIO_SUFFIXES:
-            audio_stems.append(StemInfo(name=f.stem, url=_artifact_url(task.id, "output", f), kind="audio"))
+            audio_stems.append(
+                StemInfo(
+                    name=Path(name).stem,
+                    url=_artifact_url(task.id, "output", name),
+                    kind="audio",
+                )
+            )
         elif suffix in _MIDI_SUFFIXES:
             midi_stems.append(
                 StemInfo(
-                    name=f.stem,
-                    url=_artifact_url(task.id, "output", f),
+                    name=Path(name).stem,
+                    url=_artifact_url(task.id, "output", name),
                     kind="midi",
-                    profile=midi_mapping_service.midi_profile_from_name(f.stem),
+                    profile=midi_mapping_service.midi_profile_from_name(
+                        Path(name).stem
+                    ),
                 )
             )
     return audio_stems + midi_stems
@@ -234,7 +231,7 @@ def download_artifact(
     filename: str,
     token: str | None = None,
     db: Session = Depends(get_db),
-    user: Annotated[object | None, Depends(_auth_user)] = None,
+    user: OptionalAuthUser = None,
 ):
     """Stream a task artifact after applying the normal ownership policy.
 
@@ -242,9 +239,11 @@ def download_artifact(
     parameter auth (for <a href>/<audio>/<img> elements that can't set
     headers). The query parameter is checked only when no Bearer token is
     present.
-    """
-    from fastapi.responses import FileResponse
 
+    The file is streamed from the configured storage backend (local
+    filesystem or S3) so the API container does not need a shared volume
+    mount.
+    """
     if user is None and token:
         try:
             payload = auth_service.decode_token(token, expected_type="access")
@@ -256,8 +255,41 @@ def download_artifact(
     task = task_service.get_task(db, task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="task not found")
-    _check_ownership(task, user)
-    return FileResponse(_artifact_path(task.id, scope, filename))
+    check_task_ownership(task, user)
+    _validate_artifact_filename(filename)
+
+    if scope == "upload":
+        file_obj = file_service.open_upload_file(task)
+    elif scope == "output":
+        file_obj = file_service.open_output_file(task, filename)
+    else:
+        raise HTTPException(status_code=404, detail="artifact not found")
+
+    suffix = Path(filename).suffix.lower()
+    media_type = _media_type_for_suffix(suffix)
+
+    return StreamingResponse(
+        file_obj,
+        media_type=media_type,
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
+
+
+def _media_type_for_suffix(suffix: str) -> str:
+    """Map file extension to a reasonable MIME type."""
+    mapping = {
+        ".wav": "audio/wav",
+        ".wave": "audio/wav",
+        ".mp3": "audio/mpeg",
+        ".flac": "audio/flac",
+        ".ogg": "audio/ogg",
+        ".opus": "audio/ogg",
+        ".m4a": "audio/mp4",
+        ".aac": "audio/aac",
+        ".mid": "audio/midi",
+        ".midi": "audio/midi",
+    }
+    return mapping.get(suffix, "application/octet-stream")
 
 
 # ---------------------------------------------------------------------------
@@ -270,23 +302,28 @@ def download_artifact(
 def get_task_analysis(
     task_id: int,
     db: Session = Depends(get_db),
-    user: Annotated[object | None, Depends(_auth_user)] = None,
+    user: OptionalAuthUser = None,
 ) -> MusicAnalysisResponse:
     """Return generated music analysis once the task has FINISHED."""
     task = task_service.get_task(db, task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="task not found")
-    _check_ownership(task, user)
+    check_task_ownership(task, user)
     if task.status != AudioTaskStatus.FINISHED:
         raise HTTPException(
             status_code=409,
             detail=f"task not ready (status={task.status.value})",
         )
-    if not task.output_dir:
-        raise HTTPException(status_code=404, detail="analysis not found")
 
-    analysis = music_analysis_service.read_analysis(Path(task.output_dir))
-    if analysis is None:
+    # Read analysis.json from the storage backend (works for both
+    # local filesystem and S3).
+    import json
+
+    try:
+        file_obj = file_service.open_output_file(task, "analysis.json")
+        analysis = json.load(file_obj)
+        file_obj.close()
+    except Exception:
         raise HTTPException(status_code=404, detail="analysis not found")
     # Attach the LLM commentary if the worker produced one. The two live
     # side by side so the UI can show "the AI's take" without a second
@@ -323,7 +360,7 @@ def get_task_analysis(
 def get_task_commentary(
     task_id: int,
     db: Session = Depends(get_db),
-    user: Annotated[object | None, Depends(_auth_user)] = None,
+    user: OptionalAuthUser = None,
 ) -> dict:
     """Return just the LLM commentary (and metadata) for a task.
 
@@ -334,7 +371,7 @@ def get_task_commentary(
     task = task_service.get_task(db, task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="task not found")
-    _check_ownership(task, user)
+    check_task_ownership(task, user)
     return {
         "task_id": task.id,
         "commentary": task.commentary,

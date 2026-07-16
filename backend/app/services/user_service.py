@@ -129,7 +129,7 @@ def authenticate(
     """Look up by email OR username and verify the password.
 
     Raises `InvalidCredentialsError` on either unknown identifier or
-    wrong password — we deliberately do not distinguish the two to
+    wrong password --- we deliberately do not distinguish the two to
     avoid leaking which accounts exist.
     """
     if not identifier or not password:

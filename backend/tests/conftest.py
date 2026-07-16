@@ -4,7 +4,7 @@ Strategy: default to an in-memory SQLite for fast local runs. When the
 env var ``TEST_DATABASE_URL`` is set (e.g. to a Postgres URL in CI), the
 fixtures connect to that database instead, so Postgres-specific SQL
 issues are caught before merge. The Alembic migrations themselves are
-not run here — the test session creates the schema straight from the
+not run here --- the test session creates the schema straight from the
 model metadata.
 """
 from __future__ import annotations
@@ -61,7 +61,7 @@ def db_session() -> Generator[Session, None, None]:
     """Per-test DB session.
 
     * Local dev (no ``TEST_DATABASE_URL``): in-memory SQLite with
-      ``StaticPool`` — fast, no setup, isolated per test.
+      ``StaticPool`` --- fast, no setup, isolated per test.
     * CI (``TEST_DATABASE_URL`` set): a real Postgres database. Each
       test drops and recreates the schema from the model metadata so
       tests stay isolated. Slower, but catches Postgres-specific SQL

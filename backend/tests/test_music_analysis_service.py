@@ -58,7 +58,7 @@ def test_estimate_key_finds_a_minor() -> None:
 
 
 def test_estimate_key_prefers_real_scale_over_random() -> None:
-    """A pure C major scale must rank above every other key — even a small
+    """A pure C major scale must rank above every other key --- even a small
     confidence gap counts, because random-pitch music is the only thing
     that should produce 'no clear key'.
     """
@@ -77,7 +77,7 @@ def test_estimate_chords_segments_into_bars() -> None:
     ]
     segments = _estimate_chords(notes, duration=6.0, bpm=120)
     assert segments, "expected at least one chord segment"
-    # All three triads should reduce to a recognized quality — we don't pin
+    # All three triads should reduce to a recognized quality --- we don't pin
     # the exact names (it depends on threshold tuning) but each segment must
     # have a non-empty name and a confidence in [0, 1].
     for seg in segments:

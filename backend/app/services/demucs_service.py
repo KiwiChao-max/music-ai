@@ -1,7 +1,7 @@
 """Meta Demucs source-separation service.
 
 The default model is the 6-stem variant (``htdemucs_6s``), which natively
-outputs vocals, drums, bass, piano, guitar and other — the piano/guitar
+outputs vocals, drums, bass, piano, guitar and other --- the piano/guitar
 stems replace the rule-based instrument classifier for those two
 instruments, giving much cleaner separation when several melodic
 instruments overlap. The classifier still runs on the residual

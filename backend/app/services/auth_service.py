@@ -1,11 +1,11 @@
 """Auth service.
 
 Three halves:
-  * password hashing (bcrypt via passlib) — slow on purpose so brute-force
+  * password hashing (bcrypt via passlib) --- slow on purpose so brute-force
     is impractical;
-  * JWT signing / verification (HS256 via python-jose) — short-lived
+  * JWT signing / verification (HS256 via python-jose) --- short-lived
     access tokens (1 day) and longer-lived refresh tokens (30 days);
-  * refresh-token rotation — server-side records with SHA-256 hashes,
+  * refresh-token rotation --- server-side records with SHA-256 hashes,
     single-use marking, reuse detection, and full-logout revocation.
 
 The same key signs both kinds of tokens; the `type` claim tells the
@@ -83,7 +83,7 @@ def create_token(
     """Sign a new JWT.
 
     `subject` is the user id (as a string).  `jti` is a unique token
-    identifier (UUID4) — refresh tokens always get one, access tokens
+    identifier (UUID4) --- refresh tokens always get one, access tokens
     may optionally include it.
     """
     now = _now()
@@ -170,7 +170,7 @@ def issue_token_pair(
 
 # ---- rotation -------------------------------------------------------------
 class TokenReuseError(Exception):
-    """Raised when a previously-used refresh token is presented again —
+    """Raised when a previously-used refresh token is presented again ---
     this is a strong signal of token theft.  All tokens in the family
     have been revoked; the user must re-authenticate."""
 
@@ -190,21 +190,21 @@ def rotate_refresh_token(db: Session, raw_token: str) -> dict[str, Any]:
     This is the core of refresh-token rotation:
       1. Decode + verify the JWT (signature, expiry, type).
       2. Hash the raw token and look it up in the DB.
-      3. If the token is already *used* → **reuse detected!**  Revoke
+      3. If the token is already *used* -> **reuse detected!**  Revoke
          the entire family and raise `TokenReuseError`.
-      4. If the token is revoked or not found → raise.
+      4. If the token is revoked or not found -> raise.
       5. Mark the old token as `used`, create a new pair under the same
          `family_id`, and return the new tokens.
 
     A successful rotation produces a fresh refresh token and invalidates
-    the old one — a stolen refresh token is usable at most once (and only
+    the old one --- a stolen refresh token is usable at most once (and only
     if the attacker beats the legitimate client to the refresh endpoint).
     """
     # 1. Decode the JWT (stateless verification).
     try:
         claims = decode_token(raw_token, expected_type="refresh")
-    except ValueError as exc:
-        raise TokenNotFoundError(str(exc)) from exc
+    except ValueError:
+        raise TokenNotFoundError("invalid or expired refresh token")
 
     try:
         user_id = int(claims["sub"])
@@ -225,10 +225,10 @@ def rotate_refresh_token(db: Session, raw_token: str) -> dict[str, Any]:
 
     # 3. Check status.
     if record.status == RefreshTokenStatus.USED:
-        # Reuse detected — revoke the entire family.
+        # Reuse detected --- revoke the entire family.
         _revoke_family(db, record.family_id)
         raise TokenReuseError(
-            "refresh token has already been used — "
+            "refresh token has already been used --- "
             "possible token theft detected; all sessions revoked"
         )
 

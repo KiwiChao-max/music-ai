@@ -4,7 +4,7 @@
  * Lives in the top-right of the main header. Toggling calls back to
  * `useDarkMode` which persists the choice and applies the `dark`
  * class to `<html>`. The button shows a sun in dark mode (click to
- * go light) and a moon in light mode (click to go dark) — the
+ * go light) and a moon in light mode (click to go dark) --- the
  * classic convention.
  */
 import { useTranslation } from "react-i18next";

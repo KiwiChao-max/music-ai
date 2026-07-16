@@ -1,6 +1,6 @@
 # Music-AI 项目面试梳理
 
-> **项目定位**：AI 驱动的音乐处理平台，支持音频上传 → 源分离 → 乐器识别 → MIDI 转录 → 鼓点拆分 → 用户自定义采样库播放的完整 pipeline。
+> **项目定位**：AI 驱动的音乐处理平台，支持音频上传 -> 源分离 -> 乐器识别 -> MIDI 转录 -> 鼓点拆分 -> 用户自定义采样库播放的完整 pipeline。
 
 ---
 
@@ -48,24 +48,24 @@ Music-AI 是一个端到端的音频 AI 处理平台。用户上传一段音频�
 | 技术 | 版本 | 用途 | 面试重点 |
 |------|------|------|----------|
 | **Python** | 3.12 | 后端语言 | 必须用 3.12，因为 Demucs / Basic Pitch 的 wheel 只适配 3.12 |
-| **FastAPI** | ≥0.110 | Web 框架 | 异步/同步混合、依赖注入（Depends）、路由前缀、CORS 中间件 |
-| **Pydantic** | ≥2.5 | 数据验证 + 配置管理 | `BaseSettings` 加载 `.env`；`Field` 默认值；`field_validator` 自定义解析（如 CORS 字符串→列表） |
+| **FastAPI** | >=0.110 | Web 框架 | 异步/同步混合、依赖注入（Depends）、路由前缀、CORS 中间件 |
+| **Pydantic** | >=2.5 | 数据验证 + 配置管理 | `BaseSettings` 加载 `.env`；`Field` 默认值；`field_validator` 自定义解析（如 CORS 字符串->列表） |
 | **SQLAlchemy** | 2.0 | ORM | `Mapped` + `mapped_column` 新语法；`with_variant` 兼容 SQLite 测试；关系定义 |
-| **Alembic** | ≥1.13 | 数据库迁移 | 初始迁移含 `trigger` 自动更新 `updated_at`；enum 类型声明；partial unique index（sample_library 单激活） |
-| **psycopg2-binary** | ≥2.9 | PostgreSQL 驱动 | `postgresql+psycopg2` 连接串；生产用 `pgbouncer` |
-| **Celery** | ≥5.4 | 异步任务队列 | `acks_late=True`（worker 崩溃后任务重入队）、`worker_prefetch_multiplier=1`（长任务不批量）、`task_track_started` |
-| **Redis** | ≥5.0 / 6+ | 消息队列 + 缓存 + pub/sub | Celery broker/result backend；WebSocket 实时进度推送 |
-| **passlib[bcrypt]** | ≥1.7.4 | 密码哈希 | bcrypt 72 字节输入限制；`CryptContext` 多 scheme 支持 |
-| **python-jose** | ≥3.3 | JWT 签名/验证 | HS256 对称签名；`type` claim 区分 access/refresh token；`sub` 标准 claim |
-| **prometheus-client** | ≥0.20 | 监控指标 | `http_requests_total` 计数器、`http_request_duration_seconds` 直方图、`music_ai_tasks_total` 状态 gauge |
-| **httpx** | ≥0.27 | HTTP 客户端 | 测试用 `TestClient` 底层就是 httpx |
+| **Alembic** | >=1.13 | 数据库迁移 | 初始迁移含 `trigger` 自动更新 `updated_at`；enum 类型声明；partial unique index（sample_library 单激活） |
+| **psycopg2-binary** | >=2.9 | PostgreSQL 驱动 | `postgresql+psycopg2` 连接串；生产用 `pgbouncer` |
+| **Celery** | >=5.4 | 异步任务队列 | `acks_late=True`（worker 崩溃后任务重入队）、`worker_prefetch_multiplier=1`（长任务不批量）、`task_track_started` |
+| **Redis** | >=5.0 / 6+ | 消息队列 + 缓存 + pub/sub | Celery broker/result backend；WebSocket 实时进度推送 |
+| **passlib[bcrypt]** | >=1.7.4 | 密码哈希 | bcrypt 72 字节输入限制；`CryptContext` 多 scheme 支持 |
+| **python-jose** | >=3.3 | JWT 签名/验证 | HS256 对称签名；`type` claim 区分 access/refresh token；`sub` 标准 claim |
+| **prometheus-client** | >=0.20 | 监控指标 | `http_requests_total` 计数器、`http_request_duration_seconds` 直方图、`music_ai_tasks_total` 状态 gauge |
+| **httpx** | >=0.27 | HTTP 客户端 | 测试用 `TestClient` 底层就是 httpx |
 
 ### 3.2 音频 AI 核心
 
 | 技术 | 用途 | 面试重点 |
 |------|------|----------|
 | **Demucs** (Meta) | 4-stem 源分离（人声/鼓/贝斯/其他） | 模型版本 ht-demucs；CPU 上首跑慢；失败 fallback 到 placeholder stems |
-| **Basic Pitch** (Spotify) | 多音轨音频 → polyphonic MIDI | ONNX 推理；`predict()` 参数（onset_threshold, frame_threshold, min_note_length）；fallback 到 librosa.pyin |
+| **Basic Pitch** (Spotify) | 多音轨音频 -> polyphonic MIDI | ONNX 推理；`predict()` 参数（onset_threshold, frame_threshold, min_note_length）；fallback 到 librosa.pyin |
 | **librosa** | 音频处理瑞士军刀 | `pyin`（基频检测）、`onset_detect`（鼓点 onset）、`feature.spectral_centroid`（频谱质心）、`feature.rms`（能量）、`load` / `frames_to_time` |
 | **soundfile** | 音频读写 | `sf.info()` 探测时长；WAV/FLAC/OGG 支持 |
 | **pretty_midi** | MIDI 读取/验证 | 用于 e2e 测试中的 round-trip 验证 |
@@ -78,12 +78,12 @@ Music-AI 是一个端到端的音频 AI 处理平台。用户上传一段音频�
 | **React** | 19 | UI 框架 | hooks（useEffect, useRef）；函数组件；状态管理 |
 | **TypeScript** | ~5.6 | 类型安全 | 严格类型定义（AudioTask, StemInfo 等接口） |
 | **Vite** | 6 | 构建工具 | 快速 HMR；proxy 配置（开发时 `/api` 代理到 backend） |
-| **TanStack Query** | ≥5.62 | 服务端状态管理 | `useQuery` / `useMutation`；query key 缓存；WS 直接 patch cache |
+| **TanStack Query** | >=5.62 | 服务端状态管理 | `useQuery` / `useMutation`；query key 缓存；WS 直接 patch cache |
 | **Tailwind CSS** | 4 | 样式 | utility-first；`@tailwindcss/vite` 插件 |
 | **react-router-dom** | 7 | 路由 | SPA 路由；`try_files $uri $uri/ /index.html` 的 nginx 配合 |
-| **axios** | ≥1.7 | HTTP 请求 | baseURL 配置；拦截器（JWT Bearer token） |
-| **wavesurfer.js** | ≥7.12 | 波形可视化 | 音频波形渲染；播放控制 |
-| **i18next** | ≥26.3 | 国际化 | `react-i18next` + `browser-languagedetector`；多语言 JSON 资源 |
+| **axios** | >=1.7 | HTTP 请求 | baseURL 配置；拦截器（JWT Bearer token） |
+| **wavesurfer.js** | >=7.12 | 波形可视化 | 音频波形渲染；播放控制 |
+| **i18next** | >=26.3 | 国际化 | `react-i18next` + `browser-languagedetector`；多语言 JSON 资源 |
 | **Web Audio API** | 原生 | 浏览器音频播放 | `AudioContext` + `AudioBuffer` + `GainNode` + `requestAnimationFrame` 播放头 |
 
 ### 3.4 DevOps & 部署
@@ -102,15 +102,15 @@ Music-AI 是一个端到端的音频 AI 处理平台。用户上传一段音频�
 ## 四、核心功能模块（10 个 Feature）
 
 ### Feature 1: 乐器级 MIDI 转录
-- Demucs 4-stem 分离 → 乐器分类器（频谱特征 + 启发式规则）→ Basic Pitch 逐轨转录
+- Demucs 4-stem 分离 -> 乐器分类器（频谱特征 + 启发式规则）-> Basic Pitch 逐轨转录
 - 输出：`detected_instruments` 概率列表 + 各乐器 MIDI 文件
 
 ### Feature 2: 19-part 鼓点拆分
-- librosa onset 检测 + 频谱质心/峰值频率/包络分类 → 19 个 GM 打击乐部分
+- librosa onset 检测 + 频谱质心/峰值频率/包络分类 -> 19 个 GM 打击乐部分
 - 输出：每部分独立的 `drums_<part>.mid` + 合并 `drums.mid` + `drums_events.json`
 
 ### Feature 3: GM/XG Bank 映射
-- 每个 MIDI 文件头部写入标准 GM setup sequence：Bank MSB (CC0) → Bank LSB (CC32) → Program Change → Volume (CC7) → Expression (CC11) → Pan (CC10) → Sustain (CC64)
+- 每个 MIDI 文件头部写入标准 GM setup sequence：Bank MSB (CC0) -> Bank LSB (CC32) -> Program Change -> Volume (CC7) -> Expression (CC11) -> Pan (CC10) -> Sustain (CC64)
 - 鼓通道固定 channel 9，旋律通道各用不同 channel
 
 ### Feature 4: MIDI 控制器（CC）
@@ -160,8 +160,8 @@ Music-AI 是一个端到端的音频 AI 处理平台。用户上传一段音频�
     │
     ▼
 ┌─────────────┐  POST /api/audio/upload
-│ 文件校验     │  → 检查音频格式/大小
-│ 配额检查     │  → 429 如果超出 max_tasks
+│ 文件校验     │  -> 检查音频格式/大小
+│ 配额检查     │  -> 429 如果超出 max_tasks
 └──────┬──────┘
        │
        ▼
@@ -171,7 +171,7 @@ Music-AI 是一个端到端的音频 AI 处理平台。用户上传一段音频�
        │
        ▼
 ┌─────────────┐  POST /api/tasks/{id}/process
-│ 提交 Celery  │  → 任务入队，worker 消费
+│ 提交 Celery  │  -> 任务入队，worker 消费
 │ 任务队列     │
 └──────┬──────┘
        │
@@ -180,13 +180,13 @@ Music-AI 是一个端到端的音频 AI 处理平台。用户上传一段音频�
 │                      Worker Pipeline                   │
 ├───────────────────────────────────────────────────────┤
 │ 10%  Preparing audio...                               │
-│ 30%  Separating stems...   → Demucs (4 stems)        │
-│ 50%  Splitting instruments... → 分类器处理 "other"    │
-│ 72%  Transcribing to MIDI... → Basic Pitch 逐轨        │
-│ 88%  Mapping GM/XG MIDI... → MIDI CC setup + 映射      │
-│ 94%  Analyzing music... → BPM/key/chord/sections      │
-│ 98%  Writing commentary... → LLM 生成（可选）          │
-│ 100% Done → status = FINISHED                          │
+│ 30%  Separating stems...   -> Demucs (4 stems)        │
+│ 50%  Splitting instruments... -> 分类器处理 "other"    │
+│ 72%  Transcribing to MIDI... -> Basic Pitch 逐轨        │
+│ 88%  Mapping GM/XG MIDI... -> MIDI CC setup + 映射      │
+│ 94%  Analyzing music... -> BPM/key/chord/sections      │
+│ 98%  Writing commentary... -> LLM 生成（可选）          │
+│ 100% Done -> status = FINISHED                          │
 └─────────────────────────────────────────────────────┘
        │
        ▼
@@ -218,7 +218,7 @@ Music-AI 是一个端到端的音频 AI 处理平台。用户上传一段音频�
 ### 6.2 数据库与 ORM
 
 - [ ] SQLAlchemy 2.0 的新语法：`Mapped[int]` vs `Column(Integer)` 的区别
-- [ ] `with_variant(Integer, "sqlite")` 的作用（BigInteger → Integer 兼容 SQLite）
+- [ ] `with_variant(Integer, "sqlite")` 的作用（BigInteger -> Integer 兼容 SQLite）
 - [ ] Alembic 迁移文件中 `op.execute("""CREATE TRIGGER ...""")` 做什么？（自动更新 `updated_at`）
 - [ ] PostgreSQL enum 类型如何声明？`native_enum=True` 的利弊
 - [ ] `eager_defaults=True` 的 `__mapper_args__` 是什么意思？（立即获取 server_default 值）
@@ -246,7 +246,7 @@ Music-AI 是一个端到端的音频 AI 处理平台。用户上传一段音频�
 - [ ] 浏览器 WebSocket 为什么不能可靠发送自定义 header？（WS 握手阶段 header 支持不一致）
 - [ ] 为什么 token 通过 query param 传递？（`?token=xxx` 的兼容性）
 - [ ] WebSocket 的 `1008` 关闭码含义？（policy violation，用于 forbidden / not found）
-- [ ] 指数退避重连的算法？（500ms → 1s → 2s → ... → 10s cap）
+- [ ] 指数退避重连的算法？（500ms -> 1s -> 2s -> ... -> 10s cap）
 - [ ] 为什么前端直接 patch React Query cache 而不是用 useState？（全局状态一致性，列表页和详情页同步更新）
 - [ ] Redis pub/sub 的 `get_message(timeout)` 为什么放在 `asyncio.run_in_executor` 中？（防止阻塞 asyncio 事件循环）
 
@@ -287,7 +287,7 @@ Music-AI 是一个端到端的音频 AI 处理平台。用户上传一段音频�
 - [ ] `conftest.py` 中通常定义什么？（fixtures：db session、test client、celery app）
 - [ ] 134 个测试覆盖哪些维度？（service 逻辑、API 路由、MIDI 操作、auth、WebSocket、健康检查）
 - [ ] `PASSLIB_BCRYPT_FORCE_BACKEND=pure-python` 在 CI 中为什么需要？（GitHub Runner 上原生 bcrypt 扩展不稳定）
-- [ ] Playwright e2e 测试什么？（完整用户流程：上传 → 处理 → 查看结果）
+- [ ] Playwright e2e 测试什么？（完整用户流程：上传 -> 处理 -> 查看结果）
 
 ---
 
@@ -303,7 +303,7 @@ Music-AI 是一个端到端的音频 AI 处理平台。用户上传一段音频�
 **答**：设计了三层保障：1）Redis pub/sub 是实时推送层；2）DB 中的 `progress`/`current_step` 是持久化真相源；3）WebSocket 重连后先发送 `snapshot` 获取当前状态，然后继续监听。即使 Redis 和 WS 都断开，用户刷新页面后仍能从 `/api/audio/{id}` 获取最新进度。
 
 ### Q4: 采样库的文件名如何映射到 GM 音符？
-**答**：维护了一个 60+ 条目的 alias 表（如 `kick`/`bd`/`bass_drum` → note 36，`snare`/`sn`/`sd` → note 38）。上传时解析文件名，匹配 alias 表得到对应的 GM percussion note，存入 `sample_files` 表的 `midi_note` 字段。浏览器播放时按 `drums_events.json` 中的 `note` 字段匹配采样文件。
+**答**：维护了一个 60+ 条目的 alias 表（如 `kick`/`bd`/`bass_drum` -> note 36，`snare`/`sn`/`sd` -> note 38）。上传时解析文件名，匹配 alias 表得到对应的 GM percussion note，存入 `sample_files` 表的 `midi_note` 字段。浏览器播放时按 `drums_events.json` 中的 `note` 字段匹配采样文件。
 
 ### Q5: 如何支持多用户但保持开发体验简单？
 **答**：`AUTH_REQUIRED` 环境变量开关。开发时设为 `false`，所有端点接受匿名请求，方便本地测试和 e2e。生产时设为 `true`，未认证请求返回 401。同时 `user_id` 列为 nullable，兼容迁移前的旧任务。前端始终发送 `Authorization` header，后端根据开关决定是否强制验证。
@@ -312,9 +312,9 @@ Music-AI 是一个端到端的音频 AI 处理平台。用户上传一段音频�
 
 ## 八、快速复习清单（面试前 30 分钟过一遍）
 
-- [ ] 能画出架构图（React → FastAPI → Postgres/Redis/Celery）
+- [ ] 能画出架构图（React -> FastAPI -> Postgres/Redis/Celery）
 - [ ] 能说出 pipeline 的 7 个步骤和对应进度百分比
-- [ ] 能解释 Demucs → 分类器 → Basic Pitch 的数据流
+- [ ] 能解释 Demucs -> 分类器 -> Basic Pitch 的数据流
 - [ ] 能解释 19-part 鼓点拆分的检测逻辑
 - [ ] 能背出 GM setup sequence 的 7 个 MIDI 消息
 - [ ] 能解释 JWT access/refresh 的设计和 token rotate

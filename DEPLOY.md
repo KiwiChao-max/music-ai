@@ -1,4 +1,4 @@
-# DEPLOY.md — `music-ai` production deployment
+# DEPLOY.md --- `music-ai` production deployment
 
 This doc covers the two supported paths for getting `music-ai` into a
 production-ish environment, plus the hardening checklist that both share.
@@ -24,7 +24,7 @@ endpoint are exposed by the same process as the REST API.
 | PostgreSQL  | 14+               | We use JSONB on `analysis.metadata`. |
 | Redis       | 6+                | Pub/sub for the WebSocket + Celery broker. |
 | Node.js     | 20+               | Only needed for the frontend build. |
-| FFmpeg      | 5+                | Optional — only if you accept compressed uploads. |
+| FFmpeg      | 5+                | Optional --- only if you accept compressed uploads. |
 | nginx       | 1.20+             | Frontend serving + reverse-proxy to the API. |
 
 `openssl`, `curl`, `git`, and `build-essential` (for `psycopg2` wheel
@@ -32,7 +32,7 @@ fallback) should already be on the box.
 
 ---
 
-## 1. Easy path — Docker Compose
+## 1. Easy path --- Docker Compose
 
 Suitable for staging, demos, and a small single-server deployment.
 
@@ -46,10 +46,10 @@ docker compose logs -f api       # watch the API come up
 
 The compose file starts four containers:
 
-* `postgres` — data persisted in the named volume `postgres_data`.
-* `redis` — broker + pub/sub; data persisted in `redis_data`.
-* `api` — `uvicorn app.main:app`; storage mounted in `backend_storage`.
-* `worker` — Celery consumer; reuses the same image as `api`.
+* `postgres` --- data persisted in the named volume `postgres_data`.
+* `redis` --- broker + pub/sub; data persisted in `redis_data`.
+* `api` --- `uvicorn app.main:app`; storage mounted in `backend_storage`.
+* `worker` --- Celery consumer; reuses the same image as `api`.
 
 The API container runs `alembic upgrade head` on boot, so first
 deployments apply the latest schema automatically.
@@ -69,7 +69,7 @@ JWT_SECRET=$(openssl rand -hex 48)
 AUTH_REQUIRED=true
 APP_ENV=production
 
-# Optional: bootstrap admin (idempotent — only creates if missing)
+# Optional: bootstrap admin (idempotent --- only creates if missing)
 BOOTSTRAP_ADMIN_EMAIL=admin@your-domain
 BOOTSTRAP_ADMIN_USERNAME=admin
 BOOTSTRAP_ADMIN_PASSWORD=$(openssl rand -base64 24)
@@ -79,11 +79,11 @@ BOOTSTRAP_ADMIN_PASSWORD=$(openssl rand -base64 24)
 
 The simplest production setup keeps `BACKEND_PORT=8000` bound to
 `127.0.0.1` only and lets nginx terminate TLS. The included
-`docker-compose.override.yml` example is in §3.
+`docker-compose.override.yml` example is in Section3.
 
 ---
 
-## 2. Bare-metal path — systemd + nginx
+## 2. Bare-metal path --- systemd + nginx
 
 For a single-VM deployment that doesn't need the container runtime.
 
@@ -212,7 +212,7 @@ sudo -u music-ai cp -r dist/. /var/lib/music-ai/web/
 `/etc/nginx/sites-available/music-ai.conf`:
 
 ```nginx
-# HTTP → HTTPS redirect.
+# HTTP -> HTTPS redirect.
 server {
     listen 80;
     listen [::]:80;
@@ -295,7 +295,7 @@ The dev defaults are intentionally permissive. Before exposing the API
 to the public internet, work through this list:
 
 - [ ] Set `AUTH_REQUIRED=true` so anonymous requests are rejected.
-- [ ] Generate a real `JWT_SECRET` (≥ 32 bytes of entropy) and keep it
+- [ ] Generate a real `JWT_SECRET` (>= 32 bytes of entropy) and keep it
       out of git. The API refuses to boot with the placeholder in
       `APP_ENV=production`.
 - [ ] Set `MAX_UPLOAD_BYTES` to a sane value (100 MB is the default;
@@ -306,7 +306,7 @@ to the public internet, work through this list:
       store after the first boot.
 - [ ] Backups: nightly `pg_dump` of the `music_ai` database, plus a
       snapshot of the `STORAGE_DIR` uploads volume.
-- [ ] TLS: terminate at nginx (or a load balancer), redirect HTTP →
+- [ ] TLS: terminate at nginx (or a load balancer), redirect HTTP ->
       HTTPS, and enable HSTS (the example config does this).
 - [ ] CORS: the default allow-list is `http://localhost:5173` for
       development. Set `CORS_ALLOW_ORIGINS` to your real frontend
@@ -324,11 +324,11 @@ to the public internet, work through this list:
 
 ### 4.1 Health
 
-* `GET /healthz` — liveness. 200 if the process is up. Used by k8s
+* `GET /healthz` --- liveness. 200 if the process is up. Used by k8s
   liveness probes / `systemd` watchdog.
-* `GET /readyz` — readiness. 200 only when Postgres AND Redis are
+* `GET /readyz` --- readiness. 200 only when Postgres AND Redis are
   reachable; 503 otherwise. Used by k8s readiness probes.
-* `GET /metrics` — Prometheus text format. Scrape every 15 s.
+* `GET /metrics` --- Prometheus text format. Scrape every 15 s.
 
 ### 4.2 Logs
 
@@ -349,7 +349,7 @@ scrape_configs:
 ```
 
 The `music_ai_tasks_total{status="..."}` gauge is the most useful
-single number to graph — it tells you how many tasks are in flight.
+single number to graph --- it tells you how many tasks are in flight.
 
 ---
 
@@ -406,9 +406,9 @@ Add a cron entry to run the snapshot commands nightly.
 ## 8. First-login runbook
 
 1. SSH into the box.
-2. `curl -fsS https://music-ai.your-domain/healthz` — expect `{"status":"ok"}`.
-3. `curl -fsS https://music-ai.your-domain/readyz` — expect 200.
+2. `curl -fsS https://music-ai.your-domain/healthz` --- expect `{"status":"ok"}`.
+3. `curl -fsS https://music-ai.your-domain/readyz` --- expect 200.
 4. Open the SPA, log in with the bootstrap admin credentials.
 5. Change the admin password, create a regular user for daily use.
-6. Upload a short (≤ 30 s) test clip and confirm the detail page
+6. Upload a short (<= 30 s) test clip and confirm the detail page
    reaches `FINISHED` with a playable stem.

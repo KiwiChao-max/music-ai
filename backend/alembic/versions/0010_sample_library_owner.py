@@ -7,7 +7,7 @@ Create Date: 2026-07-16
 Adds nullable owner_id FK columns to sample_libraries and soundfonts so
 that each resource is tied to a user.  Only the owner (or an admin) may
 modify or delete the resource.  Existing rows keep owner_id=NULL, which
-is treated as "owned by nobody" — admins can still manage them.
+is treated as "owned by nobody" --- admins can still manage them.
 """
 from __future__ import annotations
 

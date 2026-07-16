@@ -5,7 +5,7 @@ Celery worker pointed at a shared broker, runs the upload -> process -> poll
 -> stems -> download flow, then tears everything down.
 
 Broker: defaults to Redis at REDIS_URL. Set E2E_BROKER=filesystem to use
-kombu's filesystem transport instead — useful on Windows laptops where
+kombu's filesystem transport instead --- useful on Windows laptops where
 installing Redis is painful. The production docker-compose stack still
 uses real Redis; this script only changes the broker for portability.
 """
@@ -84,7 +84,7 @@ def wait_http(url, timeout=30.0):
 # The kombu `filesystem://` transport wants the storage path set via
 # `broker_transport_options`, not the URL. That's awkward to inject from
 # here, so use the SQLAlchemy transport pointed at a private SQLite file.
-# The result backend stays as in-memory cache — the e2e doesn't read the
+# The result backend stays as in-memory cache --- the e2e doesn't read the
 # AsyncResult, the API polls the DB instead. Production (docker-compose)
 # uses real Redis for both broker AND backend.
 broker_dir = tempfile.mkdtemp(prefix="celery_broker_")

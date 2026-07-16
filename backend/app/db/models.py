@@ -239,7 +239,7 @@ class SampleFile(Base):
     """One sample in a library, keyed by GM drum note.
 
     ``midi_note`` is the GM percussion note (35..81) this sample plays for.
-    Multiple samples can share a note — the frontend player selects the
+    Multiple samples can share a note --- the frontend player selects the
     best match by incoming MIDI velocity using ``velocity_min`` and
     ``velocity_max``, which define the velocity range this sample covers.
     Samples with the default range (1-127) are treated as full-range
@@ -382,7 +382,7 @@ class RefreshToken(Base):
     Tokens themselves are stateless JWTs, but we store their SHA-256
     hash here so we can:
       * enforce single-use (rotate on refresh)
-      * detect token reuse (stolen token → revoke entire family)
+      * detect token reuse (stolen token -> revoke entire family)
       * revoke all tokens for a user on logout / password change
     """
 
@@ -393,7 +393,7 @@ class RefreshToken(Base):
         primary_key=True,
         autoincrement=True,
     )
-    # JWT ID ("jti" claim) — unique per token, used as the stable
+    # JWT ID ("jti" claim) --- unique per token, used as the stable
     # identifier for revocation even if we don't have the raw token.
     jti: Mapped[str] = mapped_column(String(36), nullable=False)
     # User who owns this token.
@@ -404,10 +404,10 @@ class RefreshToken(Base):
         index=True,
     )
     # SHA-256 of the raw refresh token.  We never store the token in
-    # plaintext — even if the DB is compromised, the attacker cannot
+    # plaintext --- even if the DB is compromised, the attacker cannot
     # reconstruct the original JWT from the hash.
     token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    # Tracks the token lifecycle: active → used (rotated) or revoked.
+    # Tracks the token lifecycle: active -> used (rotated) or revoked.
     status: Mapped[RefreshTokenStatus] = mapped_column(
         SAEnum(RefreshTokenStatus, name="refresh_token_status", native_enum=True, create_constraint=False),
         nullable=False,

@@ -3,10 +3,10 @@
  *
  * Three components:
  *
- *  * `<Skeleton />`         — a single shimmering placeholder block.
- *  * `<EmptyState />`      — a card shown when a list is genuinely empty
+ *  * `<Skeleton />`         --- a single shimmering placeholder block.
+ *  * `<EmptyState />`      --- a card shown when a list is genuinely empty
  *                            ("you haven't uploaded anything yet").
- *  * `<ErrorState />`      — a card shown when an API call failed.
+ *  * `<ErrorState />`      --- a card shown when an API call failed.
  *
  * The shared shape makes every page in the app feel consistent: same
  * padding, same icon, same button style. That's the kind of detail

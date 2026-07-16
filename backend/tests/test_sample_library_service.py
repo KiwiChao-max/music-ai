@@ -28,7 +28,7 @@ from app.services.sample_library_service import (
 
 
 def test_safe_filename_strips_directories_and_filters_unknown_ext() -> None:
-    # Directory traversal is collapsed to the basename — `Path.name` does
+    # Directory traversal is collapsed to the basename --- `Path.name` does
     # the heavy lifting, and we just confirm our wrapper respects it.
     assert _safe_filename("../../etc/kick.wav") == "kick.wav"
     # Anything without a recognised audio extension is rejected.
@@ -44,7 +44,7 @@ def test_safe_filename_strips_directories_and_filters_unknown_ext() -> None:
         ("KICK.WAV", 36),  # case-insensitive
         ("bass_drum.wav", 36),
         ("snare_01.wav", 38),  # trailing round-robin number stripped
-        ("Closed-Hat.wav", 42),  # dash → underscore normalization
+        ("Closed-Hat.wav", 42),  # dash -> underscore normalization
         ("open_hat.wav", 46),
         ("crash.wav", 49),
         ("ride.wav", 51),
@@ -79,8 +79,8 @@ def test_create_library_persists_files_and_maps_notes(
             ("kick.wav", b"kick-bytes"),
             ("snare.wav", b"snare-bytes"),
             ("open_hat.wav", b"hat-bytes"),
-            ("notes.txt", b"ignored"),  # wrong extension → dropped
-            ("unknown_drum.wav", b"ignored"),  # unrecognised name → dropped
+            ("notes.txt", b"ignored"),  # wrong extension -> dropped
+            ("unknown_drum.wav", b"ignored"),  # unrecognised name -> dropped
         ],
     )
     db_session.commit()
@@ -367,12 +367,12 @@ def test_batch_remove_missing_library(
 @pytest.mark.parametrize(
     "filename,expected",
     [
-        # No velocity info → full range.
+        # No velocity info -> full range.
         ("kick.wav", (1, 127)),
         # Explicit "vel_NNN_NNN" form.
         ("kick_vel_001_064.wav", (1, 64)),
         ("snare_vel_065_127.wav", (65, 127)),
-        # Short-form "vN-M" / "v_N_M" / "v N M" — both numbers are
+        # Short-form "vN-M" / "v_N_M" / "v N M" --- both numbers are
         # 1..127 velocity values.
         ("kick_v1-50.wav", (1, 50)),
         ("kick_v_51_100.wav", (51, 100)),
@@ -388,7 +388,7 @@ def test_batch_remove_missing_library(
         ("snare_soft.wav", (1, 63)),
         ("crash_hard.wav", (64, 127)),
         # "v1" alone (layer index, no explicit upper bound) is NOT
-        # consumed by the short-form range parser — it falls through
+        # consumed by the short-form range parser --- it falls through
         # to (1, 127) because there is no second number.
         ("kick_v1.wav", (1, 127)),
         ("kick_v2.wav", (1, 127)),

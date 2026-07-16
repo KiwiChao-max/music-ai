@@ -36,7 +36,7 @@ def process_audio_task(self, task_id: int) -> dict:
     try:
         audio_worker.process_task(task_id)
     except SoftTimeLimitExceeded:
-        # Soft time limit (28 min) fired — we have ~2 min before the hard
+        # Soft time limit (28 min) fired --- we have ~2 min before the hard
         # kill. Mark the task as FAILED so the client isn't left waiting
         # on a PROCESSING row that will never update.
         logger.error("celery task %s exceeded soft time limit for task %s", self.request.id, task_id)
@@ -51,7 +51,7 @@ def process_audio_task(self, task_id: int) -> dict:
                         error_message="task exceeded the 28-minute soft time limit",
                     )
                     db.commit()
-        except Exception:  # noqa: BLE001 — best-effort cleanup before kill
+        except Exception:  # noqa: BLE001 --- best-effort cleanup before kill
             logger.exception("failed to mark task %s as FAILED after soft time limit", task_id)
         raise
     return {"task_id": task_id, "status": "FINISHED"}

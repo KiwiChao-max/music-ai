@@ -1,27 +1,23 @@
 /**
- * useTaskProgress — open a WebSocket to the backend progress channel
+ * useTaskProgress --- open a WebSocket to the backend progress channel
  * and patch the React Query cache in place as events arrive.
  *
  * The hook is transparent: callers don't need to change their existing
- * `useAudioTask` / `useAudioTasks` wiring — the WS handler updates the
+ * `useAudioTask` / `useAudioTasks` wiring --- the WS handler updates the
  * same query keys those hooks read, so the UI re-renders without
  * polling. Falls back to the existing HTTP polling cadence if the WS
  * never connects (the caller still has `refetchInterval` configured).
+ *
+ * The JWT is passed via the ``Sec-WebSocket-Protocol`` header (the
+ * browser ``WebSocket`` constructor accepts a protocols array) so the
+ * token never appears in the URL, keeping it out of access logs, proxy
+ * logs, and browser history.
  */
 import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import type { AudioTask, AudioTaskStatus } from "@/types/audio";
-
-const STORAGE_KEY = "music-ai.token";
-
-function readToken(): string | null {
-  try {
-    return localStorage.getItem(STORAGE_KEY);
-  } catch {
-    return null;
-  }
-}
+import { getAccessToken } from "@/api/axios";
 
 function wsBaseUrl(): string {
   // In dev, Vite proxies `/api/*` to the FastAPI backend on the same
@@ -92,10 +88,8 @@ export function useTaskProgress(
 
   useEffect(() => {
     if (!enabled || !Number.isFinite(taskId)) return;
-    const token = readToken();
-    const url = `${wsBaseUrl()}/ws/tasks/${taskId}/progress${
-      token ? `?token=${encodeURIComponent(token)}` : ""
-    }`;
+    const token = getAccessToken();
+    const url = `${wsBaseUrl()}/ws/tasks/${taskId}/progress`;
 
     let socket: WebSocket | null = null;
     let retryMs = 500;
@@ -103,7 +97,11 @@ export function useTaskProgress(
     closedByUs.current = false;
 
     const connect = () => {
-      socket = new WebSocket(url);
+      // Pass the JWT via the WebSocket sub-protocol so it never appears
+      // in the URL (no access-log / proxy-log / browser-history leakage).
+      // The backend reads the ``Sec-WebSocket-Protocol`` header and
+      // extracts the token from it.
+      socket = new WebSocket(url, token ? token : undefined);
 
       socket.addEventListener("open", () => {
         retryMs = 500; // reset backoff after a successful connect
@@ -131,7 +129,7 @@ export function useTaskProgress(
           });
           return;
         }
-        // snapshot / task_finished / progress — patch the cached task.
+        // snapshot / task_finished / progress --- patch the cached task.
         const ev = event as ProgressEvent;
         qc.setQueryData<AudioTask | undefined>(detailKey, (prev) => patchTask(prev, ev));
         qc.setQueryData<AudioTask[] | undefined>(listKey, (prev) => {

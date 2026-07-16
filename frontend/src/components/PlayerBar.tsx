@@ -3,7 +3,7 @@
  *
  * Renders a single wavesurfer.js waveform for the current track plus
  * play/pause, seek, time, volume, and a close button. Lives inside
- * `<MainLayout>` so it stays mounted across page navigations — that's
+ * `<MainLayout>` so it stays mounted across page navigations --- that's
  * the whole point of having a global player.
  *
  * The component renders `null` when nothing is loaded. The bar slides
@@ -19,7 +19,7 @@ import { formatTime, usePlayer } from "@/contexts/PlayerContext";
  * Render a compact wavesurfer waveform for a single audio URL.
  *
  * `onSeek` is called (with the new time in seconds) when the user clicks
- * or drags on the waveform. The component doesn't own playback — it
+ * or drags on the waveform. The component doesn't own playback --- it
  * only visualises and reports clicks. The parent decides what to do
  * with the seek (typically: forward to the global player).
  */

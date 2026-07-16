@@ -10,18 +10,27 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.auth import router as auth_router
 from app.api.audio import router as audio_router
 from app.api.health import router as health_router
-from app.api.instruments import router as instruments_router
+from app.api.instruments import instruments_router
 from app.api.tasks import router as tasks_router
 from app.api.ws import router as ws_router
 from app.config import settings
+from app.middleware.csp import CSPMiddleware
+from app.middleware.csrf import CSRFTokenMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
+from app.utils.errors import MSG_INTERNAL_ERROR
 
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="music-ai", version="0.1.0")
 
-# Rate limiting must be added before CORS so 429 responses also get
-# CORS headers (middleware order is last-added-first-executed).
+# Middleware order (last-added-first-executed for request, first-added-
+# last-executed for response):
+#   1. CSP --- adds Content-Security-Policy header to every response
+#   2. CSRF --- rejects state-changing requests that lack the X-CSRF-Token header
+#   3. Rate limiting --- counts requests and enforces per-IP limits
+#   4. CORS --- adds CORS headers (including on 429 / 403 responses)
+app.add_middleware(CSPMiddleware)
+app.add_middleware(CSRFTokenMiddleware)
 app.add_middleware(RateLimitMiddleware)
 
 if settings.cors_origins:
@@ -39,6 +48,25 @@ app.include_router(health_router)
 app.include_router(tasks_router)
 app.include_router(instruments_router)
 app.include_router(ws_router)
+
+
+# ---- global exception handler ----------------------------------------------
+# Catches any unhandled exception that escapes an endpoint.  Logs the full
+# traceback server-side but returns only a generic message to the client ---
+# no infrastructure details (file paths, broker addresses, stack traces) ever
+# leak to the frontend.
+
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+
+@app.exception_handler(Exception)
+async def _global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    logger.exception("unhandled exception on %s %s", request.method, request.url.path)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": MSG_INTERNAL_ERROR},
+    )
 
 settings.storage_dir.mkdir(parents=True, exist_ok=True)
 
@@ -64,7 +92,7 @@ def _seed_bootstrap_admin() -> None:
 
     The credentials come from settings (`bootstrap_admin_*`); leaving
     the email empty in env disables the seed. If the user already
-    exists, we do nothing — never overwrite a password that an
+    exists, we do nothing --- never overwrite a password that an
     operator may have changed.
     """
     if not settings.bootstrap_admin_email:

@@ -13,7 +13,7 @@ def _build_engine():
     """Construct the SQLAlchemy engine with pool sizing for Postgres.
 
     SQLite (used by the test suite and the CI smoke run) ignores
-    `pool_size` / `max_overflow` / `pool_recycle` — those options are
+    `pool_size` / `max_overflow` / `pool_recycle` --- those options are
     Postgres-only and would raise if passed to the SQLite default
     `SingletonThreadPool` / `StaticPool`. We branch on the URL scheme so
     the same module works for both.

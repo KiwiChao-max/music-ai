@@ -54,7 +54,7 @@ class PresetMapping:
     target_name: str
 
 
-# Instrument-type aliases: common CSV variations → canonical key.
+# Instrument-type aliases: common CSV variations -> canonical key.
 # Case-insensitive; the CSV importer normalises through this dict.
 _INSTRUMENT_TYPE_ALIASES: dict[str, str] = {
     "piano": "piano",
@@ -115,8 +115,8 @@ def _normalize_instrument_type(raw: str | None) -> str | None:
 def _normalize_name(name: str) -> set[str]:
     """Extract normalised keyword tokens from an instrument name.
 
-    "Acoustic Grand Piano" → {"acoustic", "grand", "piano"}
-    "Grand Piano 1"       → {"grand", "piano", "1"}
+    "Acoustic Grand Piano" -> {"acoustic", "grand", "piano"}
+    "Grand Piano 1"       -> {"grand", "piano", "1"}
     """
     return set(
         token.strip("()[]{},.0123456789")
@@ -366,7 +366,7 @@ class SoundFontService:
         Matching strategy (tried in order):
           1. Exact instrument_type match.
           2. Exact program number match.
-          3. Fuzzy name match — token overlap with GM instrument name.
+          3. Fuzzy name match --- token overlap with GM instrument name.
         """
         # 1. Exact instrument_type match.
         if instrument_type:
@@ -496,14 +496,14 @@ class SoundFontService:
 
     @staticmethod
     def _extract_sf2_simplified(sf2_path: Path) -> list[PresetInfo]:
-        """Simplified SF2 parser — reads phdr chunk only.
+        """Simplified SF2 parser --- reads phdr chunk only.
 
         Handles the common case where each preset header maps to exactly
         one instrument.  Complex SF2 files with multiple zones per preset
         should use sf2utils instead.
 
         Uses ``mmap`` instead of ``f.read()`` so a 200 MB SF2 file
-        doesn't allocate a 200 MB Python `bytes` object — the OS pages
+        doesn't allocate a 200 MB Python `bytes` object --- the OS pages
         the file in on demand as we touch the phdr chunk.
         """
         import mmap

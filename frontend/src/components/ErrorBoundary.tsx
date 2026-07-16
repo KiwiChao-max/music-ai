@@ -1,5 +1,5 @@
 /**
- * ErrorBoundary — catch-all for render-phase errors.
+ * ErrorBoundary --- catch-all for render-phase errors.
  *
  * Without this, a single buggy child (e.g. a malformed stem URL that
  * crashes the audio element on first paint) takes the whole SPA down

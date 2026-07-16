@@ -218,7 +218,7 @@ def test_voice_for_profile_xg_bass_falls_through_to_gm_voice() -> None:
 
 
 def test_voice_for_profile_gm_returns_voice_unchanged() -> None:
-    """GM profile never rewrites the voice — that's the whole point of GM."""
+    """GM profile never rewrites the voice --- that's the whole point of GM."""
     base = VoiceMapping("Acoustic Grand Piano", program=0, channel=0)
     assert _voice_for_profile(base, "piano", MidiProfile.GM) is base
 
@@ -301,7 +301,7 @@ def test_xg_file_writes_melodic_variation_banks(tmp_path: Path) -> None:
                     )
         out: dict[int, tuple[int, int]] = {}
         for channel, vals in banks.items():
-            # Pairs of (msb, lsb) in encounter order — first CC0 then CC32.
+            # Pairs of (msb, lsb) in encounter order --- first CC0 then CC32.
             msb = next((v for v in vals[:1]), 0)
             lsb = next((v for v in vals[1:2]), 0)
             out[channel] = (msb, lsb)

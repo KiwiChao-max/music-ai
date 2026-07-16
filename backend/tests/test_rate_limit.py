@@ -71,7 +71,7 @@ class TestRateLimitMiddleware:
     def test_allows_requests_under_limit(self, rate_limited_app: FastAPI):
         """Requests within the limit should succeed."""
         client = TestClient(rate_limited_app)
-        # Login limit is 10/min — first 10 should be fine.
+        # Login limit is 10/min --- first 10 should be fine.
         for _ in range(10):
             resp = client.post("/api/auth/login")
             assert resp.status_code == 200

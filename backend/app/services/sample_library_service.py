@@ -6,10 +6,10 @@ next). The service is responsible for:
   * persisting `SampleLibrary` and `SampleFile` rows;
   * copying uploaded files into the project's storage directory;
   * mapping filenames to GM drum notes by parsing common naming conventions
-    (e.g. ``kick.wav`` → note 36, ``snare.wav`` → note 38);
+    (e.g. ``kick.wav`` -> note 36, ``snare.wav`` -> note 38);
   * listing, activating, and deleting libraries.
 
-Naming convention used to map filename → GM note. The set of aliases covers
+Naming convention used to map filename -> GM note. The set of aliases covers
 the common Roland/Yamaha-style naming. Anything not recognised is recorded
 as a free-form sample and skipped on playback (still visible in the list).
 """
@@ -29,7 +29,7 @@ from app.db.models import SampleFile, SampleLibrary
 
 logger = logging.getLogger(__name__)
 
-# Filename alias → GM percussion note (35..81). Lowercased, extension-free.
+# Filename alias -> GM percussion note (35..81). Lowercased, extension-free.
 _FILENAME_ALIASES: dict[str, int] = {
     # Kick family
     "kick": 36, "bass_drum": 36, "bassdrum": 36, "bd": 36, "kik": 36,
@@ -490,7 +490,7 @@ class SampleLibraryService:
     def export_library(self, db: Session, library_id: int) -> dict | None:
         """Export a library as a JSON-serializable MIDI mapping config.
 
-        Returns a dict with library metadata and a note → sample mapping
+        Returns a dict with library metadata and a note -> sample mapping
         that can be imported elsewhere or used by the playback engine.
         """
         info = self.get_library(db, library_id)
@@ -599,7 +599,7 @@ _VEL_RANGE_RE = re.compile(r"vel[_\s-]*(\d{1,3})[_\s-]*(\d{1,3})")
 # Short-form velocity range: "v1-50", "v_51_100", "v 86 127".
 # Both numbers are 1..127 velocity values (NOT layer indices).
 # The leading (?:^|[_\s-]) lets the pattern start at a filename token
-# boundary — \b won't fire between "_" and "v" because both are word
+# boundary --- \b won't fire between "_" and "v" because both are word
 # characters, so we need an explicit boundary class.
 _V_SHORT_RANGE_RE = re.compile(r"(?:^|[_\s-])v[_\s-]*(\d{1,3})[_\s-]+(\d{1,3})(?:$|[_\s.])")
 
@@ -624,7 +624,7 @@ def _resolve_velocity_range(filename: str) -> tuple[int, int]:
 
     # Short-form range: "v1-50", "v_51_100", "v 86 127"
     # Requires a separator between the two numbers so "v1" alone (layer
-    # index without an explicit upper bound) is NOT consumed here — it
+    # index without an explicit upper bound) is NOT consumed here --- it
     # falls through to dynamic-suffix handling or (1, 127).
     m = _V_SHORT_RANGE_RE.search(stem)
     if m:

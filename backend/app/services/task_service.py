@@ -26,18 +26,22 @@ def list_tasks(
     offset: int = 0,
     user_id: int | None = None,
     public_only: bool = False,
+    status: AudioTaskStatus | None = None,
 ) -> list[AudioTask]:
     """Return tasks, newest first. When `user_id` is set, filter the
     list to that user (used by non-admin endpoints to scope to "my
     tasks"). `None` means "no filter" (admin view). When
     `public_only` is True, only tasks with ``user_id IS NULL`` are
     returned (used for anonymous callers in open-auth mode).
+    When `status` is set, filter to that specific status.
     """
     stmt = select(AudioTask)
     if user_id is not None:
         stmt = stmt.where(AudioTask.user_id == user_id)
     elif public_only:
         stmt = stmt.where(AudioTask.user_id.is_(None))
+    if status is not None:
+        stmt = stmt.where(AudioTask.status == status)
     stmt = (
         stmt.order_by(AudioTask.created_at.desc(), AudioTask.id.desc())
         .limit(limit)
@@ -110,6 +114,77 @@ def claim_for_processing(db: Session, task_id: int) -> AudioTask | None:
             ),
         )
         .values(status=AudioTaskStatus.PROCESSING)
+        .returning(AudioTask)
+    )
+    task = db.execute(stmt).scalar_one_or_none()
+    if task is not None:
+        db.commit()
+        db.refresh(task)
+    return task
+
+
+def rollback_claim(
+    db: Session, task_id: int, *, reason: str | None = None
+) -> AudioTask | None:
+    """Atomically revert a PROCESSING task back to UPLOADED.
+
+    Only touches the row if it is **still** in PROCESSING --- if the worker
+    already picked the task up and started working, we must NOT overwrite
+    its status.  Returns the task on success, or `None` if the task was
+    no longer in PROCESSING (worker already started, or already finished).
+
+    This is the counterpart to ``claim_for_processing``: when Celery
+    dispatch fails (broker down, etc.), call this to undo the claim so
+    the user can retry.
+    """
+    from datetime import datetime, timezone
+
+    stmt = (
+        update(AudioTask)
+        .where(
+            AudioTask.id == task_id,
+            AudioTask.status == AudioTaskStatus.PROCESSING,
+        )
+        .values(
+            status=AudioTaskStatus.UPLOADED,
+            progress=0,
+            current_step=None,
+            error_message=reason,
+            finished_at=None,
+            updated_at=datetime.now(timezone.utc),
+        )
+        .returning(AudioTask)
+    )
+    task = db.execute(stmt).scalar_one_or_none()
+    if task is not None:
+        db.commit()
+        db.refresh(task)
+    return task
+
+
+def mark_failed_quick(
+    db: Session, task_id: int, *, reason: str
+) -> AudioTask | None:
+    """Atomically move a PROCESSING task to FAILED with a short reason.
+
+    Used when we can't even roll back to UPLOADED (e.g. the task was
+    already claimed by the worker somehow).  The user can still see the
+    failure reason and re-upload.
+    """
+    from datetime import datetime, timezone
+
+    stmt = (
+        update(AudioTask)
+        .where(
+            AudioTask.id == task_id,
+            AudioTask.status == AudioTaskStatus.PROCESSING,
+        )
+        .values(
+            status=AudioTaskStatus.FAILED,
+            error_message=reason,
+            finished_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
         .returning(AudioTask)
     )
     task = db.execute(stmt).scalar_one_or_none()

@@ -68,7 +68,7 @@ def upgrade() -> None:
     )
     op.create_index("ix_sample_files_library_id", "sample_files", ["library_id"])
     op.create_index("ix_sample_files_midi_note", "sample_files", ["midi_note"])
-    # Range check on GM percussion note range. Drum samples only — melodic
+    # Range check on GM percussion note range. Drum samples only --- melodic
     # samples use a separate provider key, not this table.
     op.execute(
         """

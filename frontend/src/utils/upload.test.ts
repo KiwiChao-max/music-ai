@@ -48,7 +48,7 @@ describe("looksLikeAudio", () => {
 
   it("rejects a file with a spoofed audio extension but non-audio MIME", () => {
     // MIME type takes precedence and is not audio/*, so fall through to
-    // the extension check, which matches `.wav` → still accepted.
+    // the extension check, which matches `.wav` -> still accepted.
     // This documents the actual precedence (MIME first, then extension).
     expect(looksLikeAudio(makeFile("song.wav", { type: "application/octet-stream" }))).toBe(true);
   });

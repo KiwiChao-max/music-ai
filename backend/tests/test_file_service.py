@@ -13,7 +13,7 @@ from app.services import file_service
 
 
 def _make_task(task_id: int = 1, filename: str = "song.wav") -> AudioTask:
-    """Build an AudioTask without touching the DB — file_service only reads
+    """Build an AudioTask without touching the DB --- file_service only reads
     the `id` and `filename` attributes."""
     return AudioTask(id=task_id, filename=filename)
 
@@ -58,7 +58,7 @@ def test_save_upload_rejects_oversize_payload_before_writing_full_chunk(
 
     assert raised is not None
     assert "exceeds" in str(raised)
-    # The partial file must be cleaned up — the upload directory should be
+    # The partial file must be cleaned up --- the upload directory should be
     # empty after the rejection.
     upload_dir = file_service.task_upload_dir(task.id)
     assert upload_dir.exists()
