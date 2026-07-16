@@ -18,6 +18,7 @@ from sqlalchemy import (
     Enum as SAEnum,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -187,6 +188,11 @@ class SampleLibrary(Base):
     disk; individual samples live in `SampleFile` rows keyed by GM drum
     note. A library is "active" when `is_active=True`; the worker / API
     picks the most-recently-activated library by default.
+
+    `owner_id` ties the library to a specific user.  When non-null, only
+    the owner (or an admin) may modify or delete the library.  Nullable
+    for backward compatibility with libraries created before the
+    ownership migration.
     """
 
     __tablename__ = "sample_libraries"
@@ -214,6 +220,13 @@ class SampleLibrary(Base):
         server_default=func.now(),
         onupdate=func.now(),
         nullable=False,
+    )
+    # Owner of this library.  Nullable for backward compatibility.
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
 
     __mapper_args__ = {"eager_defaults": True}
@@ -274,6 +287,9 @@ class SoundFont(Base):
 
     Stores metadata for imported SoundFont files and CSV preset tables so
     users can manage multiple soundbanks and activate one for MIDI playback.
+
+    `owner_id` ties the SoundFont to a specific user.  When non-null, only
+    the owner (or an admin) may modify or delete it.
     """
 
     __tablename__ = "soundfonts"
@@ -305,6 +321,13 @@ class SoundFont(Base):
         server_default=func.now(),
         onupdate=func.now(),
         nullable=False,
+    )
+    # Owner of this SoundFont.  Nullable for backward compatibility.
+    owner_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
 
     __mapper_args__ = {"eager_defaults": True}
@@ -345,3 +368,74 @@ class SoundFontPreset(Base):
 
     def __repr__(self) -> str:  # pragma: no cover - debug helper
         return f"<SoundFontPreset id={self.id} sf_id={self.soundfont_id} prog={self.program}>"
+
+
+class RefreshTokenStatus(str, enum.Enum):
+    ACTIVE = "active"
+    USED = "used"
+    REVOKED = "revoked"
+
+
+class RefreshToken(Base):
+    """Server-side record of an issued refresh token.
+
+    Tokens themselves are stateless JWTs, but we store their SHA-256
+    hash here so we can:
+      * enforce single-use (rotate on refresh)
+      * detect token reuse (stolen token → revoke entire family)
+      * revoke all tokens for a user on logout / password change
+    """
+
+    __tablename__ = "refresh_tokens"
+
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
+    # JWT ID ("jti" claim) — unique per token, used as the stable
+    # identifier for revocation even if we don't have the raw token.
+    jti: Mapped[str] = mapped_column(String(36), nullable=False)
+    # User who owns this token.
+    user_id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    # SHA-256 of the raw refresh token.  We never store the token in
+    # plaintext — even if the DB is compromised, the attacker cannot
+    # reconstruct the original JWT from the hash.
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    # Tracks the token lifecycle: active → used (rotated) or revoked.
+    status: Mapped[RefreshTokenStatus] = mapped_column(
+        SAEnum(RefreshTokenStatus, name="refresh_token_status", native_enum=True, create_constraint=False),
+        nullable=False,
+        default=RefreshTokenStatus.ACTIVE,
+    )
+    # Groups tokens from the same rotation chain.  When a token from
+    # this family is reused (indicating theft), we revoke the entire
+    # family so the legitimate owner is forced to re-authenticate.
+    family_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    # When this token record was created.
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    # When the underlying JWT expires.  Used for cleanup queries.
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    # When this token was consumed (rotated).  Null for active tokens.
+    used_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    __table_args__ = (
+        UniqueConstraint("jti", name="ux_refresh_tokens_jti"),
+        Index("ix_refresh_tokens_token_hash", "token_hash"),
+        Index("ix_refresh_tokens_family_id", "family_id"),
+    )
+    __mapper_args__ = {"eager_defaults": True}
+
+    def __repr__(self) -> str:  # pragma: no cover - debug helper
+        return f"<RefreshToken id={self.id} jti={self.jti!r} status={self.status}>"

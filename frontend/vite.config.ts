@@ -19,13 +19,6 @@ export default defineConfig({
         target: "http://127.0.0.1:8000",
         changeOrigin: true,
       },
-      // Forward `/storage/*` (worker outputs + uploads) so the dev server
-      // can serve them too. In prod, the backend's StaticFiles mount is
-      // exposed directly at /storage/*.
-      "/storage": {
-        target: "http://127.0.0.1:8000",
-        changeOrigin: true,
-      },
     },
   },
   test: {

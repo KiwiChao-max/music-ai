@@ -3,6 +3,10 @@
 `POST /api/auth/register` creates a new account and returns the same
 token pair the login endpoint would. Both are public; `GET /me` is the
 canonical "who am I" probe for the SPA.
+
+Refresh tokens are rotated on every use — each refresh consumes the old
+token and issues a new one.  Reuse of a consumed token (theft signal)
+revokes the entire token family, forcing re-authentication.
 """
 from __future__ import annotations
 
@@ -61,7 +65,7 @@ def register(
         ) from exc
 
     tokens = auth_service.issue_token_pair(
-        user.id, email=user.email, role=user.role
+        db, user.id, email=user.email, role=user.role
     )
     user_service.touch_last_login(db, user)
     db.commit()
@@ -79,7 +83,6 @@ def login(
             db, identifier=payload.identifier, password=payload.password
         )
     except user_service.InvalidCredentialsError as exc:
-        # 401 so the SPA can show a generic "wrong credentials" toast.
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=str(exc),
@@ -87,7 +90,7 @@ def login(
         ) from exc
 
     tokens = auth_service.issue_token_pair(
-        user.id, email=user.email, role=user.role
+        db, user.id, email=user.email, role=user.role
     )
     db.commit()
     return TokenResponse(user=UserPublic.model_validate(user), **tokens)
@@ -100,37 +103,51 @@ def refresh(
 ) -> TokenResponse:
     """Trade a refresh token for a new access token (and a new refresh).
 
-    We rotate the refresh token too: a stolen refresh token can be used
-    only once before it's invalidated, which limits the blast radius.
+    Implements refresh-token rotation with reuse detection:
+      * Each refresh token can be used **once** — the old token is
+        marked as consumed and a new one is issued.
+      * If a consumed token is presented again, the entire token family
+        is revoked (possible theft) and the user must re-authenticate.
     """
     try:
-        claims = auth_service.decode_token(
-            payload.refresh_token, expected_type="refresh"
-        )
-    except ValueError as exc:
+        tokens = auth_service.rotate_refresh_token(db, payload.refresh_token)
+    except auth_service.TokenReuseError as exc:
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=str(exc),
+            headers={"WWW-Authenticate": "Bearer"},
         ) from exc
-
-    try:
-        user_id = int(claims["sub"])
-    except (KeyError, TypeError, ValueError) as exc:
+    except (auth_service.TokenRevokedError, auth_service.TokenNotFoundError) as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="malformed refresh token",
+            detail=str(exc),
+            headers={"WWW-Authenticate": "Bearer"},
         ) from exc
+
+    # Re-fetch the user so the response carries up-to-date fields.
+    try:
+        claims = auth_service.decode_token(
+            tokens["access_token"], expected_type="access"
+        )
+        user_id = int(claims["sub"])
+    except (ValueError, KeyError, TypeError):
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="token verification failed",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     user = user_service.get_user(db, user_id)
     if user is None or not user.is_active:
+        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="user not found or inactive",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
-    tokens = auth_service.issue_token_pair(
-        user.id, email=user.email, role=user.role
-    )
     user_service.touch_last_login(db, user)
     db.commit()
     return TokenResponse(user=UserPublic.model_validate(user), **tokens)
@@ -143,9 +160,15 @@ def me(user: CurrentUser) -> UserPublic:
 
 
 @router.post("/logout", response_model=MessageResponse)
-def logout(_: CurrentUser) -> MessageResponse:
-    """Stateless logout. The client just discards the tokens; this
-    endpoint exists so the SPA can call it on sign-out (and to give the
-    OpenAPI doc a `security: bearerAuth` line at the right place).
+def logout(
+    user: CurrentUser,
+    db: Annotated[Session, Depends(get_db)],
+) -> MessageResponse:
+    """Revoke all active refresh tokens for the current user.
+
+    The client should discard its tokens after this call.  Any attempt
+    to use a revoked refresh token will receive a 401.
     """
-    return MessageResponse(message="logged out")
+    count = auth_service.revoke_all_user_tokens(db, user.id)
+    db.commit()
+    return MessageResponse(message=f"logged out ({count} session(s) revoked)")

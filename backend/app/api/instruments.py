@@ -32,7 +32,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db.session import get_db
-from app.api.deps import OptionalUser
+from app.api.deps import CurrentUser, OptionalUser, get_current_user
 from app.schemas.sample_library import (
     BatchRemoveSamples,
     LibraryInfo,
@@ -55,6 +55,32 @@ def _auth_user(user: OptionalUser):
             headers={"WWW-Authenticate": "Bearer"},
         )
     return user
+
+
+def _check_resource_owner(user: object | None, owner_id: int | None) -> None:
+    """Raise 403 if the user does not own the resource and is not an admin.
+
+    A resource with ``owner_id=None`` is a legacy / global resource
+    that can only be managed by admins.
+    """
+    if user is None:
+        raise HTTPException(
+            status_code=401,
+            detail="authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if getattr(user, "role", None) == "admin":
+        return
+    if owner_id is None:
+        raise HTTPException(
+            status_code=403,
+            detail="only admins can manage global resources",
+        )
+    if user.id != owner_id:
+        raise HTTPException(
+            status_code=403,
+            detail="you do not own this resource",
+        )
 
 _MAX_SAMPLES_PER_LIBRARY = 80
 _MAX_SAMPLE_BYTES = 5 * 1024 * 1024  # 5 MB per sample
@@ -197,7 +223,13 @@ async def create_library(
         )
 
     try:
-        info = service.create_library(db, name=name, files=payload, description=description)
+        info = service.create_library(
+            db,
+            name=name,
+            files=payload,
+            description=description,
+            owner_id=user.id if user is not None else None,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return LibraryInfo.model_validate(info)
@@ -209,7 +241,12 @@ def activate_library(
     db: Session = Depends(get_db),
     user: Annotated[object | None, Depends(_auth_user)] = None,
 ) -> LibraryInfo:
-    info = sample_library_service.SampleLibraryService().activate(db, library_id)
+    service = sample_library_service.SampleLibraryService()
+    lib = service.get_library(db, library_id)
+    if lib is None:
+        raise HTTPException(status_code=404, detail="library not found")
+    _check_resource_owner(user, lib.owner_id)
+    info = service.activate(db, library_id)
     if info is None:
         raise HTTPException(status_code=404, detail="library not found")
     return LibraryInfo.model_validate(info)
@@ -221,7 +258,12 @@ def deactivate_library(
     db: Session = Depends(get_db),
     user: Annotated[object | None, Depends(_auth_user)] = None,
 ) -> LibraryInfo:
-    info = sample_library_service.SampleLibraryService().deactivate(db, library_id)
+    service = sample_library_service.SampleLibraryService()
+    lib = service.get_library(db, library_id)
+    if lib is None:
+        raise HTTPException(status_code=404, detail="library not found")
+    _check_resource_owner(user, lib.owner_id)
+    info = service.deactivate(db, library_id)
     if info is None:
         raise HTTPException(status_code=404, detail="library not found")
     return LibraryInfo.model_validate(info)
@@ -235,8 +277,13 @@ def update_library(
     user: Annotated[object | None, Depends(_auth_user)] = None,
 ) -> LibraryInfo:
     """Update a sample library's name and/or description."""
+    service = sample_library_service.SampleLibraryService()
+    lib = service.get_library(db, library_id)
+    if lib is None:
+        raise HTTPException(status_code=404, detail="library not found")
+    _check_resource_owner(user, lib.owner_id)
     try:
-        updated = sample_library_service.SampleLibraryService().update_library(
+        updated = service.update_library(
             db,
             library_id,
             name=payload.name,
@@ -255,7 +302,12 @@ def delete_library(
     db: Session = Depends(get_db),
     user: Annotated[object | None, Depends(_auth_user)] = None,
 ) -> Response:
-    deleted = sample_library_service.SampleLibraryService().delete_library(db, library_id)
+    service = sample_library_service.SampleLibraryService()
+    lib = service.get_library(db, library_id)
+    if lib is None:
+        raise HTTPException(status_code=404, detail="library not found")
+    _check_resource_owner(user, lib.owner_id)
+    deleted = service.delete_library(db, library_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="library not found")
     return Response(status_code=204)
@@ -300,6 +352,7 @@ def update_sample(
     info = service.get_library(db, library_id)
     if info is None:
         raise HTTPException(status_code=404, detail="library not found")
+    _check_resource_owner(user, info.owner_id)
 
     if midi_note is not None:
         try:
@@ -336,6 +389,10 @@ async def add_sample(
     the filename first, then fall back to audio content classification.
     """
     service = sample_library_service.SampleLibraryService()
+    lib = service.get_library(db, library_id)
+    if lib is None:
+        raise HTTPException(status_code=404, detail="library not found")
+    _check_resource_owner(user, lib.owner_id)
     content = await file.read()
 
     if len(content) > _MAX_SAMPLE_BYTES:
@@ -370,6 +427,10 @@ def batch_remove_samples(
 ) -> LibraryInfo:
     """Remove multiple samples from a library at once."""
     service = sample_library_service.SampleLibraryService()
+    lib = service.get_library(db, library_id)
+    if lib is None:
+        raise HTTPException(status_code=404, detail="library not found")
+    _check_resource_owner(user, lib.owner_id)
     result = service.batch_remove_samples(db, library_id, payload.sample_ids)
     if result is None:
         raise HTTPException(status_code=404, detail="library not found")
@@ -385,6 +446,10 @@ def remove_sample(
 ) -> LibraryInfo:
     """Remove a single sample from a library."""
     service = sample_library_service.SampleLibraryService()
+    lib = service.get_library(db, library_id)
+    if lib is None:
+        raise HTTPException(status_code=404, detail="library not found")
+    _check_resource_owner(user, lib.owner_id)
     result = service.remove_sample_from_library(db, library_id, sample_id)
     if result is None:
         raise HTTPException(status_code=404, detail="library or sample not found")
@@ -551,6 +616,7 @@ async def import_preset_table(
         sf_type="preset_table",
         file_path=None,
         presets=presets,
+        owner_id=user.id if user is not None else None,
     )
 
     return result
@@ -586,6 +652,7 @@ async def import_soundfont(
         sf_type="sf2",
         file_path=sf_info.file_path,
         presets=sf_info.presets,
+        owner_id=user.id if user is not None else None,
     )
 
     return result
@@ -635,6 +702,10 @@ def activate_soundfont(
     from app.services.soundfont_service import SoundFontService
 
     service = SoundFontService()
+    sf = service.get_soundfont(db, soundfont_id)
+    if sf is None:
+        raise HTTPException(status_code=404, detail="soundfont not found")
+    _check_resource_owner(user, sf.get("owner_id"))
     result = service.activate_soundfont(db, soundfont_id)
     if result is None:
         raise HTTPException(status_code=404, detail="soundfont not found")
@@ -651,6 +722,10 @@ def delete_soundfont(
     from app.services.soundfont_service import SoundFontService
 
     service = SoundFontService()
+    sf = service.get_soundfont(db, soundfont_id)
+    if sf is None:
+        raise HTTPException(status_code=404, detail="soundfont not found")
+    _check_resource_owner(user, sf.get("owner_id"))
     deleted = service.delete_soundfont(db, soundfont_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="soundfont not found")

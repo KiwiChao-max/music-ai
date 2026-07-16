@@ -25,7 +25,7 @@ from app.api.deps import OptionalUser
 from app.db.models import AudioTaskStatus
 from app.db.session import get_db
 from app.schemas.audio import MusicAnalysisResponse, ProcessResponse, StemInfo, TaskStatusResponse
-from app.services import file_service, midi_mapping_service, music_analysis_service, task_service
+from app.services import auth_service, file_service, midi_mapping_service, music_analysis_service, task_service, user_service
 from app.tasks_audio import process_audio_task
 
 logger = logging.getLogger(__name__)
@@ -58,14 +58,27 @@ _MIDI_SUFFIXES: set[str] = {".mid", ".midi"}
 _OUTPUT_SUFFIXES: set[str] = _AUDIO_SUFFIXES | _MIDI_SUFFIXES
 
 
-def _public_url(file_path: Path) -> str:
-    """Map an absolute file path under `storage_dir` to a public URL.
+def _artifact_url(task_id: int, scope: str, file_path: Path) -> str:
+    """Build a task-scoped artifact URL without exposing the storage layout."""
+    from urllib.parse import quote
 
-    Mounted by `main.py` at /storage/, e.g.
-        storage/outputs/task_6/drums.wav  ->  /storage/outputs/task_6/drums.wav
-    """
-    rel = file_path.resolve().relative_to(settings.storage_dir.resolve())
-    return f"/storage/{rel.as_posix()}"
+    return f"/api/tasks/{task_id}/files/{scope}/{quote(file_path.name, safe='')}"
+
+
+def _artifact_path(task_id: int, scope: str, filename: str) -> Path:
+    """Resolve one known task artifact while rejecting traversal attempts."""
+    if filename != Path(filename).name:
+        raise HTTPException(status_code=404, detail="artifact not found")
+    if scope == "upload":
+        directory = file_service.task_upload_dir(task_id)
+    elif scope == "output":
+        directory = file_service.task_output_dir(task_id)
+    else:
+        raise HTTPException(status_code=404, detail="artifact not found")
+    candidate = directory / filename
+    if not candidate.is_file():
+        raise HTTPException(status_code=404, detail="artifact not found")
+    return candidate
 
 
 # ---------------------------------------------------------------------------
@@ -192,7 +205,7 @@ def list_stems(
     for candidate in sorted(upload_dir.glob("original.*")):
         if candidate.is_file() and candidate.suffix.lower() in _AUDIO_SUFFIXES:
             audio_stems.append(
-                StemInfo(name="original", url=_public_url(candidate), kind="audio"),
+                StemInfo(name="original", url=_artifact_url(task.id, "upload", candidate), kind="audio"),
             )
             break
 
@@ -201,17 +214,50 @@ def list_stems(
             continue
         suffix = f.suffix.lower()
         if suffix in _AUDIO_SUFFIXES:
-            audio_stems.append(StemInfo(name=f.stem, url=_public_url(f), kind="audio"))
+            audio_stems.append(StemInfo(name=f.stem, url=_artifact_url(task.id, "output", f), kind="audio"))
         elif suffix in _MIDI_SUFFIXES:
             midi_stems.append(
                 StemInfo(
                     name=f.stem,
-                    url=_public_url(f),
+                    url=_artifact_url(task.id, "output", f),
                     kind="midi",
                     profile=midi_mapping_service.midi_profile_from_name(f.stem),
                 )
             )
     return audio_stems + midi_stems
+
+
+@router.get("/{task_id}/files/{scope}/{filename}")
+def download_artifact(
+    task_id: int,
+    scope: str,
+    filename: str,
+    token: str | None = None,
+    db: Session = Depends(get_db),
+    user: Annotated[object | None, Depends(_auth_user)] = None,
+):
+    """Stream a task artifact after applying the normal ownership policy.
+
+    Supports both Bearer header auth (for API clients) and ?token= query
+    parameter auth (for <a href>/<audio>/<img> elements that can't set
+    headers). The query parameter is checked only when no Bearer token is
+    present.
+    """
+    from fastapi.responses import FileResponse
+
+    if user is None and token:
+        try:
+            payload = auth_service.decode_token(token, expected_type="access")
+            user_id = int(payload["sub"])
+            user = user_service.get_user(db, user_id)
+        except (ValueError, KeyError, TypeError):
+            raise HTTPException(status_code=401, detail="invalid token")
+
+    task = task_service.get_task(db, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="task not found")
+    _check_ownership(task, user)
+    return FileResponse(_artifact_path(task.id, scope, filename))
 
 
 # ---------------------------------------------------------------------------

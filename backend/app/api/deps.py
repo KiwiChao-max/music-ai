@@ -12,7 +12,6 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.db.session import get_db
 from app.services import auth_service, user_service
 
@@ -98,12 +97,3 @@ def require_admin(user: CurrentUser) -> object:
             detail="admin role required",
         )
     return user
-
-
-def refresh_settings_check() -> None:
-    """Refuse to start with the placeholder JWT secret in production."""
-    if settings.production_mode and settings.jwt_secret.startswith("dev-only"):
-        raise RuntimeError(
-            "JWT_SECRET must be set to a non-default value when "
-            "PRODUCTION_MODE=true"
-        )

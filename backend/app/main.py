@@ -5,11 +5,10 @@ import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
+
 
 from app.api.auth import router as auth_router
 from app.api.audio import router as audio_router
-from app.api.deps import refresh_settings_check
 from app.api.health import router as health_router
 from app.api.instruments import router as instruments_router
 from app.api.tasks import router as tasks_router
@@ -43,23 +42,20 @@ app.include_router(ws_router)
 
 settings.storage_dir.mkdir(parents=True, exist_ok=True)
 
-# Expose on-disk artifacts (uploads + worker outputs) at /storage/* so the
-# frontend can `GET /storage/outputs/task_<id>/drums.wav` after the worker
-# finishes. Path resolution in `app/api/tasks.py` builds URLs off this mount.
-app.mount(
-    "/storage",
-    StaticFiles(directory=str(settings.storage_dir)),
-    name="storage",
-)
+# Never mount the storage root as static files. It holds raw uploads and task
+# outputs, so a static mount would bypass the ownership checks in the API.
+# `app.api.tasks` exposes specific artifacts through a task-scoped endpoint.
 
 
 @app.on_event("startup")
 def _startup_checks() -> None:
-    """Refuse to boot with the placeholder JWT secret in production,
-    and seed a default admin user for local development so the SPA
+    """Seed a default admin user for local development so the SPA
     has something to log in with on a fresh install.
+
+    Production security checks (JWT secret, DB password, etc.) are
+    enforced by Settings.model_validator at config-load time, so the
+    app won't even reach this point if they fail.
     """
-    refresh_settings_check()
     _seed_bootstrap_admin()
 
 
@@ -95,9 +91,7 @@ def _seed_bootstrap_admin() -> None:
             db.add(user)
             db.commit()
             logger.info(
-                "bootstrapped admin user %s (password: %s)",
-                settings.bootstrap_admin_email,
-                settings.bootstrap_admin_password,
+                "bootstrapped admin user %s", settings.bootstrap_admin_email,
             )
         except Exception as exc:  # noqa: BLE001
             db.rollback()

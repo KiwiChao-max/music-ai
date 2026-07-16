@@ -35,6 +35,7 @@ class LibraryInfo(BaseModel):
     description: str | None = None
     is_active: bool
     provider: str = "drum_kit"
+    owner_id: int | None = None
     created_at: datetime
     updated_at: datetime
     files: list[SampleFileInfo] = Field(default_factory=list)

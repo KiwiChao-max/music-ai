@@ -10,7 +10,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -86,9 +86,17 @@ class Settings(BaseSettings):
     # CI smoke tests that don't want to deal with the login dance.
     auth_required: bool = False
 
-    # Default administrator seeded on first boot. Both fields can be
-    # overridden via env vars; setting `bootstrap_admin_email=""` skips
-    # the seed entirely.
+    # Default administrator seeded on first boot.  In dev mode the
+    # defaults below create a working admin account out of the box so
+    # the SPA has something to log in with.
+    #
+    # In production (`PRODUCTION_MODE=true`):
+    #   - If `bootstrap_admin_email` is still the dev placeholder
+    #     ("[email protected]"), the seed is DISABLED (email is
+    #     forced to "").  The operator must provision the first admin
+    #     manually (e.g. via a DB migration or CLI command).
+    #   - If the operator explicitly sets `BOOTSTRAP_ADMIN_EMAIL` but
+    #     leaves the password as `admin1234`, startup is refused.
     bootstrap_admin_email: str = "[email protected]"
     bootstrap_admin_username: str = "admin"
     bootstrap_admin_password: str = "admin1234"
@@ -182,12 +190,99 @@ class Settings(BaseSettings):
         ]
     )
 
+    # IPs / CIDRs of trusted reverse proxies (Nginx, Traefik, load
+    # balancers).  ``X-Forwarded-For`` is ONLY honoured when the
+    # direct TCP peer matches an entry here — otherwise the header is
+    # ignored (it could be spoofed by the client).
+    #
+    # Comma-separated in the env, e.g.:
+    #   TRUSTED_PROXIES="10.0.0.1,172.16.0.0/12"
+    #
+    # Defaults to localhost only — safe for direct-uvicorn dev setups.
+    # In production behind a reverse proxy, set this to the proxy's IP
+    # or the Docker network CIDR.
+    trusted_proxies: list[str] = Field(
+        default_factory=lambda: ["127.0.0.1", "::1"]
+    )
+
+    @field_validator("trusted_proxies", mode="before")
+    @classmethod
+    def _parse_trusted_proxies(cls, value):
+        if isinstance(value, str):
+            return [entry.strip() for entry in value.split(",") if entry.strip()]
+        return value
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _parse_cors_origins(cls, value):
         if isinstance(value, str):
             return [origin.strip() for origin in value.split(",") if origin.strip()]
         return value
+
+    @model_validator(mode="after")
+    def _validate_production_security(self):
+        if not self.production_mode:
+            return self
+
+        errors: list[str] = []
+
+        # 1. Force authentication — no anonymous access in production.
+        if not self.auth_required:
+            # Auto-corrected; no error raised — the remaining checks
+            # below are what the operator must fix manually.
+            self.auth_required = True
+
+        # 2. JWT secret must not be the dev default.
+        if self.jwt_secret == "dev-only-secret-please-change-in-production":
+            errors.append(
+                "JWT_SECRET must be changed from the dev default "
+                "('dev-only-secret-please-change-in-production') when PRODUCTION_MODE=true."
+            )
+
+        # 3. Database password must not be the dev default.
+        if self.db_password == "postgres123":
+            errors.append(
+                "DB_PASSWORD must be changed from the dev default "
+                "('postgres123') when PRODUCTION_MODE=true."
+            )
+
+        # 4. Bootstrap admin: disable auto-creation if the email is still
+        # the dev placeholder.  This prevents an attacker from logging in
+        # with [email protected] / admin1234 when the deployer forgets
+        # to set env vars.  The operator must explicitly set both
+        # BOOTSTRAP_ADMIN_EMAIL and BOOTSTRAP_ADMIN_PASSWORD to enable
+        # the seed in production.
+        if self.bootstrap_admin_email == "[email protected]":
+            self.bootstrap_admin_email = ""
+
+        if self.bootstrap_admin_password == "admin1234":
+            errors.append(
+                "BOOTSTRAP_ADMIN_PASSWORD must be changed from the dev default "
+                "('admin1234') when PRODUCTION_MODE=true."
+            )
+
+        # 5. CORS origins must not be the dev defaults.
+        dev_cors = {"http://localhost:5173", "http://127.0.0.1:5173"}
+        if set(self.cors_origins) == dev_cors:
+            errors.append(
+                "CORS_ORIGINS must be changed from the dev defaults "
+                "(http://localhost:5173, http://127.0.0.1:5173) when PRODUCTION_MODE=true."
+            )
+
+        # 6. Redis URL must not be the dev default.
+        if self.redis_url == "redis://localhost:6379/0":
+            errors.append(
+                "REDIS_URL must be changed from the dev default "
+                "('redis://localhost:6379/0') when PRODUCTION_MODE=true."
+            )
+
+        if errors:
+            raise ValueError(
+                "Production security checks failed:\n  - "
+                + "\n  - ".join(errors)
+            )
+
+        return self
 
     @property
     def resolved_upload_dir(self) -> Path:

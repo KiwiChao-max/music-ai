@@ -605,7 +605,7 @@ export function AudioDetailPage() {
           {stemsQuery.data && <DrumPartPanel stems={stemsQuery.data} />}
 
           <SampleBasedDrumPlayer
-            eventsUrl={`/storage/outputs/task_${task.id}/drums_events.json`}
+            eventsUrl={`/tasks/${task.id}/files/output/drums_events.json`}
             library={activeLibraryQuery.data ?? null}
             forceShow
           />

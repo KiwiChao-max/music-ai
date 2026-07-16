@@ -86,6 +86,7 @@ class LibraryInfo:
     description: str | None
     is_active: bool
     provider: str
+    owner_id: int | None
     created_at: str
     updated_at: str
     files: tuple[SampleFileInfo, ...]
@@ -113,6 +114,7 @@ class SampleLibraryService:
         name: str,
         files: list[tuple[str, bytes]],
         description: str | None = None,
+        owner_id: int | None = None,
     ) -> LibraryInfo:
         """Create a library from uploaded (filename, content) pairs.
 
@@ -125,7 +127,11 @@ class SampleLibraryService:
         if not files:
             raise ValueError("library must contain at least one sample")
 
-        library = SampleLibrary(name=name.strip(), description=description)
+        library = SampleLibrary(
+            name=name.strip(),
+            description=description,
+            owner_id=owner_id,
+        )
         db.add(library)
         db.flush()  # populate library.id
 
@@ -520,6 +526,7 @@ class SampleLibraryService:
             description=library.description,
             is_active=bool(library.is_active),
             provider=library.provider,
+            owner_id=library.owner_id,
             created_at=library.created_at.isoformat() if library.created_at else "",
             updated_at=library.updated_at.isoformat() if library.updated_at else "",
             files=tuple(

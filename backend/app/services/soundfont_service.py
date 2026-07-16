@@ -634,6 +634,7 @@ class SoundFontService:
         sf_type: str,
         file_path: str | None,
         presets: list[PresetInfo],
+        owner_id: int | None = None,
     ) -> dict:
         """Save a SoundFont and its presets to the database."""
         from app.db.models import SoundFont, SoundFontPreset
@@ -645,6 +646,7 @@ class SoundFontService:
             file_path=file_path,
             preset_count=len(presets),
             is_active=0,
+            owner_id=owner_id,
         )
         db.add(sf)
         db.flush()
@@ -675,6 +677,7 @@ class SoundFontService:
             "file_path": sf.file_path,
             "preset_count": sf.preset_count,
             "is_active": bool(sf.is_active),
+            "owner_id": sf.owner_id,
             "created_at": sf.created_at.isoformat() if sf.created_at else "",
             "updated_at": sf.updated_at.isoformat() if sf.updated_at else "",
         }

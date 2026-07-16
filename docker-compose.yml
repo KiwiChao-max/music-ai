@@ -3,10 +3,14 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres123}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?err}
       POSTGRES_DB: ${POSTGRES_DB:-music_ai}
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+    # Production: PostgreSQL is only reachable from the compose internal
+    # network (`api` and `worker`).  If you need host access for
+    # diagnostics, uncomment the ports block below and set
+    # POSTGRES_PORT=5432 in your .env — but never in production.
+    # ports:
+    #   - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -17,17 +21,25 @@ services:
     restart: unless-stopped
 
   redis:
-    # Broker + result backend for Celery. The `api` and `worker` services
-    # talk to it over the compose network; expose 6379 to the host only
-    # if you want to inspect queues with `redis-cli` from your laptop.
+    # Broker + result backend for Celery.  The `api` and `worker` services
+    # talk to it over the compose network.
+    #
+    # Production: Redis is internal-only and requires a password.  If you
+    # need host access for diagnostics, uncomment the ports block below
+    # and set REDIS_PORT=6379 in your .env — but never in production.
     image: redis:7-alpine
-    command: ["redis-server", "--appendonly", "yes"]
-    ports:
-      - "${REDIS_PORT:-6379}:6379"
+    command:
+      - "redis-server"
+      - "--appendonly"
+      - "yes"
+      - "--requirepass"
+      - "${REDIS_PASSWORD:?err}"
+    # ports:
+    #   - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "${REDIS_PASSWORD:?err}", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -39,9 +51,9 @@ services:
       DB_HOST: postgres
       DB_PORT: 5432
       DB_USER: ${POSTGRES_USER:-postgres}
-      DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres123}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?err}
       DB_NAME: ${POSTGRES_DB:-music_ai}
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD:?err}@redis:6379/0
       STORAGE_DIR: /app/storage
     ports:
       - "${BACKEND_PORT:-8000}:8000"
@@ -54,8 +66,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
-    # Resource limits keep a single API container from starving the
-    # worker or DB. Tune via env in compose.override.yml for your host.
     deploy:
       resources:
         limits:
@@ -78,16 +88,13 @@ services:
       DB_HOST: postgres
       DB_PORT: 5432
       DB_USER: ${POSTGRES_USER:-postgres}
-      DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres123}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?err}
       DB_NAME: ${POSTGRES_DB:-music_ai}
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD:?err}@redis:6379/0
       STORAGE_DIR: /app/storage
     volumes:
       - backend_storage:/app/storage
     command: ["celery", "-A", "app.celery_app:celery", "worker", "--loglevel=info", "--concurrency=2"]
-    # Demucs is memory-hungry: a 5-minute track peaks ~3 GB resident.
-    # Cap at 4 GB so an OOM kills the worker (and the task is
-    # re-queued via `task_reject_on_worker_lost`) rather than the host.
     deploy:
       resources:
         limits:

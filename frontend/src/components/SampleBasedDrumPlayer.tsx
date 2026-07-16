@@ -17,7 +17,7 @@ interface DrumEventList {
 }
 
 interface SampleBasedDrumPlayerProps {
-  eventsUrl: string | null; // /storage/outputs/task_X/drums_events.json
+  eventsUrl: string | null; // /api/tasks/{id}/files/output/drums_events.json
   library: SampleLibraryInfo | null;
   /** When true, the component renders even if the library is empty. */
   forceShow?: boolean;

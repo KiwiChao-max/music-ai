@@ -19,6 +19,7 @@ import WaveSurfer from "wavesurfer.js";
 
 import { usePlayer } from "@/contexts/PlayerContext";
 import { MidiPreviewPlayer } from "@/components/MidiPreviewPlayer";
+import { useArtifactUrl } from "@/hooks/useArtifactUrl";
 import type { StemInfo } from "@/types/audio";
 
 function stemLabel(t: (key: string) => string, name: string): string {
@@ -68,6 +69,7 @@ function StemWaveform({ url, reloadKey }: { url: string; reloadKey: string }) {
 function StemRow({ stem, isCurrent, isPlaying, onPlay }: StemRowProps) {
   const { t } = useTranslation();
   const label = stemLabel(t, stem.name);
+  const artifactUrl = useArtifactUrl(stem.url);
   return (
     <li className="grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
       <div className="flex w-32 shrink-0 flex-col gap-1">
@@ -79,7 +81,7 @@ function StemRow({ stem, isCurrent, isPlaying, onPlay }: StemRowProps) {
         </span>
       </div>
       <div className="min-w-0">
-        <StemWaveform url={stem.url} reloadKey={stem.url} />
+        <StemWaveform url={artifactUrl} reloadKey={stem.url} />
       </div>
       <div className="flex shrink-0 items-center gap-2">
         <button
@@ -95,9 +97,85 @@ function StemRow({ stem, isCurrent, isPlaying, onPlay }: StemRowProps) {
           {isCurrent && isPlaying ? t("player.pause") : t("player.play")}
         </button>
         <a
-          href={stem.url}
+          href={artifactUrl}
           download={`${stem.name}.wav`}
           className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+        >
+          {t("common.download")}
+        </a>
+      </div>
+    </li>
+  );
+}
+
+interface StemSkeletonProps {
+  stem: StemInfo;
+  onPlay: () => void;
+}
+
+function StemSkeleton({ stem, onPlay }: StemSkeletonProps) {
+  const { t } = useTranslation();
+  const label = stemLabel(t, stem.name);
+  const artifactUrl = useArtifactUrl(stem.url);
+  return (
+    <div className="grid h-[68px] grid-cols-[auto_1fr_auto] items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
+      <div className="w-32 shrink-0">
+        <p className="truncate text-sm font-semibold capitalize text-slate-900 dark:text-slate-100">
+          {label}
+        </p>
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          {t("common.audio")}
+        </p>
+      </div>
+      <div className="h-9 w-full animate-pulse rounded bg-slate-100 dark:bg-slate-800" />
+      <div className="flex shrink-0 items-center gap-2">
+        <button
+          type="button"
+          onClick={onPlay}
+          className="inline-flex min-w-20 items-center justify-center rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
+        >
+          {t("player.play")}
+        </button>
+        <a
+          href={artifactUrl}
+          download={`${stem.name}.wav`}
+          className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+        >
+          {t("common.download")}
+        </a>
+      </div>
+    </div>
+  );
+}
+
+interface MidiStemRowProps {
+  stem: StemInfo;
+  midiProfileLabel: (profile?: string) => string;
+}
+
+function MidiStemRow({ stem, midiProfileLabel }: MidiStemRowProps) {
+  const { t } = useTranslation();
+  const artifactUrl = useArtifactUrl(stem.url);
+  return (
+    <li
+      className="flex items-center justify-between gap-2 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="truncate font-medium text-slate-700 dark:text-slate-300">{stemLabel(t, stem.name)}</span>
+        {stem.profile && (
+          <span className="shrink-0 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:bg-slate-700 dark:text-slate-400">
+            {midiProfileLabel(stem.profile)}
+          </span>
+        )}
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        <div className="w-36">
+          <MidiPreviewPlayer url={artifactUrl} />
+        </div>
+        <a
+          href={artifactUrl}
+          download={`${stem.name}.mid`}
+          className="inline-flex items-center rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600 dark:hover:text-slate-100"
         >
           {t("common.download")}
         </a>
@@ -152,10 +230,17 @@ export function StemMixer({ stems }: StemMixerProps) {
   if (audioStems.length === 0 && midiStems.length === 0) return null;
 
   const onPlayAudio = (stem: StemInfo) => {
+    // Compare raw URLs (no token) so the player identity remains stable.
     if (current?.url === stem.url && isPlaying) {
       pause();
     } else {
-      play({ url: stem.url, title: stemLabel(t, stem.name), kind: "audio" });
+      // Append token for the actual audio element load.
+      const token = (() => {
+        try { return localStorage.getItem("music-ai.token"); } catch { return null; }
+      })();
+      const sep = stem.url.includes("?") ? "&" : "?";
+      const authUrl = token ? `${stem.url}${sep}token=${encodeURIComponent(token)}` : stem.url;
+      play({ url: authUrl, title: stemLabel(t, stem.name), kind: "audio" });
     }
   };
 
@@ -199,33 +284,7 @@ export function StemMixer({ stems }: StemMixerProps) {
                     onPlay={() => onPlayAudio(stem)}
                   />
                 ) : (
-                  <div className="grid h-[68px] grid-cols-[auto_1fr_auto] items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
-                    <div className="w-32 shrink-0">
-                      <p className="truncate text-sm font-semibold capitalize text-slate-900 dark:text-slate-100">
-                        {label}
-                      </p>
-                      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                        {t("common.audio")}
-                      </p>
-                    </div>
-                    <div className="h-9 w-full animate-pulse rounded bg-slate-100 dark:bg-slate-800" />
-                    <div className="flex shrink-0 items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => onPlayAudio(stem)}
-                        className="inline-flex min-w-20 items-center justify-center rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
-                      >
-                        {t("player.play")}
-                      </button>
-                      <a
-                        href={stem.url}
-                        download={`${stem.name}.wav`}
-                        className="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-                      >
-                        {t("common.download")}
-                      </a>
-                    </div>
-                  </div>
+                  <StemSkeleton stem={stem} onPlay={() => onPlayAudio(stem)} />
                 )}
               </li>
             );
@@ -240,31 +299,7 @@ export function StemMixer({ stems }: StemMixerProps) {
           </summary>
           <ul className="mt-3 space-y-2">
             {midiStems.map((stem) => (
-              <li
-                key={stem.name}
-                className="flex items-center justify-between gap-2 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
-              >
-                <div className="flex min-w-0 items-center gap-2">
-                  <span className="truncate font-medium text-slate-700 dark:text-slate-300">{stemLabel(t, stem.name)}</span>
-                  {stem.profile && (
-                    <span className="shrink-0 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:bg-slate-700 dark:text-slate-400">
-                      {midiProfileLabel(stem.profile)}
-                    </span>
-                  )}
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <div className="w-36">
-                    <MidiPreviewPlayer url={stem.url} />
-                  </div>
-                  <a
-                    href={stem.url}
-                    download={`${stem.name}.mid`}
-                    className="inline-flex items-center rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600 dark:hover:text-slate-100"
-                  >
-                    {t("common.download")}
-                  </a>
-                </div>
-              </li>
+              <MidiStemRow key={stem.name} stem={stem} midiProfileLabel={midiProfileLabel} />
             ))}
           </ul>
         </details>

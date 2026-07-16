@@ -48,6 +48,7 @@ from app.config import settings
 from app.db.models import AudioTaskStatus
 from app.db.session import SessionLocal
 from app.services import auth_service, task_service
+from app.utils.network import get_client_ip
 
 logger = logging.getLogger(__name__)
 
@@ -88,14 +89,13 @@ def _ws_release(ip: str) -> None:
 
 
 def _client_ip(websocket: WebSocket) -> str:
-    # Honour X-Forwarded-For from a trusted reverse proxy; fall back to
-    # the direct transport peer.
-    xff = websocket.headers.get("x-forwarded-for", "")
-    if xff:
-        # Use the first hop only — that's the original client.
-        return xff.split(",", 1)[0].strip() or "unknown"
-    client = websocket.client
-    return client.host if client else "unknown"
+    """Extract the real client IP, only trusting ``X-Forwarded-For``
+    from known reverse-proxy addresses (see ``settings.trusted_proxies``)."""
+    return get_client_ip(
+        websocket.client.host if websocket.client else None,
+        websocket.headers.get("x-forwarded-for", ""),
+        trusted_proxies=settings.trusted_proxies,
+    )
 
 
 def _serialize_dt(value: datetime | None) -> str | None:
