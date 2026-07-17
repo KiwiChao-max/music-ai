@@ -17,7 +17,7 @@ from app.api.instruments.classification import router as classification_router
 from app.api.instruments.samples import router as samples_router
 from app.api.instruments.soundfonts import router as soundfonts_router
 
-instruments_router = APIRouter()
+instruments_router = APIRouter(prefix="/api/instruments")
 instruments_router.include_router(samples_router)
 instruments_router.include_router(classification_router)
 instruments_router.include_router(soundfonts_router)
