@@ -45,6 +45,11 @@ Thumbs.db
 
 # Local dev runtime artifacts (PIDs, log output for start_all_local.sh)
 scripts/local/logs/
+# Local dev binaries and test fixtures (not intended for version control)
+scripts/local/*.sf2
+scripts/local/*.bat
+scripts/local/*.wav
+scripts/local/*.csv
 
 # SQLite broker and dev databases
 celery_broker.sqlite
