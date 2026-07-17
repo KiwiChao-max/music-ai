@@ -17,7 +17,7 @@ build/
 __pycache__/
 
 # Storage directories (large binary files)
-storage/
+/storage/
 uploads/
 outputs/
 

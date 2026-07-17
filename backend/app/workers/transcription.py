@@ -10,6 +10,7 @@ import logging
 from pathlib import Path
 
 from app.config import settings
+from app.pipeline_metrics import PIPELINE_MODEL_FALLBACK_TOTAL
 from app.services import (
     adt_drum_service,
     basic_pitch_service,
@@ -62,6 +63,9 @@ def _run_drum_midi(stem_path: Path, output_dir: Path) -> Path | None:
         result = service.create_drum_midi(stem_path, output_dir, stem_name="drums")
     except ADTUnavailable as exc:
         _disable_adt_drum(f"ADTOS unavailable, falling back to rule-based: {exc}")
+        PIPELINE_MODEL_FALLBACK_TOTAL.labels(
+            model="adtos", fallback_reason="unavailable",
+        ).inc()
         result = _DRUM_MIDI_RULE.create_drum_midi(
             stem_path, output_dir, stem_name="drums"
         )
@@ -72,6 +76,9 @@ def _run_drum_midi(stem_path: Path, output_dir: Path) -> Path | None:
             stem_path.name,
             exc,
         )
+        PIPELINE_MODEL_FALLBACK_TOTAL.labels(
+            model="adtos", fallback_reason="exception",
+        ).inc()
         result = _DRUM_MIDI_RULE.create_drum_midi(
             stem_path, output_dir, stem_name="drums"
         )

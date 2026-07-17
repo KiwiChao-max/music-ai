@@ -57,6 +57,10 @@ class DemucsService:
             return self._separate_with_python_api(audio_path, output_dir)
         except Exception as exc:  # noqa: BLE001 - CLI fallback handles more codecs
             logger.warning("demucs python-api path failed; trying CLI fallback: %s", exc)
+            from app.pipeline_metrics import PIPELINE_MODEL_FALLBACK_TOTAL
+            PIPELINE_MODEL_FALLBACK_TOTAL.labels(
+                model="demucs", fallback_reason="python_api_to_cli",
+            ).inc()
             return self._separate_with_cli(audio_path, output_dir)
 
     def _separate_with_python_api(self, audio_path: Path, output_dir: Path) -> DemucsResult:

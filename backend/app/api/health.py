@@ -4,7 +4,7 @@ Three endpoints:
   * `GET /healthz`   --- liveness. Always 200 if the process is up.
   * `GET /readyz`    --- readiness. Probes Postgres + Redis + Celery.
   * `GET /metrics`   --- Prometheus text format (request count, latency
-                        histogram, in-flight task gauge, etc.)
+                        histogram, in-flight task gauge, pipeline metrics.)
 
 The metrics module keeps a couple of counters / histograms registered
 globally so the same registry backs the `/metrics` endpoint and any
@@ -30,7 +30,9 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db.session import get_db
+from app.pipeline_metrics import PIPELINE_QUEUE_LENGTH, PIPELINE_STORAGE_BYTES
 from app.services import task_service
+from app.storage import get_storage
 
 router = APIRouter(tags=["health"])
 
@@ -116,14 +118,21 @@ def _readyz_payload(components: dict, ok: bool) -> str:
 async def metrics(db: Annotated[Session, Depends(get_db)]) -> Response:
     """Prometheus text format.
 
-    We refresh the per-status task gauge on every scrape so a Grafana
-    panel can read it without any external instrumentation. The query
-    is cheap (one COUNT per status) but bounded to 4 rows.
+    Refreshes dynamic gauges on every scrape:
+      * ``music_ai_tasks_total`` --- per-status task counts
+      * ``music_ai_pipeline_queue_length`` --- UPLOADED tasks (waiting)
+      * ``music_ai_pipeline_storage_bytes`` --- uploads / outputs usage
     """
     try:
         counts = task_service.count_tasks_by_status(db)
         for status_name, count in counts.items():
             TASKS_TOTAL.labels(status=status_name).set(count)
+
+        # Queue length: number of UPLOADED tasks waiting for a worker.
+        PIPELINE_QUEUE_LENGTH.set(counts.get("uploaded", 0))
+
+        # Storage usage: total bytes under uploads/ and outputs/ prefixes.
+        _refresh_storage_gauges()
     except Exception:
         # The /metrics endpoint must never fail because the DB is
         # briefly unavailable --- Prometheus would stop scraping us.
@@ -131,6 +140,23 @@ async def metrics(db: Annotated[Session, Depends(get_db)]) -> Response:
 
     payload = generate_latest(REGISTRY)
     return Response(content=payload, media_type=CONTENT_TYPE_LATEST)
+
+
+def _refresh_storage_gauges() -> None:
+    """Best-effort storage usage gauge refresh.
+
+    Queries the storage backend for total bytes used by uploads and
+    outputs.  For local storage this walks the filesystem; for S3 this
+    may be expensive, so errors are swallowed.
+    """
+    try:
+        storage = get_storage()
+        uploads_bytes = storage.usage_bytes(prefix="uploads/")
+        outputs_bytes = storage.usage_bytes(prefix="outputs/")
+        PIPELINE_STORAGE_BYTES.labels(scope="uploads").set(uploads_bytes)
+        PIPELINE_STORAGE_BYTES.labels(scope="outputs").set(outputs_bytes)
+    except Exception:
+        pass
 
 
 @router.get("/")

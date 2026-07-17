@@ -5,6 +5,7 @@ import logging
 import wave
 from pathlib import Path
 
+from app.pipeline_metrics import PIPELINE_MODEL_FALLBACK_TOTAL
 from app.services import demucs_service
 
 logger = logging.getLogger(__name__)
@@ -48,4 +49,7 @@ def separate_stems(audio_path: Path, output_dir: Path) -> dict[str, Path]:
         return result.stems
     except Exception as exc:  # noqa: BLE001
         logger.warning("demucs unavailable; using placeholder stems: %s", exc)
+        PIPELINE_MODEL_FALLBACK_TOTAL.labels(
+            model="demucs", fallback_reason="unavailable",
+        ).inc()
         return emit_placeholder_stems(output_dir)
