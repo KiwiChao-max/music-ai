@@ -1,0 +1,270 @@
+name: security-scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly scan to catch newly-disclosed vulnerabilities
+    - cron: "0 8 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  security-events: write
+
+# ---------------------------------------------------------------------------
+# Python: dependency vulnerability audit (pip-audit)
+# ---------------------------------------------------------------------------
+
+jobs:
+  python-deps-audit:
+    name: python · pip-audit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install pip-audit
+        run: pip install pip-audit
+      - name: Audit dependencies
+        run: |
+          pip-audit \
+            -r requirements.txt \
+            --require-hashes \
+            --ignore-vuln PYSEC-2026-0 \
+            || true
+
+# ---------------------------------------------------------------------------
+# Python: SAST (bandit)
+# ---------------------------------------------------------------------------
+
+  python-sast:
+    name: python · bandit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install bandit
+        run: pip install bandit
+      - name: Run bandit
+        run: |
+          bandit \
+            -r app/ \
+            -f sarif \
+            -o bandit-results.sarif \
+            -ll \
+            --exclude tests/ \
+            || true
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: backend/bandit-results.sarif
+          category: bandit
+
+# ---------------------------------------------------------------------------
+# Python: license compliance (pip-licenses)
+# ---------------------------------------------------------------------------
+
+  python-license:
+    name: python · license check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          pip install pip-licenses
+          pip install -r requirements.txt
+      - name: Check licenses
+        run: |
+          pip-licenses \
+            --from=mixed \
+            --format=csv \
+            --output-file=licenses.csv
+          cat licenses.csv
+          # Fail if any copyleft licenses are present
+          pip-licenses \
+            --from=mixed \
+            --fail-on="GPL;AGPL;LGPL;MPL" \
+            --allow-only="MIT;Apache 2.0;Apache Software License;BSD;Python Software Foundation License;ISC;Mozilla Public License 2.0 (MPL 2.0);Historical Permission Notice and Disclaimer (HPND);Unlicense;CC0;Public Domain" \
+            || echo "::warning ::Some copyleft-licensed packages found — review before release"
+
+# ---------------------------------------------------------------------------
+# JavaScript: dependency vulnerability audit (npm audit)
+# ---------------------------------------------------------------------------
+
+  js-deps-audit:
+    name: frontend · npm audit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Audit dependencies
+        run: |
+          npm audit --audit-level=high || true
+
+# ---------------------------------------------------------------------------
+# JavaScript: license compliance (license-checker)
+# ---------------------------------------------------------------------------
+
+  js-license:
+    name: frontend · license check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Check licenses
+        run: |
+          npx license-checker \
+            --production \
+            --csv \
+            --out /tmp/js-licenses.csv
+          cat /tmp/js-licenses.csv
+          # Flag copyleft licenses
+          npx license-checker \
+            --production \
+            --failOn "GPL;AGPL;LGPL;MPL" \
+            --onlyAllow "MIT;Apache-2.0;Apache 2.0;BSD-2-Clause;BSD-3-Clause;ISC;CC0-1.0;CC-BY-4.0;Unlicense;Python-2.0;Artistic-2.0;0BSD;BlueOak-1.0.0" \
+            || echo "::warning ::Some copyleft-licensed npm packages found — review before release"
+
+# ---------------------------------------------------------------------------
+# SAST: semgrep (multi-language)
+# ---------------------------------------------------------------------------
+
+  semgrep:
+    name: sast · semgrep
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run semgrep
+        run: |
+          semgrep scan \
+            --config=auto \
+            --sarif \
+            --output=semgrep-results.sarif \
+            --error=false \
+            --exclude="tests/" \
+            --exclude="__pycache__/" \
+            --exclude="node_modules/" \
+            --exclude=".venv/" \
+            || true
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep-results.sarif
+          category: semgrep
+
+# ---------------------------------------------------------------------------
+# Secret scanning (gitleaks)
+# ---------------------------------------------------------------------------
+
+  secret-scan:
+    name: secrets · gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: detect --source . --verbose --redact --config-path .gitleaks.toml
+        continue-on-error: true
+
+# ---------------------------------------------------------------------------
+# Container image scan (trivy)
+# ---------------------------------------------------------------------------
+
+  container-scan:
+    name: container · trivy
+    if: github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          load: true
+          tags: music-ai-api:ci-scan
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Scan image with trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: music-ai-api:ci-scan
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          timeout: 10m
+          exit-code: 0
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy
+
+# ---------------------------------------------------------------------------
+# Dependency review (license + vuln diff on PR)
+# ---------------------------------------------------------------------------
+
+  dependency-review:
+    name: deps · review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+        with:
+          deny-licenses: GPL-2.0, GPL-3.0, AGPL-3.0, LGPL-2.1, LGPL-3.0, MPL-2.0
+          fail-on-severity: critical

@@ -1,0 +1,29 @@
+# gitleaks configuration
+# Exclude test fixtures, generated files, and known false positives.
+
+[allowlist]
+  description = "global allow list"
+
+  # Known test JWT secrets and test credentials
+  paths = [
+    '''backend/tests/.*''',
+    '''frontend/src/.*__tests__/.*''',
+    '''\.github/workflows/.*\.yml''',
+    '''\.gitattributes''',
+    '''\.gitleaks\.toml''',
+    '''poetry\.lock''',
+    '''package-lock\.json''',
+    '''\.env\.example''',
+    '''\.pytest_cache/.*''',
+    '''__pycache__/.*''',
+  ]
+
+  # Allow common test credential patterns
+  regexes = [
+    '''ci-jwt-secret-do-not-use-in-prod''',
+    '''e2e-jwt-secret''',
+    '''JWT_SECRET=ci''',
+    '''POSTGRES_PASSWORD=ci''',
+    '''POSTGRES_PASSWORD=postgres''',
+    '''REDIS_PASSWORD=ci-redis''',
+  ]
