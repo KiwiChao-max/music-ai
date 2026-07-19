@@ -36,7 +36,7 @@ class UserPublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    email: EmailStr
+    email: str
     username: str
     full_name: Optional[str] = None
     role: str = "user"
@@ -62,7 +62,7 @@ class TokenResponse(BaseModel):
 class RefreshRequest(BaseModel):
     """Payload for `POST /api/auth/refresh`."""
 
-    refresh_token: str = Field(min_length=1)
+    refresh_token: str | None = Field(default=None, min_length=1)
 
 
 class MessageResponse(BaseModel):

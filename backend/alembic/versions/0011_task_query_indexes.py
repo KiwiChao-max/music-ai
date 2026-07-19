@@ -31,7 +31,7 @@ to thousands of rows and the pagination queries (``ORDER BY ...
 LIMIT ... OFFSET ...``) need to skip large offsets efficiently.
 
 Revision ID: 0011
-Revises: 0010
+Revises: 0010_sample_library_owner
 Create Date: 2026-07-16
 """
 from typing import Sequence, Union
@@ -40,7 +40,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "0011"
-down_revision: Union[str, None] = "0010"
+down_revision: Union[str, None] = "0010_sample_library_owner"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

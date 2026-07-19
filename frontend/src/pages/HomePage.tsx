@@ -40,7 +40,7 @@ export function HomePage() {
               {t(c.descriptionKey)}
             </p>
             <p className="mt-4 text-sm font-medium text-slate-900 group-hover:underline dark:text-slate-100">
-              {t(c.ctaKey)} ->
+              {t(c.ctaKey)} -&gt;
             </p>
           </Link>
         ))}

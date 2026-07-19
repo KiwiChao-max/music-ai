@@ -169,7 +169,7 @@ class Settings(BaseSettings):
     #     manually (e.g. via a DB migration or CLI command).
     #   - If the operator explicitly sets `BOOTSTRAP_ADMIN_EMAIL` but
     #     leaves the password as `admin1234`, startup is refused.
-    bootstrap_admin_email: str = "[email protected]"
+    bootstrap_admin_email: str = "admin@music-ai.local"
     bootstrap_admin_username: str = "admin"
     bootstrap_admin_password: str = "admin1234"
     bootstrap_admin_full_name: str = "Bootstrap Admin"

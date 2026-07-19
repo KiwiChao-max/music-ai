@@ -116,22 +116,29 @@ def _token_response(
     refresh_token: str,
     expires_in: int,
     user: UserPublic,
-    response: Response,
 ) -> JSONResponse:
     """Return a JSON response with the access token + user, and set the
     refresh token as an HttpOnly cookie."""
-    _set_refresh_cookie(response, refresh_token)
-    csrf = _set_csrf_cookie(response)
-    return JSONResponse(
-        content={
-            "access_token": access_token,
-            "token_type": "Bearer",
-            "expires_in": expires_in,
-            "user": user.model_dump(),
-            "csrf_token": csrf,
-        },
-        status_code=200,
+    csrf = secrets.token_urlsafe(32)
+    content = {
+        "access_token": access_token,
+        "token_type": "Bearer",
+        "expires_in": expires_in,
+        "user": user.model_dump(mode="json"),
+        "csrf_token": csrf,
+    }
+    resp = JSONResponse(content=content, status_code=200)
+    _set_refresh_cookie(resp, refresh_token)
+    resp.set_cookie(
+        key=settings.csrf_cookie_name,
+        value=csrf,
+        httponly=False,
+        secure=settings.production_mode,
+        samesite="strict",
+        max_age=settings.refresh_token_ttl_minutes * 60,
+        path="/",
     )
+    return resp
 
 
 # ---- endpoints -------------------------------------------------------------
@@ -185,7 +192,6 @@ def register(
         tokens["refresh_token"],
         tokens["expires_in"],
         UserPublic.model_validate(user),
-        response,
     )
 
 
@@ -218,7 +224,6 @@ def login(
         tokens["refresh_token"],
         tokens["expires_in"],
         UserPublic.model_validate(user),
-        response,
     )
 
 
@@ -301,7 +306,6 @@ def refresh(
         tokens["refresh_token"],
         tokens["expires_in"],
         UserPublic.model_validate(user),
-        response,
     )
 
 
