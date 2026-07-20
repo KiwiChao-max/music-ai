@@ -17,7 +17,7 @@ import logging
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.api.deps import OptionalAuthUser, check_task_ownership
@@ -268,20 +268,18 @@ def download_artifact(
     suffix = Path(filename).suffix.lower()
     media_type = _media_type_for_suffix(suffix)
 
-    # 使用分块生成器替代直接传递文件对象，避免 StreamingResponse
-    # 按行迭代导致 42MB 文件产生数百万次微小的网络往返。
-    def chunked_reader():
-        with file_obj:
-            while True:
-                chunk = file_obj.read(64 * 1024)  # 64KB chunks
-                if not chunk:
-                    break
-                yield chunk
+    # 获取文件路径后关闭 storage 层打开的文件句柄，改用 FileResponse
+    # 直接读文件，原生支持 Range 请求，浏览器拖动进度条时才能正确
+    # seek 到指定位置，而不是从头重新播放。
+    file_path = file_obj.name
+    file_obj.close()
 
-    return StreamingResponse(
-        chunked_reader(),
+    return FileResponse(
+        file_path,
         media_type=media_type,
-        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+        headers={
+            "Content-Disposition": f'inline; filename="{filename}"',
+        },
     )
 
 

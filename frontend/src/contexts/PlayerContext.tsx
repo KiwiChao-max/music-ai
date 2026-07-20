@@ -200,7 +200,9 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
   const seek = useCallback((timeSec: number) => {
     const audio = audioRef.current;
     if (!audio) return;
-    audio.currentTime = Math.max(0, Math.min(timeSec, audio.duration || 0));
+    const dur = audio.duration;
+    if (!Number.isFinite(dur) || dur <= 0) return;
+    audio.currentTime = Math.max(0, Math.min(timeSec, dur));
     setCurrentTime(audio.currentTime);
   }, []);
 
