@@ -231,8 +231,10 @@ export function StemMixer({ stems }: StemMixerProps) {
   if (audioStems.length === 0 && midiStems.length === 0) return null;
 
   const onPlayAudio = (stem: StemInfo) => {
-    // Compare raw URLs (no token) so the player identity remains stable.
-    if (current?.url === stem.url && isPlaying) {
+    // Compare base URLs (without token) so the player identity remains stable.
+    const currentBase = current?.url?.split("?")[0] ?? "";
+    const stemBase = stem.url.split("?")[0];
+    if (currentBase === stemBase && isPlaying) {
       pause();
     } else {
       // Append token for the actual audio element load.
@@ -265,7 +267,7 @@ export function StemMixer({ stems }: StemMixerProps) {
       {audioStems.length > 0 && (
         <ul className="space-y-2">
           {audioStems.map((stem) => {
-            const isCurrent = current?.url === stem.url;
+            const isCurrent = (current?.url?.split("?")[0] ?? "") === stem.url.split("?")[0];
             const label = stemLabel(t, stem.name);
             return (
               <li

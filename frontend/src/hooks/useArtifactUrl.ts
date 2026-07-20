@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { getAccessToken } from "@/api/axios";
 
@@ -7,15 +7,27 @@ import { getAccessToken } from "@/api/axios";
  * ``<a href>``, ``<audio>``, and other elements that cannot set HTTP headers
  * still pass the ownership check on the backend.
  *
- * Reads the token from the shared ``getAccessToken()`` helper rather than
- * duplicating localStorage access --- the same source as the axios interceptor
- * and the WebSocket hook.
+ * Polls the in-memory token and re-renders once a token becomes available
+ * (e.g. after a page-refresh cookie-based token refresh).
  */
 export function useArtifactUrl(url: string): string {
+  const [token, setToken] = useState<string | null>(() => getAccessToken());
+
+  useEffect(() => {
+    if (token) return;
+    const id = setInterval(() => {
+      const t = getAccessToken();
+      if (t) {
+        setToken(t);
+        clearInterval(id);
+      }
+    }, 200);
+    return () => clearInterval(id);
+  }, [token]);
+
   return useMemo(() => {
-    const token = getAccessToken();
     if (!token) return url;
     const sep = url.includes("?") ? "&" : "?";
     return `${url}${sep}token=${encodeURIComponent(token)}`;
-  }, [url]);
+  }, [url, token]);
 }

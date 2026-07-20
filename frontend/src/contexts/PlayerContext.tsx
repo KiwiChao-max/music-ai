@@ -155,9 +155,8 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
     // If the user clicks play on the track that's already loaded, treat
     // it as a resume from pause.
     if (current && current.url === track.url) {
-      audio.play().catch(() => {
-        // Autoplay can be blocked until the user clicks the page; that's
-        // fine --- they'll see the bar in a paused state and can hit play.
+      audio.play().catch((err) => {
+        console.error("[Player] play() failed:", err);
       });
       return;
     }
@@ -166,8 +165,8 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
     setLoading(true);
     audio.src = track.url;
     audio.currentTime = 0;
-    audio.play().catch(() => {
-      // Browser autoplay policy. The user can hit play again.
+    audio.play().catch((err) => {
+      console.error("[Player] play() failed:", err);
     });
   }, [current]);
 
@@ -175,7 +174,7 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
     const audio = audioRef.current;
     if (!audio || !current) return;
     if (audio.paused) {
-      audio.play().catch(() => {});
+      audio.play().catch((err) => console.error("[Player] toggle play() failed:", err));
     } else {
       audio.pause();
     }

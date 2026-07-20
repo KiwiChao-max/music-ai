@@ -268,8 +268,18 @@ def download_artifact(
     suffix = Path(filename).suffix.lower()
     media_type = _media_type_for_suffix(suffix)
 
+    # 使用分块生成器替代直接传递文件对象，避免 StreamingResponse
+    # 按行迭代导致 42MB 文件产生数百万次微小的网络往返。
+    def chunked_reader():
+        with file_obj:
+            while True:
+                chunk = file_obj.read(64 * 1024)  # 64KB chunks
+                if not chunk:
+                    break
+                yield chunk
+
     return StreamingResponse(
-        file_obj,
+        chunked_reader(),
         media_type=media_type,
         headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )
