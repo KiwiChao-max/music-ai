@@ -1,8 +1,13 @@
 """Verify Chinese comments on audio_tasks table, columns, enum, trigger."""
+import os
+
 import psycopg2
 
 with psycopg2.connect(
-    host="localhost", user="postgres", password="postgres123", dbname="music_ai"
+    host=os.getenv("DB_HOST", "localhost"),
+    user=os.getenv("DB_USER", "postgres"),
+    password=os.getenv("DB_PASSWORD", "postgres123"),
+    dbname=os.getenv("DB_NAME", "music_ai"),
 ) as c:
     with c.cursor() as cur:
         # table

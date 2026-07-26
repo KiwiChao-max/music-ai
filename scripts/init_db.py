@@ -2,11 +2,8 @@
 
 Database connection
 -------------------
-    host:     localhost
-    port:     5432
-    user:     postgres
-    password: postgres123
-    dbname:   music_ai
+    Override via environment variables: DB_HOST, DB_PORT, DB_USER,
+    DB_PASSWORD, DB_NAME. Defaults match the docker-compose dev setup.
 
 Usage
 -----
@@ -31,11 +28,12 @@ import psycopg2
 import psycopg2.extensions
 
 # ---- connection settings ---------------------------------------------------
-DB_HOST = "localhost"
-DB_PORT = 5432
-DB_USER = "postgres"
-DB_PASSWORD = "postgres123"
-DB_NAME = "music_ai"
+# Override via environment variables; defaults match docker-compose dev setup.
+DB_HOST = os.getenv("DB_HOST", "localhost")
+DB_PORT = int(os.getenv("DB_PORT", "5432"))
+DB_USER = os.getenv("DB_USER", "postgres")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "postgres123")
+DB_NAME = os.getenv("DB_NAME", "music_ai")
 
 # ---- paths -----------------------------------------------------------------
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
