@@ -1,5 +1,7 @@
 # music-ai
 
+[English](./README.md) | [简体中文](./README.zh-CN.md)
+
 AI-powered music processing app: upload an audio file, process it in a Celery
 worker, then inspect separated stems, per-instrument MIDI files, GM/XG-mapped
 drum kits and rule-based music analysis in the web UI. The pipeline covers the
@@ -32,10 +34,69 @@ override) and ships with the five product-grade features described in
 
 ## Architecture
 
+```mermaid
+flowchart LR
+    User["🌐 User Browser"] -->|"HTTPS"| Nginx["nginx<br/>(reverse proxy)"]
+
+    subgraph Docker Compose
+        Nginx -->|"/api/*"| API["FastAPI<br/>:8000"]
+        Nginx -->|"static assets"| FE["React SPA<br/>:80"]
+
+        subgraph API Layer
+            API -->|"SQL"| PG[("PostgreSQL 16<br/>(users, tasks, files)")]
+            API -->|"broker"| R[("Redis 7<br/>(Celery broker + rate limit)")]
+            API -->|"store"| Storage["Storage<br/>(local / S3)"]
+        end
+
+        subgraph Celery Workers
+            WH["worker-heavy<br/>(Demucs / Basic Pitch / ADTOS)"]
+            WL["worker-light<br/>(housekeeping)"]
+            WH -->|"consume audio_heavy queue"| R
+            WL -->|"consume default queue"| R
+            WH -->|"read/write"| Storage
+            WL -->|"read/write"| Storage
+            WH -->|"results"| PG
+            WL -->|"results"| PG
+        end
+
+        API -->|"publish task:{id}"| R
+        WH -->|"publish progress"| R
+    end
+
+    R -->|"WS push"| API
+    API -->|"WebSocket progress"| User
+```
+
+### Audio Processing Pipeline
+
+```mermaid
+flowchart TD
+    A["Upload .wav / .mp3 / .flac"] --> B["POST /api/audio/upload<br/>(validation + save)"]
+    B --> C["POST /api/tasks/{id}/process<br/>(enqueue to Celery)"]
+    C --> D{"Worker picks up task"}
+
+    D --> E["Demucs htdemucs_6s<br/>→ vocals / drums / bass<br/>/ piano / guitar / other"]
+    E --> F["Instrument Classifier<br/>→ splits 'other' into<br/>strings / synth / melodic"]
+    E --> G["Drum Detector (ADTOS)<br/>→ 19 drum-part MIDI<br/>+ drums_events.json"]
+    F --> H["Basic Pitch<br/>→ per-instrument MIDI"]
+    G --> H
+
+    H --> I["GM / XG MIDI Mapping<br/>→ _gm.mid + _xg.mid<br/>(SysEx, Bank Select, CCs)"]
+    I --> J["Analysis<br/>(BPM, key, chords,<br/>sections, instruments)"]
+    J --> K["SoundFont Override<br/>(if active library has SF2/CSV)"]
+    K --> L["Store outputs<br/>/stems/*.wav<br/>/midis/*.mid<br/>analysis.json"]
+    L --> M["WebSocket progress<br/>→ frontend cache patch"]
+
+    M --> N["Browser loads stems + MIDI + events<br/>→ Web Audio sample player"]
+```
+
+### Directory Layout
+
 - `frontend/` - React, Vite, TanStack Query, Tailwind CSS.
 - `backend/` - FastAPI API, SQLAlchemy models, Alembic migrations and Celery worker.
 - `scripts/` - local database bootstrap and smoke/e2e checks.
 - `storage/` - ignored local uploads and generated artifacts.
+- `docs/` - additional documentation and interview guide.
 
 Processing flow:
 
@@ -50,15 +111,31 @@ Processing flow:
    - writes `analysis.json` (BPM, key, chords, sections, detected instruments, soundfont overrides)
 4. The frontend receives live progress via WebSocket (with polling fallback), then loads `/stems`, `/analysis`, and (when an active sample library is set) decodes `drums_events.json` plus the library's samples through the Web Audio API.
 
+## Screenshots
+
+> 📸 Run the app (`docker compose up --build`) and add your own screenshots to `docs/screenshots/`.
+> See [docs/screenshots/README.md](./docs/screenshots/README.md) for suggested filenames and capture tips.
+>
+> Suggested views: Upload page, live processing progress, stem mixer with results, sample library management, dark mode.
+
 ## Quick Start With Docker
+
+One command brings up **everything** (Postgres, Redis, API, both Celery workers, and the React frontend served by nginx):
 
 ```bash
 cp .env.example .env
 docker compose up --build
 ```
 
-The API is available at `http://127.0.0.1:8000`. The API container runs
-`alembic upgrade head` on startup. To run the frontend locally against Docker:
+Wait ~30 seconds for the Alembic migration and all healthchecks to pass, then open:
+
+- **Frontend UI**: http://127.0.0.1:8080 (nginx serves the built React SPA and proxies `/api/*` to the backend)
+- **API + Swagger UI**: http://127.0.0.1:8000/docs
+- **Metrics**: http://127.0.0.1:8000/metrics
+
+Ports can be customized via `.env` (`FRONTEND_PORT`, `BACKEND_PORT`).
+
+To run the frontend in dev mode (with hot reload) against Docker-hosted API/DB/Redis:
 
 ```bash
 cd frontend

@@ -45,7 +45,7 @@ from app.utils.network import get_client_ip
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(tags=["websocket"])
 
 # Two events per second is plenty for a progress bar; sending more just
 # burns CPU on the client.

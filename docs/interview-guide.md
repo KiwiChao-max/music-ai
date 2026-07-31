@@ -56,18 +56,18 @@
 
 项目中用到的 CC：
 
-| CC 号 | 名称 | 作用 | 示例值 |
-|-------|------|------|--------|
-| CC 0 | Bank MSB | 选择音色库（高位） | GM=0, XG鼓=127 |
-| CC 32 | Bank LSB | 选择音色库（低位） | XG旋律变奏=1 |
-| CC 1 | Modulation | 调制轮 | 0 |
-| CC 7 | Channel Volume | 通道音量 | 100-112 |
-| CC 10 | Pan | 声像（左右声道） | 64（居中） |
-| CC 11 | Expression | 表情控制器（精细音量） | 127 |
-| CC 64 | Sustain Pedal | 延音踏板 | 0（关闭） |
-| CC 74 | Brightness | 亮度/滤波器截止 | 64-80 |
-| CC 91 | Reverb Send | 混响发送量 | 15-55 |
-| CC 93 | Chorus Send | 合唱发送量 | 0-35 |
+| CC 号 | 名称           | 作用                   | 示例值         |
+| ----- | -------------- | ---------------------- | -------------- |
+| CC 0  | Bank MSB       | 选择音色库（高位）     | GM=0, XG鼓=127 |
+| CC 32 | Bank LSB       | 选择音色库（低位）     | XG旋律变奏=1   |
+| CC 1  | Modulation     | 调制轮                 | 0              |
+| CC 7  | Channel Volume | 通道音量               | 100-112        |
+| CC 10 | Pan            | 声像（左右声道）       | 64（居中）     |
+| CC 11 | Expression     | 表情控制器（精细音量） | 127            |
+| CC 64 | Sustain Pedal  | 延音踏板               | 0（关闭）      |
+| CC 74 | Brightness     | 亮度/滤波器截止        | 64-80          |
+| CC 91 | Reverb Send    | 混响发送量             | 15-55          |
+| CC 93 | Chorus Send    | 合唱发送量             | 0-35           |
 
 > 这些 CC 在 `midi_cc.py` 的 `gm_setup_messages()` 函数中统一构建，鼓组和旋律轨各有不同配置。鼓组不写 brightness/reverb/chorus（打击乐不需要），旋律轨按 stem 类型有不同默认值（如 strings 的 reverb=55, chorus=35 比 piano 的 reverb=40, chorus=0 更湿润）。
 
@@ -92,15 +92,15 @@
 
 19 个 GM 打击乐部件：
 
-| 类别 | 部件 | GM Note |
-|------|------|---------|
-| 底鼓 | kick | 36 |
-| 军鼓 | snare, sidestick | 38, 37 |
-| 踩镲 | hihat_closed, hihat_open | 42, 46 |
+| 类别 | 部件                                               | GM Note            |
+| ---- | -------------------------------------------------- | ------------------ |
+| 底鼓 | kick                                               | 36                 |
+| 军鼓 | snare, sidestick                                   | 38, 37             |
+| 踩镲 | hihat_closed, hihat_open                           | 42, 46             |
 | 通鼓 | tom_high, tom_himid, tom_lomid, tom_low, tom_floor | 50, 48, 47, 45, 41 |
-| 镲片 | crash, ride, china, splash, ride_bell | 49, 51, 52, 55, 53 |
-| 小打 | tambourine, cowbell, percussion | 54, 56, 60 |
-| 加花 | fill | 47 |
+| 镲片 | crash, ride, china, splash, ride_bell              | 49, 51, 52, 55, 53 |
+| 小打 | tambourine, cowbell, percussion                    | 54, 56, 60         |
+| 加花 | fill                                               | 47                 |
 
 > 其中 `fill`（加花）是后处理推导的：`_derive_fills` 方法把时间上挨得很近的密集击打点（3+ hits within 450ms，或相邻间隔 < 220ms）归为 fill。原始击打保留在其主部件中，同时镜像一份到 fill 轨，鼓手可以独立编辑加花。
 
@@ -109,6 +109,7 @@
 **音源分离**就是从一首混音歌曲中分离出各个乐器的音轨。
 
 项目用 **Demucs `htdemucs_6s` 模型**，分离 **6 个音轨**：
+
 - **vocals**（人声）
 - **drums**（鼓）
 - **bass**（贝斯）
@@ -123,6 +124,7 @@
 用**基于规则的频谱特征分类**，不依赖外部模型，轻量快速。
 
 核心特征（per-frame 计算）：
+
 - **频谱质心（Spectral Centroid）** - 音色"亮"不亮
 - **频谱带宽（Bandwidth）** - 频率分布宽度
 - **频谱滚降（Rolloff）** - 能量集中在低频还是高频
@@ -132,6 +134,7 @@
 - **峰值（Peakiness）** - 频谱峰值锐度，区分谐波乐器和噪音
 
 分类逻辑（`_frame_posterior`）：
+
 - 钢琴：peakiness > 12, centroid 200-3500Hz, flatness < 0.30
 - 吉他：centroid 250-3000Hz, flatness 0.10-0.45, HF < 0.25
 - 弦乐：rolloff > 2500Hz, flatness < 0.20, HF < 0.10
@@ -149,6 +152,7 @@
 3. **映射到 GM 音符**：通过 `_DRUM_TYPE_TO_GM_NOTE` 字典分配标准 GM 打击乐音符
 
 典型规则：
+
 - 低频能量 > 25% + 峰值频率 < 300Hz -> kick
 - 中频为主 + 高频有噪声 + attack > 10 -> snare
 - 高频 > 40% + 质心 > 4000Hz + 时长 < 0.08s -> hihat_closed
@@ -161,6 +165,7 @@
 **Basic Pitch** 是 Spotify 开源的**多音高检测（polyphonic pitch detection）模型**，可以从音频中转出复音 MIDI。
 
 区别于传统方法（如 autocorrelation、FFT 峰值检测）：
+
 - 传统方法大多只能检测**单音**（monophonic）
 - Basic Pitch 用轻量神经网络（ONNX 推理），可以检测**和弦**等复音
 - 输出带力度（velocity）信息
@@ -182,11 +187,13 @@
 ### Q13: 什么是 SoundFont（SF2）？项目怎么用的？
 
 **SoundFont** 是一种采样乐器格式（.sf2 文件），包含：
+
 - 多个 **Preset（预设）** - 每个预设对应一种音色
 - 每个预设由多个 **Sample（采样）** 组成，按音高和力度分层
 - 包含包络（ADSR）、滤波、颤音等合成参数
 
 项目中 `soundfont_service.py` 支持：
+
 1. **SF2 导入**：优先用 `sf2utils` 库完整解析（pbag/pgen/pmod 链），fallback 到简化 phdr chunk 解析（mmap 避免大文件内存爆炸）
 2. **CSV 音色表导入**：支持电子琴音色表（bank_msb, bank_lsb, program, name, category, instrument_type）
 3. **GM -> 自定义映射**：三级匹配策略（instrument_type 精确匹配 -> program 精确匹配 -> 名称 token 模糊匹配）
@@ -238,6 +245,7 @@ API 层 (FastAPI)
 ### Q17: 为什么用 Celery？可以不用吗？
 
 因为音频处理（Demucs 分离、Basic Pitch 转 MIDI）是**计算密集型任务**，可能需要几十秒到几分钟：
+
 - 同步处理会导致 HTTP 请求超时
 - Celery + Redis broker 可以后台异步执行，前端通过轮询或 WebSocket 看进度
 - 支持任务队列、重试、并发控制
@@ -268,6 +276,7 @@ API 层 (FastAPI)
 ### Q20: JWT 认证是怎么做的？有什么安全措施？
 
 **HS256 算法**，双 token 机制：
+
 - **Access Token**：24 小时有效期，用于 API 调用
 - **Refresh Token**：30 天有效期，用于换新的 access token
 - **Refresh Token 轮换**：每次用 refresh token 换新 token 时，refresh token 也会变（防止重放）
@@ -278,6 +287,7 @@ API 层 (FastAPI)
 ### Q21: 用户配额（Quota）是怎么实现的？
 
 两个维度：
+
 - **最大任务数**（`max_tasks`）：同时存在的活跃任务上限
 - **最大上传字节数**（`max_upload_bytes`）：防止用户上传超大文件
 
@@ -301,6 +311,7 @@ API 层 (FastAPI)
 ### Q23: 前端播放器是怎么调度的？
 
 **requestAnimationFrame + Web Audio 调度**：
+
 - 用 `requestAnimationFrame` 驱动播放头 UI 更新（60fps）
 - 音频事件提前用 `AudioContext.currentTime + 时间偏移` 调度（Web Audio 的高精度时钟）
 - 速度变化通过调整 playbackRate 实现
@@ -310,6 +321,7 @@ API 层 (FastAPI)
 ### Q24: 采样库导出功能导出了什么？
 
 导出一个 **JSON 格式的 GM 打击乐映射文件**，包含：
+
 - 库元数据（名称、描述、版本）
 - 格式标识（`gm_percussion_mapping`）
 - 音符范围（35-81）
@@ -381,10 +393,12 @@ _derive_fills -> 密集音簇标记为 fill
 **2. 通道分配**：`_resolve_channel` 为每个 stem 分配不冲突的 MIDI 通道。drums 固定 channel 9，其他按 `_BUILTIN_VOICES` 的默认通道分配，冲突时自动找空闲通道。
 
 **3. Profile 映射**：对每个 stem 写入 setup track：
+
 - GM profile：GM System On SysEx + Bank 0:0 + Program + CC7/10/11
 - XG profile：XG System On SysEx + XG drum bank (127:0) 或 XG melodic variation (0:1) + Program + CC7/10/11
 
 **XG 旋律变奏**（`_BUILTIN_XG_MELODIC_VOICES`）：
+
 - piano -> "Live! Grand Piano" (bank 0:1)
 - guitar -> "Nylon Guitar" (bank 0:1)
 - strings -> "Stereo Strings" (bank 0:1)
@@ -401,12 +415,14 @@ _derive_fills -> 密集音簇标记为 fill
 
 **2. Per-stem 控制器配置（`_STEM_CC_CONFIG`）**：
 每种乐器有不同的默认控制器值：
+
 - piano: brightness=64, reverb=40, chorus=0
 - bass: brightness=64, reverb=15, chorus=0
 - strings: brightness=72, reverb=55, chorus=35
 - synth: brightness=80, reverb=40, chorus=25
 
 **3. Velocity 兼容**：
+
 - 旋律轨：Basic Pitch 输出原始 velocity，librosa fallback 用 `velocity_from_strength` sqrt 曲线
 - 鼓组：95th 百分位参考 + sqrt 曲线，保留动态范围
 - 采样播放：前端按 velocity 选择对应力度层的采样（`velocity_min` / `velocity_max`）
@@ -420,6 +436,7 @@ _derive_fills -> 密集音簇标记为 fill
 
 **1. 文件名映射**（`_resolve_note_from_name`）：
 60+ 别名表覆盖 Roland/Yamaha 命名惯例：
+
 - `kick` / `bd` / `bass_drum` / `kik` -> note 36
 - `snare` / `snr` / `sd` -> note 38
 - `closed_hat` / `chh` / `hhc` -> note 42
@@ -428,12 +445,14 @@ _derive_fills -> 密集音簇标记为 fill
 
 **2. 频谱自动识别**（`sample_classifier_service.py`）：
 文件名匹配失败时，通过音频内容分类：
+
 - 提取 centroid / peak_freq / rolloff / ZCR / harmonicity / attack_ratio
 - 多候选规则引擎 -> 取最高置信度
 - 识别 kick / snare / hihat / tom / cymbal / percussion 等 30+ 种
 
 **3. Velocity 层解析**（`_resolve_velocity_range`）：
 从文件名解析力度层：
+
 - `kick_vel_001_064.wav` -> (1, 64)
 - `snare_v51-100.wav` -> (51, 100)
 - `crash_pp.wav` -> (1, 42)
@@ -441,6 +460,7 @@ _derive_fills -> 密集音簇标记为 fill
 
 **电子琴音色表导入**：
 CSV 格式（`/api/instruments/preset-table/import`）：
+
 ```csv
 bank_msb,bank_lsb,program,name,category,instrument_type
 0,0,0,Grand Piano,Piano,piano
@@ -449,6 +469,7 @@ bank_msb,bank_lsb,program,name,category,instrument_type
 ```
 
 **GM -> 自定义映射**（`map_gm_to_custom`）三级匹配：
+
 1. instrument_type 精确匹配（"piano" -> 找 instrument_type="piano" 的预设）
 2. program 精确匹配（GM program 0 -> 自定义 program 0）
 3. 名称 token 模糊匹配（Jaccard 相似度 >= 0.4）
@@ -475,18 +496,19 @@ bank_msb,bank_lsb,program,name,category,instrument_type
 
 ### Q32: 你在项目中做了哪些取舍（trade-off）？
 
-| 决策 | 选择 | 放弃了什么 | 为什么 |
-|------|------|-----------|--------|
-| 分离模型 | Demucs 6-stem | 自训练模型 | 6-stem 已覆盖钢琴/吉他，自训练成本高 |
-| 乐器分类 | 规则引擎 | 深度学习模型 | 无外部依赖，快速，可解释 |
-| 鼓组检测 | 频谱规则 | ADT 深度学习 | 默认无依赖；ADTOS 作为可选后端 |
-| MIDI 转录 | Basic Pitch | 自训练模型 | Spotify 开源，polyphonic，够用 |
-| 前端播放 | Web Audio API | MIDI.js / Tone.js | 原生 API 零依赖，精度高 |
-| 异步任务 | Celery | asyncio + BackgroundTasks | CPU-bound 任务需要独立进程 |
+| 决策      | 选择          | 放弃了什么                | 为什么                               |
+| --------- | ------------- | ------------------------- | ------------------------------------ |
+| 分离模型  | Demucs 6-stem | 自训练模型                | 6-stem 已覆盖钢琴/吉他，自训练成本高 |
+| 乐器分类  | 规则引擎      | 深度学习模型              | 无外部依赖，快速，可解释             |
+| 鼓组检测  | 频谱规则      | ADT 深度学习              | 默认无依赖；ADTOS 作为可选后端       |
+| MIDI 转录 | Basic Pitch   | 自训练模型                | Spotify 开源，polyphonic，够用       |
+| 前端播放  | Web Audio API | MIDI.js / Tone.js         | 原生 API 零依赖，精度高              |
+| 异步任务  | Celery        | asyncio + BackgroundTasks | CPU-bound 任务需要独立进程           |
 
 ### Q33: 项目有多少测试？覆盖了什么？
 
 **256 个后端测试**（pytest），覆盖：
+
 - Service 层逻辑（Demucs / Basic Pitch / Drum MIDI / MIDI Mapping / Sample Library / SoundFont / Sample Classifier / Music Analysis）
 - API 路由（audio / tasks / instruments / auth / ws / health）
 - MIDI 操作（GM setup / CC injection / XG mapping / channel allocation）
@@ -508,28 +530,29 @@ bank_msb,bank_lsb,program,name,category,instrument_type
 
 ## 六、关键代码位置速查
 
-| 功能 | 后端位置 | 前端位置 |
-|------|---------|---------|
-| 6 轨分离 | `services/demucs_service.py` | - |
-| 乐器分类 | `services/instrument_classifier_service.py` | - |
-| MIDI 转录 | `services/basic_pitch_service.py` | - |
-| 鼓组 19 件拆分 | `services/drum_midi_service.py` | - |
-| GM/CC 设置 | `services/midi_cc.py` | - |
-| GM/XG 映射 | `services/midi_mapping_service.py` | - |
-| 采样自动识别 | `services/sample_classifier_service.py` | - |
-| 采样库管理 | `services/sample_library_service.py` | `pages/SampleLibraryPage.tsx` |
-| SoundFont/CSV 导入 | `services/soundfont_service.py` | `pages/SampleLibraryPage.tsx` |
-| 音乐分析 | `services/music_analysis_service.py` | `pages/AudioDetailPage.tsx` |
-| 浏览器播放 | - | `components/SampleBasedDrumPlayer.tsx` |
-| WebSocket 进度 | `api/ws.py` | `hooks/useTaskProgress.ts` |
-| 用户认证 | `services/auth_service.py` | `contexts/AuthContext.tsx` |
-| Pipeline 编排 | `workers/audio_worker.py` | - |
+| 功能               | 后端位置                                      | 前端位置                                 |
+| ------------------ | --------------------------------------------- | ---------------------------------------- |
+| 6 轨分离           | `services/demucs_service.py`                | -                                        |
+| 乐器分类           | `services/instrument_classifier_service.py` | -                                        |
+| MIDI 转录          | `services/basic_pitch_service.py`           | -                                        |
+| 鼓组 19 件拆分     | `services/drum_midi_service.py`             | -                                        |
+| GM/CC 设置         | `services/midi_cc.py`                       | -                                        |
+| GM/XG 映射         | `services/midi_mapping_service.py`          | -                                        |
+| 采样自动识别       | `services/sample_classifier_service.py`     | -                                        |
+| 采样库管理         | `services/sample_library_service.py`        | `pages/SampleLibraryPage.tsx`          |
+| SoundFont/CSV 导入 | `services/soundfont_service.py`             | `pages/SampleLibraryPage.tsx`          |
+| 音乐分析           | `services/music_analysis_service.py`        | `pages/AudioDetailPage.tsx`            |
+| 浏览器播放         | -                                             | `components/SampleBasedDrumPlayer.tsx` |
+| WebSocket 进度     | `api/ws.py`                                 | `hooks/useTaskProgress.ts`             |
+| 用户认证           | `services/auth_service.py`                  | `contexts/AuthContext.tsx`             |
+| Pipeline 编排      | `workers/audio_worker.py`                   | -                                        |
 
 ---
 
 ## 七、建议重点掌握
 
 面试最常问的方向：
+
 1. **GM/XG 标准** - Program Change、Bank Select、打击乐通道、XG 变奏
 2. **MIDI CC 控制器** - 常用 CC 号及其作用、per-stem 差异化配置
 3. **鼓组映射** - GM 打击乐音符分配、19 个鼓部件、fill 检测、置信度回退

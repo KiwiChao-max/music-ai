@@ -306,6 +306,14 @@ class Settings(BaseSettings):
     basic_pitch_device: str = "cpu"
     adt_device: str = "cpu"
 
+    # ---- logging -----------------------------------------------------------
+    # Log level for the root logger (DEBUG, INFO, WARNING, ERROR, CRITICAL).
+    log_level: str = "INFO"
+    # When true, logs are emitted as one JSON object per line (suitable for
+    # ELK, Loki, Datadog, CloudWatch, etc.). When false, human-readable
+    # coloured text is used (default for local dev).
+    log_json: bool = False
+
     # ---- HTTP --------------------------------------------------------------
     # Comma-separated string or repeated env value accepted by pydantic.
     cors_origins: list[str] = Field(

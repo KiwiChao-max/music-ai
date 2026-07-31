@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db.session import get_db
+from app.logging_config import set_user_id
 from app.services import auth_service, user_service
 
 # `tokenUrl` only matters for the auto-generated Swagger UI; the
@@ -55,6 +56,7 @@ def get_current_user(
     user = user_service.get_user(db, user_id)
     if user is None or not user.is_active:
         raise _credentials_error("user not found or inactive")
+    set_user_id(user.id)
     return user
 
 
@@ -84,6 +86,7 @@ def get_current_user_optional(
     user = user_service.get_user(db, user_id)
     if user is None or not user.is_active:
         return None
+    set_user_id(user.id)
     return user
 
 

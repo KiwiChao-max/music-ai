@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db.models import RefreshToken, RefreshTokenStatus
+from app.utils.errors import AuthError
 
 # bcrypt has a 72-byte password input limit; `passwords` are passed through
 # `secrets.compare_digest` after hashing, so longer inputs are silently
@@ -169,19 +170,25 @@ def issue_token_pair(
 
 
 # ---- rotation -------------------------------------------------------------
-class TokenReuseError(Exception):
+class TokenReuseError(AuthError):
     """Raised when a previously-used refresh token is presented again ---
     this is a strong signal of token theft.  All tokens in the family
     have been revoked; the user must re-authenticate."""
+    code = "token_reuse"
+    message = "Session expired. Please log in again."
 
 
-class TokenRevokedError(Exception):
+class TokenRevokedError(AuthError):
     """Raised when a revoked token is presented."""
+    code = "token_revoked"
+    message = "Session expired. Please log in again."
 
 
-class TokenNotFoundError(Exception):
+class TokenNotFoundError(AuthError):
     """Raised when the token hash is not found in the DB (expired, cleaned
     up, or never existed)."""
+    code = "token_not_found"
+    message = "Session expired. Please log in again."
 
 
 def rotate_refresh_token(db: Session, raw_token: str) -> dict[str, Any]:

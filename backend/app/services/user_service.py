@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db.models import AudioTask, AudioTaskStatus, User
 from app.services import auth_service
+from app.utils.errors import AuthError, ConflictError, NotFoundError
 
 # Maximum length enforced on signup. The bcrypt input limit is 72 bytes
 # but most clients hash the value before sending in real systems, so 128
@@ -28,20 +29,28 @@ _EMAIL_MAX = 255
 _FULL_NAME_MAX = 128
 
 
-class EmailAlreadyExistsError(Exception):
+class EmailAlreadyExistsError(ConflictError):
     """Raised when signup is attempted with an email that is already taken."""
+    code = "email_taken"
+    message = "Email already in use."
 
 
-class UsernameAlreadyExistsError(Exception):
+class UsernameAlreadyExistsError(ConflictError):
     """Raised when signup is attempted with a username that is already taken."""
+    code = "username_taken"
+    message = "Username already taken."
 
 
-class InvalidCredentialsError(Exception):
+class InvalidCredentialsError(AuthError):
     """Raised on a failed login (wrong email or wrong password)."""
+    code = "invalid_credentials"
+    message = "Invalid credentials."
 
 
-class UserNotFoundError(Exception):
+class UserNotFoundError(NotFoundError):
     """Raised when a lookup by id does not find the user."""
+    code = "user_not_found"
+    message = "User not found."
 
 
 # ---- reads ----------------------------------------------------------------

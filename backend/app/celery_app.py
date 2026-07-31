@@ -29,11 +29,15 @@ vice versa.
 from __future__ import annotations
 
 import logging
-from kombu import Exchange, Queue
-
-from celery import Celery
 
 from app.config import settings
+from app.logging_config import setup_logging
+
+# Initialise logging before any module-level loggers are created.
+setup_logging()
+
+from kombu import Exchange, Queue  # noqa: E402
+from celery import Celery  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -177,7 +181,35 @@ celery.conf.update(
 # rejected or exceeds its retry limit, route it to a ``dead_letter`` queue
 # for inspection. This is wired up in ``tasks_audio.py`` via ``task_failure``
 # signal --- see ``_on_task_failure`` there.
-from celery.signals import task_failure  # noqa: E402
+from celery.signals import task_failure, after_setup_logger, after_setup_task_logger  # noqa: E402
+
+
+@after_setup_logger.connect
+def _configure_celery_logger(logger, loglevel, format, colorize, **_kwargs):
+    """Replace Celery's default formatter with our unified JSON/text formatter."""
+    from app.logging_config import JsonFormatter, RequestIdFilter, TextFormatter
+    import sys
+
+    # Remove Celery's default handlers and re-add ours so the format is
+    # consistent across API and worker processes.
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+
+    import logging
+    stream = logging.StreamHandler(sys.stdout)
+    stream.setLevel(loglevel or logging.INFO)
+    stream.addFilter(RequestIdFilter())
+    if settings.log_json:
+        stream.setFormatter(JsonFormatter())
+    else:
+        use_color = hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
+        stream.setFormatter(TextFormatter(use_color=use_color))
+    logger.addHandler(stream)
+    logger.setLevel(loglevel or getattr(logging, settings.log_level.upper(), logging.INFO))
+
+
+# Apply the same configuration to the per-task logger (celery.task).
+after_setup_task_logger.connect(_configure_celery_logger)
 
 
 @task_failure.connect

@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
 from app.api.auth import router as auth_router
 from app.api.audio import router as audio_router
@@ -14,21 +14,123 @@ from app.api.instruments import instruments_router
 from app.api.tasks import router as tasks_router
 from app.api.ws import router as ws_router
 from app.config import settings
+from app.logging_config import (
+    new_request_id,
+    reset_request_id,
+    reset_user_id,
+    set_request_id,
+    setup_logging,
+)
 from app.middleware.csp import CSPMiddleware
 from app.middleware.csrf import CSRFTokenMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
-from app.utils.errors import MSG_INTERNAL_ERROR
+from app.utils.errors import MSG_INTERNAL_ERROR, AppError
+
+# Initialize logging BEFORE creating loggers or importing modules that log.
+setup_logging()
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="music-ai", version="0.1.0")
+app = FastAPI(
+    title="music-ai",
+    version="0.1.0",
+    summary="AI-powered music processing API",
+    description=(
+        "Upload an audio file, run Demucs source separation (6 stems), "
+        "Basic Pitch MIDI transcription, and ADTOS drum detection through "
+        "a Celery-backed async pipeline. Results include separated stems, "
+        "per-instrument GM/XG MIDI files, drum event lists, BPM/key/chord "
+        "analysis, and Web Audio sample playback with velocity-layered "
+        "user-uploaded drum libraries.\n\n"
+        "## Authentication\n"
+        "When `AUTH_REQUIRED=true`, all task endpoints require a Bearer JWT. "
+        "Use `/api/auth/register` and `/api/auth/login` to obtain credentials. "
+        "Auth is opt-in for local development.\n\n"
+        "## Task Lifecycle\n"
+        "1. `POST /api/audio/upload` - upload file, receive `task_id`\n"
+        "2. `POST /api/tasks/{task_id}/process` - enqueue processing\n"
+        "3. Connect to `WS /api/ws/tasks/{task_id}/progress` for live updates "
+        "(or poll `GET /api/tasks/{task_id}` as fallback)\n"
+        "4. When status is `finished`, fetch stems, MIDI, analysis, and drum events"
+    ),
+    contact={
+        "name": "music-ai",
+    },
+    license_info={
+        "name": "MIT",
+    },
+    openapi_tags=[
+        {
+            "name": "auth",
+            "description": "Registration, login, token refresh, and user management.",
+        },
+        {
+            "name": "audio",
+            "description": "Audio file upload and validation. Returns a task id for processing.",
+        },
+        {
+            "name": "tasks",
+            "description": "Task listing, status polling, processing trigger, and artifact download (stems, MIDI, analysis, drum events).",
+        },
+        {
+            "name": "instruments",
+            "description": "Sample library management, SoundFont (SF2) upload, CSV voice table import, and sample classification.",
+        },
+        {
+            "name": "websocket",
+            "description": "WebSocket endpoint for real-time task progress streaming via Redis Pub/Sub.",
+        },
+        {
+            "name": "health",
+            "description": "Liveness, readiness, storage usage, and Prometheus metrics endpoints.",
+        },
+    ],
+    docs_url="/docs",
+    redoc_url="/redoc",
+)
+
+
+# ---- Request-ID middleware --------------------------------------------------
+# Generates (or inherits from ``X-Request-ID``) a short id for every request
+# and injects it into the logging context so every log line produced while
+# handling the request carries the same id. Also attaches ``user_id`` when
+# authentication succeeds so log lines can be filtered by user.
+class RequestIdMiddleware(BaseHTTPMiddleware):
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
+        incoming = request.headers.get("X-Request-ID", "").strip()
+        request_id = incoming[:32] if incoming else new_request_id()
+        set_request_id(request_id)
+
+        # user_id will be set later by the auth dependency when a valid
+        # Bearer token is present; we leave it as "" until then.
+        reset_user_id()
+
+        try:
+            response = await call_next(request)
+        except Exception:
+            # Do NOT reset context vars here --- the global exception
+            # handler still needs request_id to log the error and to
+            # set the X-Request-ID response header. We reset in finally
+            # after the response (or error response) is built.
+            raise
+        else:
+            response.headers["X-Request-ID"] = request_id
+            return response
+        finally:
+            reset_request_id()
+            reset_user_id()
+
 
 # Middleware order (last-added-first-executed for request, first-added-
 # last-executed for response):
-#   1. CSP --- adds Content-Security-Policy header to every response
-#   2. CSRF --- rejects state-changing requests that lack the X-CSRF-Token header
-#   3. Rate limiting --- counts requests and enforces per-IP limits
-#   4. CORS --- adds CORS headers (including on 429 / 403 responses)
+#   1. RequestId --- sets context var before any other middleware logs
+#   2. CSP --- adds Content-Security-Policy header to every response
+#   3. CSRF --- rejects state-changing requests that lack the X-CSRF-Token header
+#   4. Rate limiting --- counts requests and enforces per-IP limits
+#   5. CORS --- adds CORS headers (including on 429 / 403 responses)
+app.add_middleware(RequestIdMiddleware)
 app.add_middleware(CSPMiddleware)
 app.add_middleware(CSRFTokenMiddleware)
 app.add_middleware(RateLimitMiddleware)
@@ -56,17 +158,45 @@ app.include_router(ws_router)
 # no infrastructure details (file paths, broker addresses, stack traces) ever
 # leak to the frontend.
 
-from fastapi import Request
 from fastapi.responses import JSONResponse
+
+
+@app.exception_handler(AppError)
+async def _app_error_handler(request: Request, exc: AppError) -> JSONResponse:
+    """Handle expected business errors (4xx) raised directly from services."""
+    from app.logging_config import get_request_id
+    request_id = get_request_id() or new_request_id()
+    logger.warning(
+        "business error on %s %s: [%s] %s",
+        request.method,
+        request.url.path,
+        exc.code,
+        exc.log_message,
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=exc.to_dict(),
+        headers={"X-Request-ID": request_id},
+    )
 
 
 @app.exception_handler(Exception)
 async def _global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    logger.exception("unhandled exception on %s %s", request.method, request.url.path)
+    from app.logging_config import get_request_id
+
+    request_id = get_request_id() or new_request_id()
+    logger.exception(
+        "unhandled exception on %s %s",
+        request.method,
+        request.url.path,
+        extra={"path": request.url.path, "method": request.method},
+    )
     return JSONResponse(
         status_code=500,
         content={"detail": MSG_INTERNAL_ERROR},
+        headers={"X-Request-ID": request_id},
     )
+
 
 settings.storage_dir.mkdir(parents=True, exist_ok=True)
 

@@ -29,12 +29,22 @@ from app.config import settings
 from app.db.models import AudioTask
 from app.services.task_service import safe_filename
 from app.storage import get_storage
+from app.utils.errors import UploadError
 
 logger = logging.getLogger(__name__)
 
 
-class UploadTooLargeError(ValueError):
-    """Raised when an upload exceeds the configured byte limit."""
+class UploadTooLargeError(UploadError):
+    """Raised when an upload exceeds the configured byte limit (HTTP 413)."""
+
+    status_code = 413  # Payload Too Large
+    code = "upload_too_large"
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(
+            message or "Upload exceeds the allowed size limit.",
+            code=self.code,
+        )
 
 
 # ---------------------------------------------------------------------------

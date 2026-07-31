@@ -98,6 +98,12 @@ services:
       STORAGE_S3_BUCKET: ${STORAGE_S3_BUCKET:-music-ai}
       STORAGE_S3_REGION: ${STORAGE_S3_REGION:-us-east-1}
       STORAGE_LIFECYCLE_DAYS: ${STORAGE_LIFECYCLE_DAYS:-0}
+      # Logging configuration
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_JSON: ${LOG_JSON:-false}
+    # The API is exposed on the host for direct debugging / tools like
+    # curl / Swagger UI.  The frontend nginx proxies /api/* to this
+    # service over the internal compose network.
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:
@@ -168,6 +174,9 @@ services:
       DEMUCS_DEVICE: ${DEMUCS_DEVICE:-cpu}
       BASIC_PITCH_DEVICE: ${BASIC_PITCH_DEVICE:-cpu}
       ADT_DEVICE: ${ADT_DEVICE:-cpu}
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_JSON: ${LOG_JSON:-false}
     # When using S3 storage, the shared volume is not needed but kept
     # for the worker's temp download directory.  Remove this volume
     # mount and use a tmpfs instead for pure S3 deployments.
@@ -226,6 +235,9 @@ services:
       # Light workers don't need the heavy models --- keep concurrency
       # modest but higher than the heavy worker.
       WORKER_CONCURRENCY: ${WORKER_LIGHT_CONCURRENCY:-4}
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_JSON: ${LOG_JSON:-false}
     volumes:
       - backend_storage:/app/storage
     command: >
@@ -246,6 +258,29 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+
+  # ---------------------------------------------------------------------
+  # Frontend: React SPA served by nginx
+  #
+  # Multi-stage build: Stage 1 compiles the React app with Node 20,
+  # Stage 2 serves the static files with nginx:alpine and reverse-proxies
+  # /api/* to the `api` service over the internal compose network.
+  # ---------------------------------------------------------------------
+  frontend:
+    build: ./frontend
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128m
+        reservations:
+          memory: 32m
 
 volumes:
   postgres_data:

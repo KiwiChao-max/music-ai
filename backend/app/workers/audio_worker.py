@@ -275,15 +275,18 @@ if __name__ == "__main__":  # pragma: no cover
     import argparse
     import sys
 
-    logging.basicConfig(
-        level=logging.INFO, format="%(levelname)s %(name)s: %(message)s"
-    )
+    from app.logging_config import setup_logging, set_request_id
+
+    setup_logging()
 
     parser = argparse.ArgumentParser(description="Process a single audio task.")
     parser.add_argument("task_id", type=int, help="audio_tasks.id to process")
     args = parser.parse_args()
 
+    set_request_id(f"task-{args.task_id}")
+
     try:
         process_task(args.task_id)
     except Exception:
+        logger.exception("task %d failed", args.task_id)
         sys.exit(1)

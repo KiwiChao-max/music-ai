@@ -24,11 +24,22 @@ from __future__ import annotations
 import logging
 import os
 
+from app.utils.errors import ServerError
+
 logger = logging.getLogger(__name__)
 
 
-class MemoryPressureError(Exception):
-    """Raised when the worker process is too close to the memory ceiling."""
+class MemoryPressureError(ServerError):
+    """Raised when the worker process is too close to the memory ceiling.
+
+    This exception is raised inside the worker *before* starting a heavy
+    task when the current RSS exceeds the pre-task gate. The task is
+    re-queued so a fresh child can pick it up. It never propagates to the
+    API response layer directly.
+    """
+    code = "memory_pressure"
+    message = "Server is under memory pressure. Please retry shortly."
+    status_code = 503  # Service Unavailable
 
 
 def _rss_mb() -> int:

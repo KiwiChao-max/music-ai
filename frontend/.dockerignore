@@ -1,0 +1,15 @@
+node_modules
+dist
+.git
+.github
+*.log
+.env
+.env.local
+.env.*.local
+e2e/test-results
+e2e/playwright-report
+playwright-report
+test-results
+coverage
+.DS_Store
+*.local
