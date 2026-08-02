@@ -1,0 +1,66 @@
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["app"]
+extend-exclude = [
+    "alembic/versions/*.py",
+    ".venv",
+    "__pycache__",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "RUF",  # ruff-specific rules
+]
+ignore = [
+    "E501",    # line-length handled by formatter
+    "B008",    # do not perform function calls in argument defaults -- Celery uses this
+    "N801",    # class name - allow some flexibility
+    "N803",    # argument name - allow first-arg cls/meta patterns
+    "RUF012",  # mutable-class-default -- SQLAlchemy Column/relationship are intentionally class-level
+    "RUF003",  # ambiguous-unicode-character-comment -- Chinese comments are fine
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false       # gradually enable; project still has untyped functions
+check_untyped_defs = true
+ignore_missing_imports = true
+show_error_codes = true
+exclude = [
+    "alembic/versions/",
+    "tests/",
+    ".venv/",
+]
+
+[[tool.mypy.overrides]]
+module = [
+    "passlib.*",
+    "librosa.*",
+    "soundfile.*",
+    "demucs.*",
+    "basic_pitch.*",
+    "midiutil.*",
+    "celery.*",
+    "psycopg2.*",
+    "jwt.*",
+]
+ignore_missing_imports = true

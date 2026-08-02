@@ -29,11 +29,12 @@ The worker records Prometheus metrics for every task:
   * failure reasons (by exception type)
   * memory peak (RSS) during execution
 """
+
 from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from app.config import settings
@@ -50,7 +51,7 @@ from app.pipeline_metrics import (
 from app.services import file_service, task_service
 from app.services.event_bus import get_event_bus
 from app.utils.errors import MSG_TASK_PROCESSING_FAILED
-from app.worker_limits import MemoryPressureError, _rss_mb, enforce_memory_limit
+from app.worker_limits import _rss_mb, enforce_memory_limit
 from app.workers import postprocess, stems, transcription
 
 logger = logging.getLogger(__name__)
@@ -95,14 +96,23 @@ def _run_pipeline(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     _report(db, task, 10, "Preparing audio...")
-    output_dir.mkdir(parents=True, exist_ok=True)
 
     _report(db, task, 30, "Separating stems...")
     _t0 = time.monotonic()
     stem_map = stems.separate_stems(audio_path, output_dir)
-    PIPELINE_STAGE_DURATION_SECONDS.labels(stage="stems").observe(
-        time.monotonic() - _t0
-    )
+    PIPELINE_STAGE_DURATION_SECONDS.labels(stage="stems").observe(time.monotonic() - _t0)
+
+    # If Demucs produced no stems (unlikely but possible with corrupt
+    # audio), emit placeholder files early so downstream stages and the
+    # UI have something to work with.  This must happen BEFORE we report
+    # later progress percentages to avoid a race where the client sees
+    # the task as FINISHED before placeholder files exist on disk.
+    if not stem_map:
+        logger.warning(
+            "task %s: stem separation produced no output, emitting placeholders",
+            task.id,
+        )
+        stems.emit_placeholder_stems(output_dir)
 
     _report(db, task, 50, "Splitting instruments...")
     _t0 = time.monotonic()
@@ -119,11 +129,11 @@ def _run_pipeline(
     _report(db, task, 72, "Transcribing to MIDI...")
     _t0 = time.monotonic()
     midi_paths = transcription.transcribe_stems_or_mix(
-        audio_path, output_dir, stem_map,
+        audio_path,
+        output_dir,
+        stem_map,
     )
-    PIPELINE_STAGE_DURATION_SECONDS.labels(stage="transcription").observe(
-        time.monotonic() - _t0
-    )
+    PIPELINE_STAGE_DURATION_SECONDS.labels(stage="transcription").observe(time.monotonic() - _t0)
     logger.info("task %s: wrote %d midi file(s)", task.id, len(midi_paths))
 
     _report(db, task, 88, "Mapping GM/XG MIDI...")
@@ -131,40 +141,30 @@ def _run_pipeline(
     if not midi_paths:
         raise RuntimeError("cannot map MIDI before transcription completes")
     mapping = postprocess.map_midi(output_dir, midi_paths[0], db=db)
-    PIPELINE_STAGE_DURATION_SECONDS.labels(stage="midi_mapping").observe(
-        time.monotonic() - _t0
-    )
+    PIPELINE_STAGE_DURATION_SECONDS.labels(stage="midi_mapping").observe(time.monotonic() - _t0)
     if mapping.applied_overrides:
         logger.info(
             "task %s: soundfont overrides applied: %s",
             task.id,
-            [
-                f"{o['stem']} -> {o['label']}"
-                for o in mapping.applied_overrides
-            ],
+            [f"{o['stem']} -> {o['label']}" for o in mapping.applied_overrides],
         )
 
     _report(db, task, 94, "Analyzing music...")
     _t0 = time.monotonic()
     analysis_path = postprocess.analyze_music(
-        output_dir, detection=detection, mapping=mapping,
+        output_dir,
+        detection=detection,
+        mapping=mapping,
     )
-    PIPELINE_STAGE_DURATION_SECONDS.labels(stage="analysis").observe(
-        time.monotonic() - _t0
-    )
+    PIPELINE_STAGE_DURATION_SECONDS.labels(stage="analysis").observe(time.monotonic() - _t0)
     logger.info("task %s: analysis written to %s", task.id, analysis_path)
 
     _report(db, task, 98, "Writing commentary...")
     _t0 = time.monotonic()
     postprocess.generate_commentary(db, task, output_dir)
-    PIPELINE_STAGE_DURATION_SECONDS.labels(stage="commentary").observe(
-        time.monotonic() - _t0
-    )
+    PIPELINE_STAGE_DURATION_SECONDS.labels(stage="commentary").observe(time.monotonic() - _t0)
 
     _report(db, task, 100, "Done")
-
-    if not stem_map:
-        stems.emit_placeholder_stems(output_dir)
 
 
 def process_task(task_id: int) -> None:
@@ -193,23 +193,22 @@ def process_task(task_id: int) -> None:
             _peak_rss_mb = rss
 
     with SessionLocal() as db:
-        task = task_service.get_task(db, task_id)
+        # Atomically claim the task (CAS: UPLOADED/FAILED -> PROCESSING).
+        # If this returns None, another worker already claimed it (e.g.
+        # message redelivery after OOM) or the task was cancelled.
+        task = task_service.worker_claim(db, task_id)
         if task is None:
-            logger.warning("process_task: task %s not found", task_id)
+            logger.warning(
+                "process_task: task %s not claimable (already finished/cancelled or claimed by another worker)",
+                task_id,
+            )
             return
 
         try:
             # Record queue wait time: created_at -> now.
             if task.created_at is not None:
-                wait_s = (
-                    datetime.now(timezone.utc) - task.created_at
-                ).total_seconds()
+                wait_s = (datetime.now(UTC) - task.created_at).total_seconds()
                 PIPELINE_QUEUE_WAIT_SECONDS.observe(max(wait_s, 0.0))
-
-            task_service.set_status(db, task, AudioTaskStatus.PROCESSING)
-            task_service.set_progress(db, task, 0, "Starting...")
-            task.error_message = None
-            db.commit()
 
             _sample_rss()
 
@@ -241,17 +240,16 @@ def process_task(task_id: int) -> None:
                 )
             logger.info("task %s finished", task_id)
 
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             db.rollback()
             logger.exception("task %s failed: %s", task_id, exc)
-            task = task_service.get_task(db, task_id)
-            if task is not None:
-                task_service.mark_finished(
-                    db, task, success=False, error_message=MSG_TASK_PROCESSING_FAILED,
-                )
-                db.commit()
+            # Use CAS-based failure: only mark FAILED if still PROCESSING.
+            failed = task_service.mark_failed_quick(
+                db, task_id, reason=MSG_TASK_PROCESSING_FAILED
+            )
+            if failed is not None:
                 get_event_bus().publish_task_finished(
-                    task.id,
+                    failed.id,
                     status=AudioTaskStatus.FAILED.value,
                     progress=0,
                     error_message=MSG_TASK_PROCESSING_FAILED,
@@ -275,7 +273,7 @@ if __name__ == "__main__":  # pragma: no cover
     import argparse
     import sys
 
-    from app.logging_config import setup_logging, set_request_id
+    from app.logging_config import set_request_id, setup_logging
 
     setup_logging()
 

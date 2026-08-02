@@ -1,15 +1,16 @@
 """SoundFont & preset table REST endpoints."""
+
 from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, Response
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
 from sqlalchemy.orm import Session
 
 from app.api.deps import OptionalAuthUser
 from app.api.instruments.common import (
-    MAX_SF2_BYTES,
     MAX_CSV_BYTES,
+    MAX_SF2_BYTES,
     check_resource_owner,
 )
 from app.db.session import get_db
@@ -23,10 +24,7 @@ def list_gm_instruments() -> list[dict]:
     from app.services.soundfont_service import SoundFontService
 
     service = SoundFontService()
-    return [
-        {"program": program, "name": name}
-        for program, name in service.list_gm_instruments()
-    ]
+    return [{"program": program, "name": name} for program, name in service.list_gm_instruments()]
 
 
 @router.post("/preset-table/import")
@@ -132,9 +130,7 @@ def get_active_soundfont(db: Session = Depends(get_db)) -> Response:
     result = SoundFontService().get_active_soundfont(db)
     if result is None:
         return Response(status_code=204)
-    return Response(
-        content=json.dumps(result, default=str), media_type="application/json"
-    )
+    return Response(content=json.dumps(result, default=str), media_type="application/json")
 
 
 @router.post("/soundfonts/{soundfont_id}/activate")

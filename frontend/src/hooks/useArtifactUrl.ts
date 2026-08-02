@@ -1,33 +1,22 @@
-import { useEffect, useMemo, useState } from "react";
-
-import { getAccessToken } from "@/api/axios";
+import { useMemo } from "react";
 
 /**
- * Append the auth token as a query parameter to artifact URLs so that
- * ``<a href>``, ``<audio>``, and other elements that cannot set HTTP headers
- * still pass the ownership check on the backend.
+ * Prepare an artifact URL for use in ``<a href>``, ``<audio>``, and other
+ * elements that cannot set HTTP headers.
  *
- * Polls the in-memory token and re-renders once a token becomes available
- * (e.g. after a page-refresh cookie-based token refresh).
+ * The backend already appends a short-lived, file-scoped download token
+ * (``?token=...``) to artifact URLs at response time (see ``_artifact_url``
+ * in the backend). We must NOT append the user's access token here:
+ *   - Access tokens in URLs leak via browser history, server logs, and
+ *     Referer headers.
+ *   - The download endpoint verifies the token against a dedicated
+ *     download-token secret; access tokens are NOT valid download tokens.
+ *   - Appending a second ``&token=<access_token>`` creates a duplicate
+ *     query parameter that can shadow the legitimate download token.
+ *
+ * If the URL expires (5-minute TTL), consumers should refetch the task
+ * data from the API to obtain fresh signed URLs.
  */
 export function useArtifactUrl(url: string): string {
-  const [token, setToken] = useState<string | null>(() => getAccessToken());
-
-  useEffect(() => {
-    if (token) return;
-    const id = setInterval(() => {
-      const t = getAccessToken();
-      if (t) {
-        setToken(t);
-        clearInterval(id);
-      }
-    }, 200);
-    return () => clearInterval(id);
-  }, [token]);
-
-  return useMemo(() => {
-    if (!token) return url;
-    const sep = url.includes("?") ? "&" : "?";
-    return `${url}${sep}token=${encodeURIComponent(token)}`;
-  }, [url, token]);
+  return useMemo(() => url, [url]);
 }

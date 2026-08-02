@@ -4,16 +4,16 @@ Pydantic v2 changes worth noting:
     - `class Config` is replaced with `model_config = ConfigDict(...)`
     - `orm_mode = True` is replaced with `from_attributes = True`
 """
+
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict
 
 
-class AudioTaskStatus(str, Enum):
+class AudioTaskStatus(StrEnum):
     UPLOADED = "UPLOADED"
     PROCESSING = "PROCESSING"
     FINISHED = "FINISHED"
@@ -30,11 +30,11 @@ class AudioTaskRead(AudioTaskBase):
 
     id: int
     progress: int = 0
-    current_step: Optional[str] = None
-    duration: Optional[float] = None
-    output_dir: Optional[str] = None
-    error_message: Optional[str] = None
-    finished_at: Optional[datetime] = None
+    current_step: str | None = None
+    duration: float | None = None
+    output_dir: str | None = None
+    error_message: str | None = None
+    finished_at: datetime | None = None
 
 
 class AudioTaskCreate(AudioTaskBase):
@@ -55,12 +55,14 @@ class ProcessResponse(BaseModel):
     immediately flips it to PROCESSING in the background; the caller should
     poll `/status` to follow along.
     """
+
     task_id: int
     status: AudioTaskStatus
 
 
 class TaskStatusResponse(BaseModel):
     """Returned by `GET /api/tasks/{id}/status`."""
+
     status: AudioTaskStatus
     progress: int
 
@@ -73,8 +75,9 @@ class StemInfo(BaseModel):
     music) can be added without breaking existing callers --- the frontend
     defaults to a download link for anything it doesn't recognize.
     """
-    name: str   # e.g. "drums" or "original"
-    url: str    # e.g. "/storage/outputs/task_6/drums.wav"
+
+    name: str  # e.g. "drums" or "original"
+    url: str  # e.g. "/storage/outputs/task_6/drums.wav"
     kind: str = "audio"  # "audio" | "midi"
     profile: str | None = None  # for MIDI: "raw" | "gm" | "xg"
 

@@ -25,6 +25,7 @@ For each detected instrument with enough energy, the service writes:
   * ``<instrument>.wav`` --- the separated audio (24 kHz mono WAV).
   * ``<instrument>.mid``  --- Basic Pitch transcription with full GM CCs.
 """
+
 from __future__ import annotations
 
 import logging
@@ -173,10 +174,8 @@ class InstrumentClassifierService:
                     desired = output_dir / f"{stem_name}_{instrument}.mid"
                     if generated != desired and generated.is_file():
                         generated.rename(desired)
-                except Exception as exc:  # noqa: BLE001 - keep other instruments
-                    logger.warning(
-                        "instrument-classifier: MIDI failed for %s: %s", instrument, exc
-                    )
+                except Exception as exc:
+                    logger.warning("instrument-classifier: MIDI failed for %s: %s", instrument, exc)
 
         dominant = max(posterior, key=posterior.get)
         return InstrumentSplitResult(
@@ -212,7 +211,9 @@ class InstrumentClassifierService:
         # Spectral centroid (mean frequency) per frame.
         centroid = (spectrum * freqs).sum(axis=1) / total_energy
         # Spectral bandwidth.
-        bandwidth = np.sqrt(((freqs - centroid[:, None]) ** 2 * spectrum).sum(axis=1) / total_energy)
+        bandwidth = np.sqrt(
+            ((freqs - centroid[:, None]) ** 2 * spectrum).sum(axis=1) / total_energy
+        )
         # Spectral rolloff: frequency below which 85% of energy lies.
         cumulative = np.cumsum(spectrum, axis=1)
         rolloff_threshold = 0.85 * total_energy
@@ -255,9 +256,7 @@ class InstrumentClassifierService:
         return features_per_frame
 
     # ---- posterior aggregation ---------------------------------------------
-    def _aggregate_posteriors(
-        self, features: Sequence[dict[str, float]]
-    ) -> dict[str, float]:
+    def _aggregate_posteriors(self, features: Sequence[dict[str, float]]) -> dict[str, float]:
         """Average per-frame posteriors weighted by RMS.
 
         The weighting matters: a quiet noise floor is mostly high-flatness
@@ -274,10 +273,7 @@ class InstrumentClassifierService:
 
         if total_weight <= 0:
             return {name: 0.0 for name in INSTRUMENTS}
-        return {
-            name: round(per_instrument[name] / total_weight, 4)
-            for name in INSTRUMENTS
-        }
+        return {name: round(per_instrument[name] / total_weight, 4) for name in INSTRUMENTS}
 
     def _frame_posterior(self, frame: dict[str, float]) -> dict[str, float]:
         """Per-frame probability of each instrument.
@@ -398,7 +394,7 @@ def _resample_linear(y: np.ndarray, sr_in: int, sr_out: int) -> np.ndarray:
     if sr_in == sr_out or y.size == 0:
         return y
     duration = y.shape[0] / float(sr_in)
-    target_length = int(round(duration * sr_out))
+    target_length = round(duration * sr_out)
     if target_length <= 1:
         return y
     x_old = np.linspace(0.0, duration, num=y.shape[0], endpoint=False)

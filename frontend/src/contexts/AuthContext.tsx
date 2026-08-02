@@ -69,17 +69,25 @@ export function AuthProvider({ children }: AuthProviderProps) {
   // On mount: try a cookie-based refresh to restore the session.
   // The HttpOnly refresh cookie is sent automatically by the browser.
   useEffect(() => {
+    let cancelled = false;
     authApi
       .refresh()
       .then((resp) => {
+        if (cancelled) return;
         setCachedTokens(resp.access_token, resp.csrf_token);
         setUser(resp.user);
       })
       .catch(() => {
+        if (cancelled) return;
         // No valid refresh cookie --- the user is unauthenticated.
         setCachedTokens(null, null);
       })
-      .finally(() => setIsLoading(false));
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const login = useCallback(

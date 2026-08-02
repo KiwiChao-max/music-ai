@@ -1,5 +1,6 @@
 fastapi>=0.110
 uvicorn[standard]>=0.27
+gunicorn>=22.0
 # Test client + async HTTP for the /api/* endpoint tests.
 httpx>=0.27
 pydantic>=2.5

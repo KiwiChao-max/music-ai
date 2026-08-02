@@ -26,6 +26,7 @@ from pathlib import Path
 
 import psycopg2
 import psycopg2.extensions
+from psycopg2 import sql
 
 # ---- connection settings ---------------------------------------------------
 # Override via environment variables; defaults match docker-compose dev setup.
@@ -57,7 +58,7 @@ def ensure_database() -> None:
         with conn.cursor() as cur:
             cur.execute("SELECT 1 FROM pg_database WHERE datname = %s;", (DB_NAME,))
             if cur.fetchone() is None:
-                cur.execute(f'CREATE DATABASE "{DB_NAME}";')
+                cur.execute(sql.SQL("CREATE DATABASE {};").format(sql.Identifier(DB_NAME)))
                 print(f"[ok] database created: {DB_NAME}")
             else:
                 print(f"[skip] database already exists: {DB_NAME}")

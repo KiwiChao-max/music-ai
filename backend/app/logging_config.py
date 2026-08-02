@@ -9,6 +9,7 @@ JSON mode emits one JSON object per line (ELK/Loki-friendly) without any
 third-party dependency (uses stdlib ``json``). Text mode uses a concise
 coloured format suitable for local development.
 """
+
 from __future__ import annotations
 
 import json
@@ -16,7 +17,7 @@ import logging
 import sys
 import uuid
 from contextvars import ContextVar
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from .config import settings
@@ -74,7 +75,7 @@ class JsonFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         payload: dict[str, Any] = {
-            "ts": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
+            "ts": datetime.fromtimestamp(record.created, tz=UTC).isoformat(),
             "level": self._LEVEL_MAP.get(record.levelno, record.levelname),
             "logger": record.name,
             "msg": record.getMessage(),
@@ -85,11 +86,30 @@ class JsonFormatter(logging.Formatter):
             payload["exc_info"] = self.formatException(record.exc_info)
         # Include any extra attributes attached to the record.
         _skip = {
-            "args", "asctime", "created", "exc_info", "exc_text",
-            "filename", "funcName", "levelname", "levelno", "lineno",
-            "module", "msecs", "message", "msg", "name", "pathname",
-            "process", "processName", "relativeCreated", "stack_info",
-            "thread", "threadName", "request_id", "user_id",
+            "args",
+            "asctime",
+            "created",
+            "exc_info",
+            "exc_text",
+            "filename",
+            "funcName",
+            "levelname",
+            "levelno",
+            "lineno",
+            "module",
+            "msecs",
+            "message",
+            "msg",
+            "name",
+            "pathname",
+            "process",
+            "processName",
+            "relativeCreated",
+            "stack_info",
+            "thread",
+            "threadName",
+            "request_id",
+            "user_id",
             "taskName",  # Python 3.12+ asyncio task name; not useful
         }
         for key, value in record.__dict__.items():
@@ -106,10 +126,10 @@ class TextFormatter(logging.Formatter):
     """Human-readable formatter for local development."""
 
     _COLORS = {
-        logging.DEBUG: "\033[37m",     # gray
-        logging.INFO: "\033[36m",      # cyan
-        logging.WARNING: "\033[33m",   # yellow
-        logging.ERROR: "\033[31m",     # red
+        logging.DEBUG: "\033[37m",  # gray
+        logging.INFO: "\033[36m",  # cyan
+        logging.WARNING: "\033[33m",  # yellow
+        logging.ERROR: "\033[31m",  # red
         logging.CRITICAL: "\033[1;31m",  # bold red
     }
     _RESET = "\033[0m"

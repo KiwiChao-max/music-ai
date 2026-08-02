@@ -11,21 +11,21 @@ rewrite each stem's `program` / `bank_msb` / `bank_lsb` to point at the
 user's chosen instrument via the `soundfont_overrides` argument. The notes
 themselves are untouched --- only the voice selection is overridden.
 """
+
 from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
-from typing import Mapping
 
 logger = logging.getLogger(__name__)
 
 
-class MidiProfile(str, Enum):
+class MidiProfile(StrEnum):
     GM = "gm"
     XG = "xg"
 
@@ -91,15 +91,38 @@ class MidiMappingResult:
 _DRUM_CHANNEL = 9
 _MIDI_SUFFIXES = {".mid", ".midi"}
 _GENERATED_PROFILE_SUFFIXES = ("_gm", "_xg")
-_DRUM_PART_NAMES: frozenset[str] = frozenset({
-    "kick", "snare", "sidestick", "hihat_closed", "hihat_open",
-    "tom_high", "tom_himid", "tom_lomid", "tom_low", "tom_floor",
-    "crash", "ride", "china", "splash", "ride_bell",
-    "tambourine", "cowbell", "percussion", "fill",
-})
-_PER_INSTRUMENT_STEMS: frozenset[str] = frozenset({
-    "piano", "guitar", "strings", "synth", "other_melodic",
-})
+_DRUM_PART_NAMES: frozenset[str] = frozenset(
+    {
+        "kick",
+        "snare",
+        "sidestick",
+        "hihat_closed",
+        "hihat_open",
+        "tom_high",
+        "tom_himid",
+        "tom_lomid",
+        "tom_low",
+        "tom_floor",
+        "crash",
+        "ride",
+        "china",
+        "splash",
+        "ride_bell",
+        "tambourine",
+        "cowbell",
+        "percussion",
+        "fill",
+    }
+)
+_PER_INSTRUMENT_STEMS: frozenset[str] = frozenset(
+    {
+        "piano",
+        "guitar",
+        "strings",
+        "synth",
+        "other_melodic",
+    }
+)
 _BANK_CONTROLLERS = {0, 32}
 
 _STEM_ORDER: dict[str, int] = {
@@ -193,7 +216,9 @@ _BUILTIN_XG_MELODIC_VOICES: dict[str, VoiceMapping] = {
 }
 
 
-def _load_voices_config() -> tuple[dict[str, VoiceMapping], tuple[int, int], dict[str, VoiceMapping]]:
+def _load_voices_config() -> tuple[
+    dict[str, VoiceMapping], tuple[int, int], dict[str, VoiceMapping]
+]:
     """Load voice mappings, XG drum bank, and XG melodic voices from the
     user-editable JSON config.
 
@@ -212,7 +237,9 @@ def _load_voices_config() -> tuple[dict[str, VoiceMapping], tuple[int, int], dic
 
 
 @lru_cache(maxsize=1)
-def _load_voices_config_cached() -> tuple[dict[str, VoiceMapping], tuple[int, int], dict[str, VoiceMapping]]:
+def _load_voices_config_cached() -> tuple[
+    dict[str, VoiceMapping], tuple[int, int], dict[str, VoiceMapping]
+]:
     try:
         raw = json.loads(_VOICES_CONFIG_PATH.read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError, OSError):
@@ -327,9 +354,7 @@ def is_raw_midi_path(path: Path) -> bool:
     stem = path.stem.lower()
     if _strip_profile_suffix(path.stem).lower() != stem:
         return False
-    if _is_drum_part_file(path):
-        return False
-    return True
+    return not _is_drum_part_file(path)
 
 
 def collect_raw_midi_sources(output_dir: Path, fallback: Path | None = None) -> list[Path]:
@@ -338,7 +363,9 @@ def collect_raw_midi_sources(output_dir: Path, fallback: Path | None = None) -> 
     _dedupe_per_instrument_sources(sources)
     if fallback is not None and fallback.is_file() and fallback not in sources:
         sources.append(fallback)
-    return sorted(sources, key=lambda p: (_STEM_ORDER.get(stem_key_from_name(p.stem), 99), p.name.lower()))
+    return sorted(
+        sources, key=lambda p: (_STEM_ORDER.get(stem_key_from_name(p.stem), 99), p.name.lower())
+    )
 
 
 def _dedupe_per_instrument_sources(sources: list[Path]) -> None:
@@ -349,7 +376,7 @@ def _dedupe_per_instrument_sources(sources: list[Path]) -> None:
             parent, _, instrument = stem.rpartition("_")
             if instrument in _PER_INSTRUMENT_STEMS:
                 per_stem_files.setdefault(parent, []).append(p)
-    for parent, instrument_files in per_stem_files.items():
+    for parent, _instrument_files in per_stem_files.items():
         combined = next((p for p in sources if p.stem.lower() == parent), None)
         if combined is not None and combined in sources:
             sources.remove(combined)
@@ -377,7 +404,9 @@ class MidiMappingService:
     ) -> MidiMappingResult:
         """Backward-compatible one-file mapping entry point."""
         return self.create_variants_for_sources(
-            [source_path], output_dir, soundfont_overrides=soundfont_overrides,
+            [source_path],
+            output_dir,
+            soundfont_overrides=soundfont_overrides,
         )
 
     def create_variants_for_sources(
@@ -398,8 +427,12 @@ class MidiMappingService:
         gm_path = output_dir / f"{output_stem}_{MidiProfile.GM.value}.mid"
         xg_path = output_dir / f"{output_stem}_{MidiProfile.XG.value}.mid"
 
-        applied = self.map_sources(sources, gm_path, MidiProfile.GM, soundfont_overrides=soundfont_overrides)
-        applied = self.map_sources(sources, xg_path, MidiProfile.XG, soundfont_overrides=soundfont_overrides)
+        applied = self.map_sources(
+            sources, gm_path, MidiProfile.GM, soundfont_overrides=soundfont_overrides
+        )
+        applied = self.map_sources(
+            sources, xg_path, MidiProfile.XG, soundfont_overrides=soundfont_overrides
+        )
 
         return MidiMappingResult(
             source_paths=sources,
@@ -527,11 +560,23 @@ class MidiMappingService:
             voice = assignments[channel]
             track.extend(
                 [
-                    Message("control_change", channel=channel, control=0, value=voice.bank_msb, time=0),
-                    Message("control_change", channel=channel, control=32, value=voice.bank_lsb, time=0),
+                    Message(
+                        "control_change", channel=channel, control=0, value=voice.bank_msb, time=0
+                    ),
+                    Message(
+                        "control_change", channel=channel, control=32, value=voice.bank_lsb, time=0
+                    ),
                     Message("program_change", channel=channel, program=voice.program, time=0),
-                    Message("control_change", channel=channel, control=7, value=voice.volume, time=0),
-                    Message("control_change", channel=channel, control=11, value=voice.expression, time=0),
+                    Message(
+                        "control_change", channel=channel, control=7, value=voice.volume, time=0
+                    ),
+                    Message(
+                        "control_change",
+                        channel=channel,
+                        control=11,
+                        value=voice.expression,
+                        time=0,
+                    ),
                     Message("control_change", channel=channel, control=10, value=voice.pan, time=0),
                 ]
             )
@@ -565,7 +610,7 @@ class MidiMappingService:
         scale = target_ticks_per_beat / source_ticks_per_beat
 
         for message in track:
-            scaled_time = int(round(message.time * scale))
+            scaled_time = round(message.time * scale)
             if _is_conflicting_setup_message(message):
                 carried_time += scaled_time
                 continue
@@ -710,7 +755,7 @@ def _with_channel(voice: VoiceMapping, channel: int) -> VoiceMapping:
 def _apply_soundfont_override(
     voice: VoiceMapping,
     stem_key: str,
-    overrides: Mapping[str, "SoundfontOverride"],
+    overrides: Mapping[str, SoundfontOverride],
 ) -> VoiceMapping:
     """If a user-supplied SoundFont override exists for this stem, apply it.
 
@@ -754,7 +799,7 @@ def build_soundfont_overrides(
     # in environments where the SF service is not available).
     try:
         from app.services.soundfont_service import SoundFontService
-    except Exception:  # noqa: BLE001 - defensive: mapper is light
+    except Exception:
         return []
 
     svc = SoundFontService()
@@ -769,7 +814,9 @@ def build_soundfont_overrides(
             continue
         instrument_type = svc.get_instrument_type_for_gm_program(voice.program)
         mapping = svc.map_gm_to_custom(
-            voice.program, list(presets), instrument_type=instrument_type,
+            voice.program,
+            list(presets),
+            instrument_type=instrument_type,
         )
         if mapping is None:
             continue
@@ -786,7 +833,8 @@ def build_soundfont_overrides(
     if soundfont_name:
         logger.info(
             "soundfont-mapping: %d stem overrides built from %s",
-            len(overrides), soundfont_name,
+            len(overrides),
+            soundfont_name,
         )
     return overrides
 
@@ -806,6 +854,4 @@ def _is_conflicting_setup_message(message) -> bool:
         return False
     if message.type == "program_change":
         return True
-    if message.type == "control_change" and message.control in _BANK_CONTROLLERS:
-        return True
-    return False
+    return bool(message.type == "control_change" and message.control in _BANK_CONTROLLERS)

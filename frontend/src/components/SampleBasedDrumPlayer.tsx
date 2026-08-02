@@ -77,14 +77,24 @@ export function SampleBasedDrumPlayer({
   useEffect(() => {
     if (!library || !hasSamples) {
       buffersRef.current.clear();
+      if (masterRef.current) {
+        try { masterRef.current.disconnect(); } catch { /* ignore */ }
+        masterRef.current = null;
+      }
       return;
     }
     const ac = ensureContext(contextRef);
+    // Disconnect the previous master GainNode to prevent orphan node leaks
+    // when the library changes.
+    if (masterRef.current) {
+      try { masterRef.current.disconnect(); } catch { /* ignore */ }
+    }
     masterRef.current = ac.createGain();
     masterRef.current.gain.value = 0.9;
     masterRef.current.connect(ac.destination);
 
     let cancelled = false;
+    const abortController = new AbortController();
     (async () => {
       try {
         const decoded = new Map<string, AudioBuffer>();
@@ -95,6 +105,7 @@ export function SampleBasedDrumPlayer({
           const url = instrumentsApi.sampleUrl(library.id, file.midi_note);
           const response = await api.get<ArrayBuffer>(url, {
             responseType: "arraybuffer",
+            signal: abortController.signal,
           });
           if (cancelled) return;
           const buffer = await ac.decodeAudioData(response.data);
@@ -125,6 +136,7 @@ export function SampleBasedDrumPlayer({
 
     return () => {
       cancelled = true;
+      abortController.abort();
     };
   }, [library, hasSamples, t]);
 

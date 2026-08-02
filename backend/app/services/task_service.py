@@ -3,8 +3,10 @@
 Keeps all DB-facing logic in one module so the API layer, the worker, and any
 future background jobs share a single source of truth.
 """
+
 from __future__ import annotations
 
+from datetime import UTC
 from pathlib import Path
 
 from sqlalchemy import func, select, update
@@ -43,9 +45,7 @@ def list_tasks(
     if status is not None:
         stmt = stmt.where(AudioTask.status == status)
     stmt = (
-        stmt.order_by(AudioTask.created_at.desc(), AudioTask.id.desc())
-        .limit(limit)
-        .offset(offset)
+        stmt.order_by(AudioTask.created_at.desc(), AudioTask.id.desc()).limit(limit).offset(offset)
     )
     return list(db.scalars(stmt).all())
 
@@ -58,9 +58,7 @@ def count_tasks_by_status(db: Session) -> dict[str, int]:
     """Return `{status.value: count}` for every status, filling missing
     statuses with 0 so the metrics endpoint can publish a stable
     label set."""
-    stmt = select(AudioTask.status, func.count(AudioTask.id)).group_by(
-        AudioTask.status
-    )
+    stmt = select(AudioTask.status, func.count(AudioTask.id)).group_by(AudioTask.status)
     counts = {status.value: 0 for status in AudioTaskStatus}
     for status_value, count in db.execute(stmt).all():
         counts[status_value.value] = int(count)
@@ -68,9 +66,7 @@ def count_tasks_by_status(db: Session) -> dict[str, int]:
 
 
 # ---- writes ---------------------------------------------------------------
-def create_task(
-    db: Session, filename: str, *, user_id: int | None = None
-) -> AudioTask:
+def create_task(db: Session, filename: str, *, user_id: int | None = None) -> AudioTask:
     task = AudioTask(
         filename=safe_filename(filename),
         status=AudioTaskStatus.UPLOADED,
@@ -89,9 +85,7 @@ def delete_task(db: Session, task_id: int) -> AudioTask | None:
     return task
 
 
-def set_status(
-    db: Session, task: AudioTask, status: AudioTaskStatus
-) -> None:
+def set_status(db: Session, task: AudioTask, status: AudioTaskStatus) -> None:
     task.status = status
     db.add(task)
     db.flush()
@@ -109,9 +103,7 @@ def claim_for_processing(db: Session, task_id: int) -> AudioTask | None:
         update(AudioTask)
         .where(
             AudioTask.id == task_id,
-            AudioTask.status.in_(
-                [AudioTaskStatus.UPLOADED, AudioTaskStatus.FAILED]
-            ),
+            AudioTask.status.in_([AudioTaskStatus.UPLOADED, AudioTaskStatus.FAILED]),
         )
         .values(status=AudioTaskStatus.PROCESSING)
         .returning(AudioTask)
@@ -123,9 +115,7 @@ def claim_for_processing(db: Session, task_id: int) -> AudioTask | None:
     return task
 
 
-def rollback_claim(
-    db: Session, task_id: int, *, reason: str | None = None
-) -> AudioTask | None:
+def rollback_claim(db: Session, task_id: int, *, reason: str | None = None) -> AudioTask | None:
     """Atomically revert a PROCESSING task back to UPLOADED.
 
     Only touches the row if it is **still** in PROCESSING --- if the worker
@@ -137,7 +127,7 @@ def rollback_claim(
     dispatch fails (broker down, etc.), call this to undo the claim so
     the user can retry.
     """
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     stmt = (
         update(AudioTask)
@@ -151,7 +141,7 @@ def rollback_claim(
             current_step=None,
             error_message=reason,
             finished_at=None,
-            updated_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(UTC),
         )
         .returning(AudioTask)
     )
@@ -162,16 +152,14 @@ def rollback_claim(
     return task
 
 
-def mark_failed_quick(
-    db: Session, task_id: int, *, reason: str
-) -> AudioTask | None:
+def mark_failed_quick(db: Session, task_id: int, *, reason: str) -> AudioTask | None:
     """Atomically move a PROCESSING task to FAILED with a short reason.
 
     Used when we can't even roll back to UPLOADED (e.g. the task was
     already claimed by the worker somehow).  The user can still see the
     failure reason and re-upload.
     """
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     stmt = (
         update(AudioTask)
@@ -182,8 +170,74 @@ def mark_failed_quick(
         .values(
             status=AudioTaskStatus.FAILED,
             error_message=reason,
-            finished_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            finished_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+        )
+        .returning(AudioTask)
+    )
+    task = db.execute(stmt).scalar_one_or_none()
+    if task is not None:
+        db.commit()
+        db.refresh(task)
+    return task
+
+
+def worker_claim(db: Session, task_id: int) -> AudioTask | None:
+    """Atomically claim a task for worker execution.
+
+    Allows transitions from:
+    * UPLOADED or FAILED → PROCESSING (normal case)
+    * PROCESSING + current_step IS NULL → PROCESSING (API claimed via
+      ``claim_for_processing`` but no worker has started yet). This is the
+      common path because the API dispatches the Celery task *after* calling
+      ``claim_for_processing``.
+    * PROCESSING + updated_at past ``CLAIM_TIMEOUT_SECONDS`` (stale-claim
+      recovery: the previous worker crashed/OOM'd). Without this timeout, a
+      single worker crash leaves a task permanently stuck in PROCESSING.
+
+    Returns the task on success, or ``None`` if the task is no longer
+    claimable (e.g. it was already marked FINISHED or cancelled).
+
+    This mirrors ``claim_for_processing`` but is used by the Celery worker
+    at the start of ``process_task`` to guard against double-processing
+    after a worker crash/OOM causes message redelivery.
+    """
+    from datetime import datetime, timedelta
+
+    # Stale-claim threshold: generous enough that a legitimately long task
+    # (Demucs on a 10-minute track can take 15-25 minutes on CPU) never gets
+    # pre-empted, but short enough that crashed tasks are recovered without
+    # manual intervention. Matches celery's task_time_limit (30 min) + buffer.
+    CLAIM_TIMEOUT_SECONDS = 60 * 35
+
+    stale_cutoff = datetime.now(UTC) - timedelta(seconds=CLAIM_TIMEOUT_SECONDS)
+
+    stmt = (
+        update(AudioTask)
+        .where(
+            AudioTask.id == task_id,
+            # Claimable states:
+            #   1. Freshly uploaded or previously failed (normal path).
+            #   2. PROCESSING but current_step IS NULL (API claimed it, no
+            #      worker has started yet — the common case).
+            #   3. Stuck in PROCESSING with no recent update (crashed worker).
+            (
+                AudioTask.status.in_([AudioTaskStatus.UPLOADED, AudioTaskStatus.FAILED])
+            ) | (
+                (AudioTask.status == AudioTaskStatus.PROCESSING)
+                & (AudioTask.current_step.is_(None))
+            ) | (
+                (AudioTask.status == AudioTaskStatus.PROCESSING)
+                & (AudioTask.updated_at < stale_cutoff)
+            ),
+        )
+        .values(
+            status=AudioTaskStatus.PROCESSING,
+            progress=0,
+            current_step="Starting...",
+            error_message=None,
+            finished_at=None,
+            updated_at=datetime.now(UTC),
         )
         .returning(AudioTask)
     )
@@ -227,11 +281,11 @@ def mark_finished(
     error_message: str | None = None,
 ) -> None:
     """Move to FINISHED (or FAILED with error) and stamp `finished_at`."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     task.status = AudioTaskStatus.FINISHED if success else AudioTaskStatus.FAILED
     task.progress = 100 if success else task.progress
     task.error_message = None if success else error_message
-    task.finished_at = datetime.now(timezone.utc)
+    task.finished_at = datetime.now(UTC)
     db.add(task)
     db.flush()

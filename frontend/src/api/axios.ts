@@ -116,16 +116,27 @@ api.interceptors.response.use(
       // If another request is already refreshing, wait for it.
       if (_isRefreshing) {
         const ok = await _queueRefresh();
-        if (ok) {
+        if (ok && error.config.headers) {
           error.config.headers.Authorization = `Bearer ${_cachedAccessToken}`;
+          if (_cachedCsrfToken) {
+            error.config.headers["X-CSRF-Token"] = _cachedCsrfToken;
+          }
           return api(error.config);
         }
+        // Refresh failed --- clear session and reject.
+        _cachedAccessToken = null;
+        _cachedCsrfToken = null;
+        _onForceLogout?.();
+        return Promise.reject(error);
       }
 
       // Try a single refresh.
       const ok = await _queueRefresh();
-      if (ok) {
+      if (ok && error.config.headers) {
         error.config.headers.Authorization = `Bearer ${_cachedAccessToken}`;
+        if (_cachedCsrfToken) {
+          error.config.headers["X-CSRF-Token"] = _cachedCsrfToken;
+        }
         return api(error.config);
       }
 

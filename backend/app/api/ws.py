@@ -24,14 +24,16 @@ Security notes
 * Ownership check matches the REST policy.
 * DB sessions are opened per-query rather than held for the WS lifetime.
 """
+
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Query, WebSocket, status
@@ -96,14 +98,14 @@ def _serialize_dt(value: datetime | None) -> str | None:
     if value is None:
         return None
     if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
+        value = value.replace(tzinfo=UTC)
     return value.isoformat()
 
 
 async def _send(websocket: WebSocket, payload: dict[str, Any]) -> None:
     try:
         await websocket.send_text(json.dumps(payload, ensure_ascii=False))
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.debug("ws: send failed: %s", exc)
 
 
@@ -162,10 +164,7 @@ async def task_progress(
     #   2. ``Authorization`` header
     #   3. ``Sec-WebSocket-Protocol`` header (browser-native, no URL leakage)
     header_token = websocket.headers.get("Authorization", "")
-    if header_token.lower().startswith("bearer "):
-        header_token = header_token[7:]
-    else:
-        header_token = None
+    header_token = header_token[7:] if header_token.lower().startswith("bearer ") else None
     protocol_token = websocket.headers.get("Sec-WebSocket-Protocol", "")
     user_id, role = _decode_token_or_none(token or header_token or protocol_token)
 
@@ -218,16 +217,12 @@ async def task_progress(
             try:
                 await _pump_pubsub(websocket, pubsub, task_id, deadline)
             finally:
-                try:
+                with contextlib.suppress(Exception):
                     pubsub.close()
-                except Exception:  # noqa: BLE001
-                    pass
                 client = getattr(pubsub, "connection_pool", None)
                 if client is not None:
-                    try:
+                    with contextlib.suppress(Exception):
                         client.disconnect()
-                    except Exception:  # noqa: BLE001
-                        pass
         else:
             # Redis not reachable --- fall back to DB-only polling.
             await _poll_db_fallback(websocket, task_id, deadline)
@@ -265,9 +260,7 @@ async def _pump_pubsub(
             return
 
         # Drain the pub/sub queue with a short timeout.
-        message = await loop.run_in_executor(
-            None, _pubsub_get, pubsub, _SEND_INTERVAL
-        )
+        message = await loop.run_in_executor(None, _pubsub_get, pubsub, _SEND_INTERVAL)
         if message is not None:
             try:
                 event = json.loads(message)
@@ -306,9 +299,7 @@ def _pubsub_get(pubsub, timeout: float):
         return None
 
 
-async def _poll_db_fallback(
-    websocket: WebSocket, task_id: int, deadline: float
-) -> None:
+async def _poll_db_fallback(websocket: WebSocket, task_id: int, deadline: float) -> None:
     """DB-only fallback used when Redis Pub/Sub is unavailable.
 
     Polls the task every 0.5 s and sends a snapshot if the

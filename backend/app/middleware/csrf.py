@@ -9,6 +9,7 @@ Skips:
   * ``/api/auth/`` endpoints (login/register don't have a CSRF cookie yet)
   * ``/ws/`` endpoints (WebSocket connections use JWT, not CSRF)
 """
+
 from __future__ import annotations
 
 import secrets
@@ -36,9 +37,7 @@ class CSRFTokenMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         cookie_token = request.cookies.get(settings.csrf_cookie_name)
-        header_token = request.headers.get(
-            settings.csrf_header_name.lower(), ""
-        )
+        header_token = request.headers.get(settings.csrf_header_name.lower(), "")
 
         if not cookie_token or not header_token:
             return Response(

@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from app.config import settings
 from app.services import auth_service
 
 
@@ -102,12 +103,12 @@ def test_decode_rejects_expired_token() -> None:
         auth_service.decode_token(expired, expected_type="access")
 
 
-def test_issue_token_pair_returns_both_tokens() -> None:
+def test_issue_token_pair_returns_both_tokens(db_session) -> None:
     pair = auth_service.issue_token_pair(
-        7, email="[email protected]", role="user"
+        db_session, 7, email="user@example.com", role="user"
     )
     assert pair["token_type"] == "Bearer"
-    assert pair["expires_in"] == 60 * 60 * 24
+    assert pair["expires_in"] == settings.access_token_ttl_minutes * 60
     # Each token must round-trip with the right type.
     access = auth_service.decode_token(pair["access_token"], expected_type="access")
     refresh = auth_service.decode_token(pair["refresh_token"], expected_type="refresh")

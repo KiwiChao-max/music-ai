@@ -6,6 +6,7 @@ not compatible, so this module falls back to a lightweight librosa.pyin based
 monophonic transcription. The fallback is useful for bass, vocal and simple
 melodic stems; production polyphonic quality still comes from Basic Pitch.
 """
+
 from __future__ import annotations
 
 import csv
@@ -125,7 +126,9 @@ class BasicPitchService:
         self._inject_gm_setup(midi_path, stem_key)
 
         logger.info("basic-pitch: wrote %s (%d notes)", midi_path.name, note_count)
-        return BasicPitchResult(midi_path=midi_path, notes_csv_path=notes_csv_path, note_count=note_count)
+        return BasicPitchResult(
+            midi_path=midi_path, notes_csv_path=notes_csv_path, note_count=note_count
+        )
 
     def _transcribe_with_librosa(
         self,
@@ -176,7 +179,9 @@ class BasicPitchService:
         self._write_midi(note_events, midi_path, stem_key=stem_key, stem_name=basename)
         note_count = self._write_notes_csv(note_events, notes_csv_path)
         logger.info("librosa-midi: wrote %s (%d notes)", midi_path.name, note_count)
-        return BasicPitchResult(midi_path=midi_path, notes_csv_path=notes_csv_path, note_count=note_count)
+        return BasicPitchResult(
+            midi_path=midi_path, notes_csv_path=notes_csv_path, note_count=note_count
+        )
 
     @staticmethod
     def _write_midi(
@@ -221,10 +226,8 @@ class BasicPitchService:
 
         events = []
         for start, end, pitch, velocity in note_events:
-            start_tick = int(round(second2tick(float(start), ticks_per_beat, tempo)))
-            end_tick = max(
-                start_tick + 1, int(round(second2tick(float(end), ticks_per_beat, tempo)))
-            )
+            start_tick = round(second2tick(float(start), ticks_per_beat, tempo))
+            end_tick = max(start_tick + 1, round(second2tick(float(end), ticks_per_beat, tempo)))
             # note_on, note_off, plus a pitch-bend zero (defensive: some
             # players retain the last bend value, so we explicitly reset it
             # at the start of each note).
@@ -360,7 +363,7 @@ class BasicPitchService:
         if stem in BasicPitchService._STEM_CC_CONFIG:
             return stem
         if stem.startswith("other_"):
-            inner = stem[len("other_"):]
+            inner = stem[len("other_") :]
             if inner in BasicPitchService._STEM_CC_CONFIG:
                 return inner
         return "other"
@@ -379,7 +382,9 @@ class BasicPitchService:
 
         from app.services.midi_cc import gm_setup_messages
 
-        cc = BasicPitchService._STEM_CC_CONFIG.get(stem_key, BasicPitchService._STEM_CC_CONFIG["other"])
+        cc = BasicPitchService._STEM_CC_CONFIG.get(
+            stem_key, BasicPitchService._STEM_CC_CONFIG["other"]
+        )
 
         try:
             midi = MidiFile(str(midi_path))
@@ -416,10 +421,7 @@ class BasicPitchService:
 
 def _track_has_notes(track) -> bool:
     """Return True if the track contains at least one note_on or note_off."""
-    return any(
-        not msg.is_meta and msg.type in {"note_on", "note_off"}
-        for msg in track
-    )
+    return any(not msg.is_meta and msg.type in {"note_on", "note_off"} for msg in track)
 
 
 def _notes_from_f0(
@@ -450,7 +452,15 @@ def _notes_from_f0(
         is_voiced = bool(np.isfinite(pitch) and voiced_prob[index] >= 0.35)
         if not is_voiced:
             if start_index is not None:
-                _append_segment(events, start_index, index, times, segment_pitches, segment_rms, min_note_length_s)
+                _append_segment(
+                    events,
+                    start_index,
+                    index,
+                    times,
+                    segment_pitches,
+                    segment_rms,
+                    min_note_length_s,
+                )
             start_index = None
             segment_pitches = []
             segment_rms = []
@@ -458,8 +468,14 @@ def _notes_from_f0(
             continue
 
         rounded_pitch = float(round(float(pitch)))
-        if start_index is not None and current_pitch is not None and abs(rounded_pitch - current_pitch) > 1.5:
-            _append_segment(events, start_index, index, times, segment_pitches, segment_rms, min_note_length_s)
+        if (
+            start_index is not None
+            and current_pitch is not None
+            and abs(rounded_pitch - current_pitch) > 1.5
+        ):
+            _append_segment(
+                events, start_index, index, times, segment_pitches, segment_rms, min_note_length_s
+            )
             start_index = index
             segment_pitches = []
             segment_rms = []
@@ -472,7 +488,15 @@ def _notes_from_f0(
             segment_rms.append(float(rms[index]))
 
     if start_index is not None:
-        _append_segment(events, start_index, len(pitches) - 1, times, segment_pitches, segment_rms, min_note_length_s)
+        _append_segment(
+            events,
+            start_index,
+            len(pitches) - 1,
+            times,
+            segment_pitches,
+            segment_rms,
+            min_note_length_s,
+        )
 
     return events
 
@@ -497,5 +521,5 @@ def _append_segment(
         return
     pitch = int(max(0, min(127, round(float(np.median(segment_pitches))))))
     level = float(np.mean(segment_rms)) if segment_rms else 0.25
-    velocity = max(35, min(118, int(round(45 + 73 * math.sqrt(min(1.0, max(0.0, level * 8.0)))))))
+    velocity = max(35, min(118, round(45 + 73 * math.sqrt(min(1.0, max(0.0, level * 8.0))))))
     events.append((start_time, end_time, pitch, velocity))

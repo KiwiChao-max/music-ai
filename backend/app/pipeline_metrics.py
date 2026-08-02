@@ -23,6 +23,7 @@ Usage
 * Model fallback counters are incremented in ``stems.py`` and
   ``transcription.py`` whenever a primary model is unavailable.
 """
+
 from __future__ import annotations
 
 from prometheus_client import Counter, Gauge, Histogram

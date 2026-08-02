@@ -4,6 +4,7 @@ The actual work lives in `app.workers.audio_worker.process_task` so it can
 also be invoked directly (CLI, tests, scripts). The Celery binding here is
 a thin adapter: dispatch via Redis, run the same function on a worker.
 """
+
 from __future__ import annotations
 
 import logging
@@ -11,8 +12,8 @@ import logging
 from celery.exceptions import SoftTimeLimitExceeded
 
 from app.celery_app import celery
-from app.db.session import SessionLocal
 from app.db.models import AudioTaskStatus
+from app.db.session import SessionLocal
 from app.services import task_service
 from app.workers import audio_worker
 
@@ -39,7 +40,9 @@ def process_audio_task(self, task_id: int) -> dict:
         # Soft time limit (28 min) fired --- we have ~2 min before the hard
         # kill. Mark the task as FAILED so the client isn't left waiting
         # on a PROCESSING row that will never update.
-        logger.error("celery task %s exceeded soft time limit for task %s", self.request.id, task_id)
+        logger.error(
+            "celery task %s exceeded soft time limit for task %s", self.request.id, task_id
+        )
         try:
             with SessionLocal() as db:
                 task = task_service.get_task(db, task_id)
@@ -51,7 +54,7 @@ def process_audio_task(self, task_id: int) -> dict:
                         error_message="task exceeded the 28-minute soft time limit",
                     )
                     db.commit()
-        except Exception:  # noqa: BLE001 --- best-effort cleanup before kill
+        except Exception:
             logger.exception("failed to mark task %s as FAILED after soft time limit", task_id)
         raise
     return {"task_id": task_id, "status": "FINISHED"}

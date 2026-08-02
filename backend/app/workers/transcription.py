@@ -4,6 +4,7 @@ Routes drum transcription through ADTOS when enabled, falling back to
 the rule-based ``DrumMidiService``.  Melodic stems are transcribed with
 Basic Pitch.
 """
+
 from __future__ import annotations
 
 import logging
@@ -64,12 +65,11 @@ def _run_drum_midi(stem_path: Path, output_dir: Path) -> Path | None:
     except ADTUnavailable as exc:
         _disable_adt_drum(f"ADTOS unavailable, falling back to rule-based: {exc}")
         PIPELINE_MODEL_FALLBACK_TOTAL.labels(
-            model="adtos", fallback_reason="unavailable",
+            model="adtos",
+            fallback_reason="unavailable",
         ).inc()
-        result = _DRUM_MIDI_RULE.create_drum_midi(
-            stem_path, output_dir, stem_name="drums"
-        )
-    except Exception as exc:  # noqa: BLE001
+        result = _DRUM_MIDI_RULE.create_drum_midi(stem_path, output_dir, stem_name="drums")
+    except Exception as exc:
         logger.warning(
             "drum-midi (%s) failed for %s: %s",
             type(service).__name__,
@@ -77,11 +77,10 @@ def _run_drum_midi(stem_path: Path, output_dir: Path) -> Path | None:
             exc,
         )
         PIPELINE_MODEL_FALLBACK_TOTAL.labels(
-            model="adtos", fallback_reason="exception",
+            model="adtos",
+            fallback_reason="exception",
         ).inc()
-        result = _DRUM_MIDI_RULE.create_drum_midi(
-            stem_path, output_dir, stem_name="drums"
-        )
+        result = _DRUM_MIDI_RULE.create_drum_midi(stem_path, output_dir, stem_name="drums")
     if result.event_count == 0:
         logger.warning("drum-midi produced no hits for %s", stem_path.name)
     return result.combined_path
@@ -99,29 +98,21 @@ def transcribe_stems_or_mix(
 
     midi_paths: list[Path] = []
     drum_stem = stems.get("drums")
-    if (
-        drum_stem is not None
-        and drum_stem.is_file()
-        and drum_stem.stat().st_size > 1024
-    ):
+    if drum_stem is not None and drum_stem.is_file() and drum_stem.stat().st_size > 1024:
         try:
             drum_midi_path = _run_drum_midi(drum_stem, output_dir)
             if drum_midi_path is not None:
                 midi_paths.append(drum_midi_path)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning("drum-midi failed for stem drums: %s", exc)
 
     for stem_name in _MELODIC_STEMS:
         stem_path = stems.get(stem_name)
-        if (
-            stem_path is None
-            or not stem_path.is_file()
-            or stem_path.stat().st_size <= 1024
-        ):
+        if stem_path is None or not stem_path.is_file() or stem_path.stat().st_size <= 1024:
             continue
         try:
             midi_paths.append(_run_basic_pitch(stem_path, output_dir))
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning("audio-to-midi failed for stem %s: %s", stem_name, exc)
 
     if not midi_paths:

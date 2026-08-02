@@ -1,14 +1,16 @@
 """FastAPI application entry point."""
+
 from __future__ import annotations
 
 import logging
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
-from app.api.auth import router as auth_router
 from app.api.audio import router as audio_router
+from app.api.auth import router as auth_router
 from app.api.health import router as health_router
 from app.api.instruments import instruments_router
 from app.api.tasks import router as tasks_router
@@ -96,9 +98,7 @@ app = FastAPI(
 # handling the request carries the same id. Also attaches ``user_id`` when
 # authentication succeeds so log lines can be filtered by user.
 class RequestIdMiddleware(BaseHTTPMiddleware):
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         incoming = request.headers.get("X-Request-ID", "").strip()
         request_id = incoming[:32] if incoming else new_request_id()
         set_request_id(request_id)
@@ -140,8 +140,8 @@ if settings.cors_origins:
         CORSMiddleware,
         allow_origins=settings.cors_origins,
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "X-CSRF-Token", "X-Request-ID"],
     )
 
 app.include_router(audio_router)
@@ -158,13 +158,12 @@ app.include_router(ws_router)
 # no infrastructure details (file paths, broker addresses, stack traces) ever
 # leak to the frontend.
 
-from fastapi.responses import JSONResponse
-
 
 @app.exception_handler(AppError)
 async def _app_error_handler(request: Request, exc: AppError) -> JSONResponse:
     """Handle expected business errors (4xx) raised directly from services."""
     from app.logging_config import get_request_id
+
     request_id = get_request_id() or new_request_id()
     logger.warning(
         "business error on %s %s: [%s] %s",
@@ -207,14 +206,42 @@ settings.storage_dir.mkdir(parents=True, exist_ok=True)
 
 @app.on_event("startup")
 def _startup_checks() -> None:
-    """Seed a default admin user for local development so the SPA
-    has something to log in with on a fresh install.
+    """Run startup security warnings and seed a default admin user.
 
     Production security checks (JWT secret, DB password, etc.) are
     enforced by Settings.model_validator at config-load time, so the
     app won't even reach this point if they fail.
     """
+    _log_security_warnings()
     _seed_bootstrap_admin()
+
+
+def _log_security_warnings() -> None:
+    """Emit loud WARNING logs for any insecure default configuration.
+
+    These are non-fatal in dev mode (PRODUCTION_MODE=false) so local
+    development keeps working, but they make it impossible to miss that
+    production credentials have not been configured.
+    """
+    warnings: list[str] = []
+    if settings.jwt_secret == "dev-only-secret-please-change-in-production":
+        warnings.append("JWT_SECRET is using the dev default --- tokens are forgeable!")
+    if settings.db_password == "postgres123":
+        warnings.append("DB_PASSWORD is using the dev default ('postgres123')!")
+    if settings.bootstrap_admin_password == "admin1234":
+        warnings.append("BOOTSTRAP_ADMIN_PASSWORD is using the dev default ('admin1234')!")
+    dev_cors = {"http://localhost:5173", "http://127.0.0.1:5173"}
+    if set(settings.cors_origins) == dev_cors:
+        warnings.append("CORS_ORIGINS is using dev defaults (localhost only).")
+    if not settings.production_mode:
+        warnings.append("PRODUCTION_MODE is false --- debug-friendly settings are active.")
+    if warnings:
+        logger.warning("=" * 60)
+        logger.warning("SECURITY WARNINGS (non-fatal in dev mode):")
+        for w in warnings:
+            logger.warning("  ⚠️  %s", w)
+        logger.warning("Set PRODUCTION_MODE=true to enforce strict checks.")
+        logger.warning("=" * 60)
 
 
 def _seed_bootstrap_admin() -> None:
@@ -232,9 +259,7 @@ def _seed_bootstrap_admin() -> None:
 
     db = SessionLocal()
     try:
-        existing = user_service.get_user_by_email(
-            db, settings.bootstrap_admin_email
-        )
+        existing = user_service.get_user_by_email(db, settings.bootstrap_admin_email)
         if existing is not None:
             return
         try:
@@ -249,9 +274,10 @@ def _seed_bootstrap_admin() -> None:
             db.add(user)
             db.commit()
             logger.info(
-                "bootstrapped admin user %s", settings.bootstrap_admin_email,
+                "bootstrapped admin user %s",
+                settings.bootstrap_admin_email,
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             db.rollback()
             logger.warning("bootstrap admin seed failed: %s", exc)
     finally:

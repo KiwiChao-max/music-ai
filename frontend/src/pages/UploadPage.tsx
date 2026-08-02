@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
 import { useUploadAudio } from "@/hooks/useAudioTasks";
-import { MAX_UPLOAD_BYTES, validateAudioFile } from "@/utils/upload";
+import { MAX_UPLOAD_BYTES, looksLikeAudio, validateAudioFile } from "@/utils/upload";
 import { ErrorState } from "@/components/States";
 
 const ACCEPT = "audio/*";
@@ -12,6 +12,7 @@ export function UploadPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [picked, setPicked] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [dropError, setDropError] = useState<string | null>(null);
   const upload = useUploadAudio();
   const navigate = useNavigate();
   const { t } = useTranslation();
@@ -19,12 +20,18 @@ export function UploadPage() {
   const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0] ?? null;
     setPicked(f);
+    setDropError(null);
   };
 
   const acceptFile = (file: File | null) => {
-    if (file && file.type.startsWith("audio/")) {
-      setPicked(file);
+    if (!file) return;
+    if (!looksLikeAudio(file)) {
+      setDropError(t("upload.invalidType", { defaultValue: "Please drop an audio file." }));
+      setPicked(null);
+      return;
     }
+    setDropError(null);
+    setPicked(file);
   };
 
   const onDragOver = (e: React.DragEvent) => {
@@ -138,6 +145,9 @@ export function UploadPage() {
             error={upload.error}
             onRetry={() => upload.mutate(picked!)}
           />
+        )}
+        {dropError && (
+          <p className="text-sm text-red-600 dark:text-red-400">{dropError}</p>
         )}
         {validationError && (
           <p className="text-sm text-red-600 dark:text-red-400">{validationError}</p>

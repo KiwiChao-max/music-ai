@@ -16,6 +16,7 @@ CC reference:
   CC91  Reverb send level
   CC93  Chorus send level
 """
+
 from __future__ import annotations
 
 import math
@@ -58,7 +59,9 @@ def gm_setup_messages(
         Message("control_change", channel=channel, control=64, value=sustain, time=0),
     ]
     if brightness is not None:
-        msgs.append(Message("control_change", channel=channel, control=74, value=brightness, time=0))
+        msgs.append(
+            Message("control_change", channel=channel, control=74, value=brightness, time=0)
+        )
     if reverb is not None:
         msgs.append(Message("control_change", channel=channel, control=91, value=reverb, time=0))
     if chorus is not None:
@@ -88,4 +91,4 @@ def sustain_messages(channel: int, *, down_at: int, up_at: int) -> list[Message]
 # Velocity curve: maps a [0, 1] normalized signal to a 1..127 velocity.
 def velocity_from_strength(normalized: float) -> int:
     normalized = max(0.0, min(1.0, normalized))
-    return max(35, min(127, int(round(40 + 87 * math.sqrt(normalized)))))
+    return max(35, min(127, round(40 + 87 * math.sqrt(normalized))))

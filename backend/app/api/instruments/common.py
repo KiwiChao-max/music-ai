@@ -1,14 +1,15 @@
 """Shared helpers for the instruments API package."""
+
 from __future__ import annotations
 
 from fastapi import HTTPException
 
 # Size / count limits shared across sub-modules.
 MAX_SAMPLES_PER_LIBRARY = 80
-MAX_SAMPLE_BYTES = 5 * 1024 * 1024    # 5 MB per sample
-MAX_TOTAL_BYTES = 80 * 1024 * 1024    # 80 MB total per upload
-MAX_SF2_BYTES = 200 * 1024 * 1024     # 200 MB per SF2 upload
-MAX_CSV_BYTES = 1 * 1024 * 1024       # 1 MB per CSV preset table
+MAX_SAMPLE_BYTES = 5 * 1024 * 1024  # 5 MB per sample
+MAX_TOTAL_BYTES = 80 * 1024 * 1024  # 80 MB total per upload
+MAX_SF2_BYTES = 200 * 1024 * 1024  # 200 MB per SF2 upload
+MAX_CSV_BYTES = 1 * 1024 * 1024  # 1 MB per CSV preset table
 
 
 def check_resource_owner(user: object | None, owner_id: int | None) -> None:

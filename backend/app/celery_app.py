@@ -26,9 +26,11 @@ Tasks are routed by name: ``app.process_audio_task`` goes to
 a backlog of lightweight tasks from starving the heavy pipeline, and
 vice versa.
 """
+
 from __future__ import annotations
 
 import logging
+from datetime import UTC
 
 from app.config import settings
 from app.logging_config import setup_logging
@@ -36,8 +38,8 @@ from app.logging_config import setup_logging
 # Initialise logging before any module-level loggers are created.
 setup_logging()
 
-from kombu import Exchange, Queue  # noqa: E402
 from celery import Celery  # noqa: E402
+from kombu import Exchange, Queue  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -74,9 +76,7 @@ if _worker_concurrency <= 0:
             resources=_resources,
         )
     except Exception:
-        logger.warning(
-            "worker resource probe failed; falling back to concurrency=2"
-        )
+        logger.warning("worker resource probe failed; falling back to concurrency=2")
         _worker_concurrency = 2
 
 # Apply the explicit override if the operator set WORKER_CONCURRENCY > 0.
@@ -97,7 +97,7 @@ celery = Celery(
     "music_ai",
     broker=settings.resolved_celery_broker_url,
     backend=settings.resolved_celery_result_backend,
-    include=["app.tasks_audio"],
+    include=["app.tasks_audio", "app.tasks_scheduled"],
 )
 
 # Sensible defaults for a CPU-bound audio pipeline.
@@ -168,10 +168,22 @@ celery.conf.update(
         else None
     ),
     worker_max_tasks_per_child=(
-        settings.worker_max_tasks_per_child
-        if settings.worker_max_tasks_per_child > 0
-        else None
+        settings.worker_max_tasks_per_child if settings.worker_max_tasks_per_child > 0 else None
     ),
+    # --- beat schedule (periodic tasks) ---
+    # Run at 03:00 UTC daily so cleanup doesn't interfere with peak hours.
+    beat_schedule={
+        "purge-expired-tokens-daily": {
+            "task": "app.purge_expired_tokens",
+            "schedule": 60 * 60 * 24,  # once per day (seconds)
+            "options": {"queue": "celery", "expires": 60 * 60},  # skip if an hour late
+        },
+        "cleanup-old-tasks-daily": {
+            "task": "app.cleanup_old_tasks",
+            "schedule": 60 * 60 * 24,
+            "options": {"queue": "celery", "expires": 60 * 60},
+        },
+    },
 )
 
 # ---------------------------------------------------------------------------
@@ -181,14 +193,15 @@ celery.conf.update(
 # rejected or exceeds its retry limit, route it to a ``dead_letter`` queue
 # for inspection. This is wired up in ``tasks_audio.py`` via ``task_failure``
 # signal --- see ``_on_task_failure`` there.
-from celery.signals import task_failure, after_setup_logger, after_setup_task_logger  # noqa: E402
+from celery.signals import after_setup_logger, after_setup_task_logger, task_failure  # noqa: E402
 
 
 @after_setup_logger.connect
 def _configure_celery_logger(logger, loglevel, format, colorize, **_kwargs):
     """Replace Celery's default formatter with our unified JSON/text formatter."""
-    from app.logging_config import JsonFormatter, RequestIdFilter, TextFormatter
     import sys
+
+    from app.logging_config import JsonFormatter, RequestIdFilter, TextFormatter
 
     # Remove Celery's default handlers and re-add ours so the format is
     # consistent across API and worker processes.
@@ -196,6 +209,7 @@ def _configure_celery_logger(logger, loglevel, format, colorize, **_kwargs):
         logger.removeHandler(handler)
 
     import logging
+
     stream = logging.StreamHandler(sys.stdout)
     stream.setLevel(loglevel or logging.INFO)
     stream.addFilter(RequestIdFilter())
@@ -230,29 +244,28 @@ def _route_to_dead_letter(
     diagnose the failure without grepping worker logs.
     """
     try:
-        with celery.connection_or_acquire() as conn:
-            with conn.channel() as channel:
-                import json
-                from datetime import datetime, timezone
+        with celery.connection_or_acquire() as conn, conn.channel() as channel:
+            import json
+            from datetime import datetime
 
-                payload = json.dumps(
-                    {
-                        "task_id": task_id,
-                        "task_name": getattr(sender, "name", None),
-                        "args": list(args or []),
-                        "kwargs": kwargs or {},
-                        "exception": repr(exception) if exception else None,
-                        "ts": datetime.now(timezone.utc).isoformat(),
-                    },
-                    default=str,
-                )
-                channel.basic_publish(
-                    exchange="",
-                    routing_key="dead_letter",
-                    body=payload,
-                    properties={
-                        "delivery_mode": 2,  # persistent
-                    },
-                )
-    except Exception:  # noqa: BLE001 --- DLQ is best-effort
+            payload = json.dumps(
+                {
+                    "task_id": task_id,
+                    "task_name": getattr(sender, "name", None),
+                    "args": list(args or []),
+                    "kwargs": kwargs or {},
+                    "exception": repr(exception) if exception else None,
+                    "ts": datetime.now(UTC).isoformat(),
+                },
+                default=str,
+            )
+            channel.basic_publish(
+                exchange="",
+                routing_key="dead_letter",
+                body=payload,
+                properties={
+                    "delivery_mode": 2,  # persistent
+                },
+            )
+    except Exception:
         pass

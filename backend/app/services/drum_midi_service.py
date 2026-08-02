@@ -25,6 +25,7 @@ playable in any GM-aware DAW without manual re-mixing:
   * CC11 (expression)       --- 127
   * CC64 (sustain pedal)    --- only for melodic tracks; drums ignore
 """
+
 from __future__ import annotations
 
 import csv
@@ -97,30 +98,30 @@ DRUM_PARTS: tuple[str, ...] = (
 # ---------------------------------------------------------------------------
 _GM_DRUM_NOTES: dict[str, int] = {
     # Tonal kick
-    "kick": 36,           # Bass Drum 1
+    "kick": 36,  # Bass Drum 1
     # Snare family
-    "snare": 38,          # Acoustic Snare
-    "sidestick": 37,      # Side Stick
+    "snare": 38,  # Acoustic Snare
+    "sidestick": 37,  # Side Stick
     # Hi-hats
-    "hihat_closed": 42,   # Closed Hi-Hat
-    "hihat_open": 46,     # Open Hi-Hat
+    "hihat_closed": 42,  # Closed Hi-Hat
+    "hihat_open": 46,  # Open Hi-Hat
     # Toms (high to low)
-    "tom_high": 50,       # High Tom
-    "tom_himid": 48,      # Hi-Mid Tom
-    "tom_lomid": 47,      # Low-Mid Tom
-    "tom_low": 45,        # Low Tom
-    "tom_floor": 41,      # Low Floor Tom
+    "tom_high": 50,  # High Tom
+    "tom_himid": 48,  # Hi-Mid Tom
+    "tom_lomid": 47,  # Low-Mid Tom
+    "tom_low": 45,  # Low Tom
+    "tom_floor": 41,  # Low Floor Tom
     # Cymbals
-    "crash": 49,          # Crash Cymbal 1
-    "ride": 51,           # Ride Cymbal 1
-    "china": 52,          # Chinese Cymbal
-    "splash": 55,         # Splash Cymbal
-    "ride_bell": 53,      # Ride Bell
+    "crash": 49,  # Crash Cymbal 1
+    "ride": 51,  # Ride Cymbal 1
+    "china": 52,  # Chinese Cymbal
+    "splash": 55,  # Splash Cymbal
+    "ride_bell": 53,  # Ride Bell
     # Hand / small percussion
     "tambourine": 54,
     "cowbell": 56,
-    "percussion": 60,     # High Bongo --- placeholder; the writer also accepts
-                          # an explicit note for fine-grained hits.
+    "percussion": 60,  # High Bongo --- placeholder; the writer also accepts
+    # an explicit note for fine-grained hits.
     # "fill" is a heuristic overlay; it remaps to a low-mid tom so the part
     # MIDI is still playable on a default GM kit.
     "fill": 47,
@@ -252,7 +253,7 @@ class DrumMidiService:
         try:
             tempo, _beats = librosa.beat.beat_track(y=y, sr=sr)
             bpm = float(np.asarray(tempo).reshape(-1)[0])
-        except Exception as exc:  # noqa: BLE001 - fallback is good enough here
+        except Exception as exc:
             logger.debug("drum-midi: tempo estimate failed: %s", exc)
             return self.default_bpm
         if not math.isfinite(bpm) or bpm < 40.0 or bpm > 240.0:
@@ -260,9 +261,7 @@ class DrumMidiService:
         return bpm
 
     # ---- onset + per-hit feature extraction ---------------------------------
-    def _detect_hits(
-        self, y, sr: int, *, bpm: float | None = None
-    ) -> list[DrumHit]:
+    def _detect_hits(self, y, sr: int, *, bpm: float | None = None) -> list[DrumHit]:
         import librosa
         import numpy as np
 
@@ -317,9 +316,7 @@ class DrumMidiService:
         def _mean_over_freq(matrix: np.ndarray, axis: int = -1) -> np.ndarray:
             return np.mean(matrix, axis=axis)
 
-        onset_env = librosa.onset.onset_strength(
-            y=y, sr=sr, aggregate=_mean_over_freq
-        )
+        onset_env = librosa.onset.onset_strength(y=y, sr=sr, aggregate=_mean_over_freq)
         frames = librosa.onset.onset_detect(
             y=y,
             sr=sr,
@@ -359,12 +356,13 @@ class DrumMidiService:
         # 5 % of hits are clamped to velocity 127.
         strengths = [feat[4] for feat in features]
         ref_strength = (
-            float(np.percentile(strengths, 95)) if len(strengths) > 1
-            else (max(strengths) or 1.0)
+            float(np.percentile(strengths, 95)) if len(strengths) > 1 else (max(strengths) or 1.0)
         )
 
         raw_hits: list[DrumHit] = []
-        for time_s, (part, confidence, centroid, flux, strength) in zip(times, features):
+        for time_s, (part, confidence, centroid, flux, strength) in zip(
+            times, features, strict=False
+        ):
             raw_hits.append(
                 DrumHit(
                     time_s=float(time_s),
@@ -578,13 +576,21 @@ class DrumMidiService:
             prev_gap = hit.time_s - hits[index - 1].time_s if index > 0 else 99.0
             next_gap = hits[index + 1].time_s - hit.time_s if index + 1 < len(hits) else 99.0
             if len(nearby) >= 2 or prev_gap < 0.22 or next_gap < 0.22:
-                fill_flags[index] = hit.part in {"kick", "snare", "tom_high", "tom_himid", "tom_lomid", "tom_low", "tom_floor"}
+                fill_flags[index] = hit.part in {
+                    "kick",
+                    "snare",
+                    "tom_high",
+                    "tom_himid",
+                    "tom_lomid",
+                    "tom_low",
+                    "tom_floor",
+                }
 
         if not any(fill_flags):
             return list(hits)
 
         out: list[DrumHit] = []
-        for hit, is_fill in zip(hits, fill_flags):
+        for hit, is_fill in zip(hits, fill_flags, strict=False):
             out.append(hit)
             if is_fill:
                 out.append(
@@ -632,11 +638,9 @@ class DrumMidiService:
 
         events = []
         for hit in hits:
-            start_tick = int(round(second2tick(hit.time_s, ticks_per_beat, tempo)))
+            start_tick = round(second2tick(hit.time_s, ticks_per_beat, tempo))
             duration_s = _NOTE_LENGTHS_SECONDS.get(hit.part, 0.09)
-            end_tick = start_tick + max(
-                1, int(round(second2tick(duration_s, ticks_per_beat, tempo)))
-            )
+            end_tick = start_tick + max(1, round(second2tick(duration_s, ticks_per_beat, tempo)))
             events.append(
                 (
                     start_tick,

@@ -5,6 +5,7 @@ Order of precedence for settings:
     2. a `.env` file in the project root (loaded by pydantic-settings)
     3. the defaults below (which match the local Postgres from `docker-compose.yml`)
 """
+
 from __future__ import annotations
 
 from functools import lru_cache
@@ -47,9 +48,7 @@ class Settings(BaseSettings):
     # outputs subdirectory (e.g. uploads on a faster SSD, outputs on a big
     # HDD), set UPLOAD_DIR / OUTPUT_DIR directly --- they take precedence over
     # the derived `<storage_dir>/{uploads,outputs}`.
-    storage_dir: Path = Field(
-        default=Path(__file__).resolve().parent.parent.parent / "storage"
-    )
+    storage_dir: Path = Field(default=Path(__file__).resolve().parent.parent.parent / "storage")
 
     # Where raw uploads land. One subdirectory per task, file is `original.<ext>`.
     upload_dir: Path | None = None
@@ -283,10 +282,10 @@ class Settings(BaseSettings):
     # (e.g. a previous task leaked memory), the task is rejected and
     # re-queued to a fresh child.  Set to 0 to disable the pre-task gate.
     #
-    # Default mirrors ``worker_max_memory_per_child_mb`` so the two gates
-    # work together: the pre-task check *prevents* OOM, the post-task
-    # recycling *cleans up* after a near-miss.
-    worker_memory_gate_mb: int = 0  # 0 = disabled by default; set explicitly
+    # Default 3 000 MiB is slightly below ``worker_max_memory_per_child_mb``
+    # (3 500 MiB) so the two gates work together: the pre-task check
+    # *prevents* OOM, the post-task recycling *cleans up* after a near-miss.
+    worker_memory_gate_mb: int = 3_000
 
     # Max tasks per worker child before forced recycling.  Useful as a
     # belt-and-suspenders defence against slow memory leaks (e.g. a
@@ -334,9 +333,7 @@ class Settings(BaseSettings):
     # Defaults to localhost only --- safe for direct-uvicorn dev setups.
     # In production behind a reverse proxy, set this to the proxy's IP
     # or the Docker network CIDR.
-    trusted_proxies: list[str] = Field(
-        default_factory=lambda: ["127.0.0.1", "::1"]
-    )
+    trusted_proxies: list[str] = Field(default_factory=lambda: ["127.0.0.1", "::1"])
 
     @field_validator("trusted_proxies", mode="before")
     @classmethod
@@ -410,10 +407,7 @@ class Settings(BaseSettings):
             )
 
         if errors:
-            raise ValueError(
-                "Production security checks failed:\n  - "
-                + "\n  - ".join(errors)
-            )
+            raise ValueError("Production security checks failed:\n  - " + "\n  - ".join(errors))
 
         return self
 

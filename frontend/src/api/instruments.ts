@@ -126,9 +126,7 @@ export const instrumentsApi = {
       form.append("zip_file", params.zipFile);
     }
     return api
-      .post<SampleLibraryInfo>("/instruments/libraries", form, {
-        headers: { "Content-Type": "multipart/form-data" },
-      })
+      .post<SampleLibraryInfo>("/instruments/libraries", form)
       .then((r) => r.data);
   },
   activate: (libraryId: number) =>
@@ -165,9 +163,7 @@ export const instrumentsApi = {
       form.append("label", params.label);
     }
     return api
-      .patch<SampleLibraryInfo>(`/instruments/libraries/${libraryId}/samples/${sampleId}`, form, {
-        headers: { "Content-Type": "multipart/form-data" },
-      })
+      .patch<SampleLibraryInfo>(`/instruments/libraries/${libraryId}/samples/${sampleId}`, form)
       .then((r) => r.data);
   },
   addSample: (libraryId: number, file: File, midiNote?: number): Promise<SampleLibraryInfo> => {
@@ -177,9 +173,7 @@ export const instrumentsApi = {
       form.append("midi_note", String(midiNote));
     }
     return api
-      .post<SampleLibraryInfo>(`/instruments/libraries/${libraryId}/samples`, form, {
-        headers: { "Content-Type": "multipart/form-data" },
-      })
+      .post<SampleLibraryInfo>(`/instruments/libraries/${libraryId}/samples`, form)
       .then((r) => r.data);
   },
   removeSample: (libraryId: number, sampleId: number): Promise<SampleLibraryInfo> =>
@@ -190,9 +184,7 @@ export const instrumentsApi = {
     const form = new FormData();
     form.append("file", file);
     return api
-      .post<SampleClassification>("/instruments/classify", form, {
-        headers: { "Content-Type": "multipart/form-data" },
-      })
+      .post<SampleClassification>("/instruments/classify", form)
       .then((r) => r.data);
   },
   listDrumTypes: () =>
@@ -204,9 +196,7 @@ export const instrumentsApi = {
     form.append("file", file);
     form.append("name", name);
     return api
-      .post<PresetTableImportResult>("/instruments/preset-table/import", form, {
-        headers: { "Content-Type": "multipart/form-data" },
-      })
+      .post<PresetTableImportResult>("/instruments/preset-table/import", form)
       .then((r) => r.data);
   },
   importSoundFont: (file: File, name: string, description?: string): Promise<SoundFontInfo> => {
@@ -217,9 +207,7 @@ export const instrumentsApi = {
       form.append("description", description);
     }
     return api
-      .post<SoundFontInfo>("/instruments/soundfont/import", form, {
-        headers: { "Content-Type": "multipart/form-data" },
-      })
+      .post<SoundFontInfo>("/instruments/soundfont/import", form)
       .then((r) => r.data);
   },
   listSoundFonts: () =>

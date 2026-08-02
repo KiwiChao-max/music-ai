@@ -12,16 +12,17 @@ The same key signs both kinds of tokens; the `type` claim tells the
 verifier which TTL to enforce, so a refresh token can never be used in
 place of an access token by accident.
 """
+
 from __future__ import annotations
 
 import hashlib
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -35,7 +36,12 @@ from app.utils.errors import AuthError
 # encoding (we already enforce a 128-char max on signup).
 _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-TokenType = Literal["access", "refresh"]
+TokenType = Literal["access", "refresh", "download"]
+
+# Download-token TTL is short (5 minutes) because it is embedded in URLs
+# for <audio>/<video> elements that cannot set Authorization headers.
+# A leaked URL in logs/Referer/history expires quickly.
+DOWNLOAD_TOKEN_TTL_SECONDS = 300
 
 
 # ---- password hashing -----------------------------------------------------
@@ -65,7 +71,7 @@ def _hash_token(raw: str) -> str:
 
 # ---- JWT helpers ----------------------------------------------------------
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _ttl_for(token_type: TokenType) -> timedelta:
@@ -114,12 +120,77 @@ def decode_token(token: str, *, expected_type: TokenType) -> dict[str, Any]:
 
     if payload.get("type") != expected_type:
         raise ValueError(
-            f"wrong token type: expected {expected_type!r}, "
-            f"got {payload.get('type')!r}"
+            f"wrong token type: expected {expected_type!r}, got {payload.get('type')!r}"
         )
     if not payload.get("sub"):
         raise ValueError("token missing subject")
     return payload
+
+
+# ---- download tokens (short-lived scoped URLs for media elements) ---------
+
+
+def create_download_token(
+    user_id: int,
+    task_id: int,
+    *,
+    scope: str,
+    filename: str,
+) -> str:
+    """Create a short-lived, file-scoped token for media downloads.
+
+    Used to authenticate <audio>/<video> element requests that cannot set
+    the Authorization header. The token is scoped to a single task, scope
+    (upload/output), and filename, and expires after 5 minutes. It is NOT
+    stored server-side; integrity + authenticity are guaranteed by HMAC.
+    """
+    now = _now()
+    payload: dict[str, Any] = {
+        "sub": str(user_id),
+        "iat": int(now.timestamp()),
+        "exp": int(now.timestamp()) + DOWNLOAD_TOKEN_TTL_SECONDS,
+        "type": "download",
+        "task_id": task_id,
+        "scope": scope,
+        "filename": filename,
+    }
+    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+
+def verify_download_token(
+    token: str,
+    *,
+    task_id: int,
+    scope: str,
+    filename: str,
+) -> int:
+    """Verify a download token and return the user_id.
+
+    Raises ValueError if the token is invalid, expired, or doesn't match
+    the requested task/scope/filename.
+    """
+    try:
+        payload = jwt.decode(
+            token,
+            settings.jwt_secret,
+            algorithms=[settings.jwt_algorithm],
+        )
+    except JWTError as exc:
+        raise ValueError(f"invalid download token: {exc}") from exc
+
+    if payload.get("type") != "download":
+        raise ValueError("wrong token type for download")
+    if payload.get("task_id") != task_id:
+        raise ValueError("download token task mismatch")
+    if payload.get("scope") != scope:
+        raise ValueError("download token scope mismatch")
+    if payload.get("filename") != filename:
+        raise ValueError("download token filename mismatch")
+
+    sub = payload.get("sub")
+    if not sub:
+        raise ValueError("download token missing subject")
+    return int(sub)
 
 
 # ---- access + refresh pair ------------------------------------------------
@@ -141,12 +212,8 @@ def issue_token_pair(
     refresh_jti = str(uuid.uuid4())
     family_id = str(uuid.uuid4())
 
-    access_token = create_token(
-        user_id, token_type="access", jti=access_jti, extra_claims=extra
-    )
-    refresh_token = create_token(
-        user_id, token_type="refresh", jti=refresh_jti, extra_claims=extra
-    )
+    access_token = create_token(user_id, token_type="access", jti=access_jti, extra_claims=extra)
+    refresh_token = create_token(user_id, token_type="refresh", jti=refresh_jti, extra_claims=extra)
 
     # Persist the refresh-token record.
     now = _now()
@@ -174,12 +241,14 @@ class TokenReuseError(AuthError):
     """Raised when a previously-used refresh token is presented again ---
     this is a strong signal of token theft.  All tokens in the family
     have been revoked; the user must re-authenticate."""
+
     code = "token_reuse"
     message = "Session expired. Please log in again."
 
 
 class TokenRevokedError(AuthError):
     """Raised when a revoked token is presented."""
+
     code = "token_revoked"
     message = "Session expired. Please log in again."
 
@@ -187,6 +256,7 @@ class TokenRevokedError(AuthError):
 class TokenNotFoundError(AuthError):
     """Raised when the token hash is not found in the DB (expired, cleaned
     up, or never existed)."""
+
     code = "token_not_found"
     message = "Session expired. Please log in again."
 
@@ -210,8 +280,8 @@ def rotate_refresh_token(db: Session, raw_token: str) -> dict[str, Any]:
     # 1. Decode the JWT (stateless verification).
     try:
         claims = decode_token(raw_token, expected_type="refresh")
-    except ValueError:
-        raise TokenNotFoundError("invalid or expired refresh token")
+    except ValueError as e:
+        raise TokenNotFoundError("invalid or expired refresh token") from e
 
     try:
         user_id = int(claims["sub"])
@@ -255,9 +325,7 @@ def rotate_refresh_token(db: Session, raw_token: str) -> dict[str, Any]:
     new_access = create_token(
         user_id, token_type="access", jti=str(uuid.uuid4()), extra_claims=extra
     )
-    new_refresh = create_token(
-        user_id, token_type="refresh", jti=new_jti, extra_claims=extra
-    )
+    new_refresh = create_token(user_id, token_type="refresh", jti=new_jti, extra_claims=extra)
 
     new_record = RefreshToken(
         jti=new_jti,
@@ -309,15 +377,12 @@ def revoke_all_user_tokens(db: Session, user_id: int) -> int:
 
 # ---- cleanup (call periodically, e.g. via a cron job) ---------------------
 def purge_expired_tokens(db: Session) -> int:
-    """Delete expired token records.  Returns the number of rows removed."""
-    stmt = (
-        select(RefreshToken)
-        .where(RefreshToken.expires_at < _now())
-    )
-    rows = db.scalars(stmt).all()
-    count = len(rows)
-    for row in rows:
-        db.delete(row)
-    if count:
-        db.flush()
-    return count
+    """Delete expired token records.  Returns the number of rows removed.
+
+    Uses a single bulk DELETE statement instead of loading all rows into
+    memory and deleting one-by-one, which is critical for large tables.
+    """
+    stmt = delete(RefreshToken).where(RefreshToken.expires_at < _now())
+    result = db.execute(stmt)
+    db.flush()
+    return result.rowcount or 0

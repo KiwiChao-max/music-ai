@@ -1,0 +1,70 @@
+# Pre-commit hooks for music-ai
+#
+# Install:
+#   pip install pre-commit
+#   pre-commit install
+#
+# Run manually:
+#   pre-commit run --all-files
+#
+# See https://pre-commit.com for more information.
+repos:
+  # ---- General checks -------------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: check-merge-conflict
+      - id: detect-private-key
+
+  # ---- Python: Ruff (lint + format in one tool) ----------------------------
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+        name: ruff lint (backend)
+        args: [--fix]
+        files: ^backend/
+        types_or: [python, pyi]
+        exclude: ^backend/\.venv|^backend/alembic/versions/
+      - id: ruff-format
+        name: ruff format (backend)
+        files: ^backend/
+        types_or: [python, pyi]
+        exclude: ^backend/\.venv|^backend/alembic/versions/
+
+  # ---- Python: mypy (type checking) ----------------------------------------
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.13.0
+    hooks:
+      - id: mypy
+        name: mypy (backend)
+        files: ^backend/app/
+        args: [--config-file=backend/pyproject.toml]
+        additional_dependencies:
+          [
+            "types-passlib",
+          ]
+        pass_filenames: false  # let mypy read pyproject.toml include/exclude
+
+  # ---- Frontend: ESLint + Prettier (run via npm script) --------------------
+  - repo: local
+    hooks:
+      - id: eslint
+        name: eslint (frontend)
+        entry: bash -c 'cd frontend && npx eslint src --ext .ts,.tsx --fix'
+        language: system
+        files: ^frontend/src/.*\.(ts|tsx)$
+        pass_filenames: false
+
+      - id: prettier
+        name: prettier (frontend)
+        entry: bash -c 'cd frontend && npx prettier --write "src/**/*.{ts,tsx,json,css,html}"'
+        language: system
+        files: ^frontend/src/.*\.(ts|tsx|json|css|html)$
+        pass_filenames: false

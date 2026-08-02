@@ -26,21 +26,21 @@ Activation is feature-flagged: ``Settings.adt_enabled`` (default
 failure (missing checkpoint, missing torch, inference exception)
 propagates so the worker can fall back and log a single warning.
 """
+
 from __future__ import annotations
 
 import logging
-import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
 from .drum_midi_service import (
+    _GM_DRUM_NOTES,
+    _NOTE_LENGTHS_SECONDS,
     DRUM_PARTS,
     DrumHit,
     DrumMidiResult,
     DrumMidiService,
-    _GM_DRUM_NOTES,
-    _NOTE_LENGTHS_SECONDS,
 )
 from .midi_cc import velocity_from_strength
 
@@ -103,8 +103,7 @@ class ADTModelBackend(Protocol):
     returns canned predictions.
     """
 
-    def predict(self, audio_path: Path) -> list[ADTHit]:
-        ...
+    def predict(self, audio_path: Path) -> list[ADTHit]: ...
 
 
 # ---------------------------------------------------------------------------
@@ -164,13 +163,14 @@ class ADTDrumService:
             if adt.label not in ADTOS_LABELS:
                 if not self._warned:
                     logger.warning(
-                        "ADTOS returned unknown label %r --- ignoring", adt.label,
+                        "ADTOS returned unknown label %r --- ignoring",
+                        adt.label,
                     )
                     self._warned = True
                 continue
             part = self._resolve_part(y, sr, adt)
             midi_note = _GM_DRUM_NOTES.get(part, _GM_DRUM_NOTES["snare"])
-            duration = _NOTE_LENGTHS_SECONDS.get(part, 0.09)
+            _NOTE_LENGTHS_SECONDS.get(part, 0.09)
             # Velocity is not part of the ADTOS contract; we derive it
             # from the model's confidence so soft predictions produce
             # softer hits in the GM velocity curve.
@@ -251,7 +251,7 @@ class ADTDrumService:
         # existing 19-part layout depends on it.
         try:
             return self._subclassify_cymbal(y, sr, adt.time_s, coarse=adt.label)
-        except Exception as exc:  # noqa: BLE001 - keep the pipeline alive
+        except Exception as exc:
             logger.debug("cymbal sub-classifier failed at t=%.3fs: %s", adt.time_s, exc)
             return "crash" if adt.label == "CY" else "ride"
 
@@ -274,7 +274,6 @@ class ADTDrumService:
         """
         import numpy as np
 
-        group = _CRASH_GROUP if coarse == "CY" else _RIDE_GROUP
         # Default --- collapses to the most common cymbal in the group.
         default = "crash" if coarse == "CY" else "ride"
 
@@ -293,7 +292,7 @@ class ADTDrumService:
         total = float(np.sum(spectrum)) + 1e-9
 
         centroid = float(np.sum(freqs * spectrum) / total)
-        very_high_ratio = float(np.sum(spectrum[freqs >= 7500.0]) / total)
+        float(np.sum(spectrum[freqs >= 7500.0]) / total)
         high_ratio = float(np.sum(spectrum[(freqs >= 3500.0)]) / total)
 
         early_end = min(window.size, max(1, int(0.04 * sr)))
@@ -325,7 +324,7 @@ class ADTDrumService:
 
 __all__ = [
     "ADTOS_LABELS",
+    "ADTDrumService",
     "ADTHit",
     "ADTModelBackend",
-    "ADTDrumService",
 ]

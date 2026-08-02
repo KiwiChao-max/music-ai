@@ -19,6 +19,7 @@ two layers of protection:
 Both layers are optional; set ``WORKER_MEMORY_LIMIT_MB`` to 0 to
 disable the pre-task gate.
 """
+
 from __future__ import annotations
 
 import logging
@@ -37,6 +38,7 @@ class MemoryPressureError(ServerError):
     re-queued so a fresh child can pick it up. It never propagates to the
     API response layer directly.
     """
+
     code = "memory_pressure"
     message = "Server is under memory pressure. Please retry shortly."
     status_code = 503  # Service Unavailable
@@ -114,8 +116,7 @@ def enforce_memory_limit(limit_mb: int) -> None:
 
     if rss >= limit_mb:
         raise MemoryPressureError(
-            f"worker RSS {rss} MiB >= limit {limit_mb} MiB; "
-            f"rejecting task to avoid OOM"
+            f"worker RSS {rss} MiB >= limit {limit_mb} MiB; rejecting task to avoid OOM"
         )
 
     # Also check available memory: if the system is already under
@@ -131,5 +132,7 @@ def enforce_memory_limit(limit_mb: int) -> None:
 
     logger.debug(
         "memory gate: rss=%d MiB / limit=%d MiB, available=%d MiB --- ok",
-        rss, limit_mb, available,
+        rss,
+        limit_mb,
+        available,
     )

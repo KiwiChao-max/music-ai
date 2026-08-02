@@ -4,6 +4,7 @@ The module is the single source of truth for "is this request
 authenticated?" --- every protected endpoint pulls `current_user` from
 here so we never accidentally forget to verify the token.
 """
+
 from __future__ import annotations
 
 from typing import Annotated
@@ -64,9 +65,9 @@ CurrentUser = Annotated[object, Depends(get_current_user)]
 
 
 def get_current_user_optional(
-    token: Annotated[str | None, Depends(
-        OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
-    )],
+    token: Annotated[
+        str | None, Depends(OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False))
+    ],
     db: Annotated[Session, Depends(get_db)],
 ):
     """Like `get_current_user` but returns `None` instead of raising when

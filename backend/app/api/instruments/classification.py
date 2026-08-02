@@ -1,7 +1,8 @@
 """Sample classification API endpoints."""
+
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from app.api.deps import OptionalAuthUser
 from app.api.instruments.common import MAX_SAMPLE_BYTES

@@ -71,6 +71,11 @@ interface UseTaskProgressOptions {
   enabled?: boolean;
 }
 
+/** Maximum number of reconnection attempts before giving up and letting
+ *  HTTP polling take over. This prevents infinite reconnection loops
+ *  when the server is permanently unavailable. */
+const MAX_RECONNECT_ATTEMPTS = 30;
+
 /**
  * Subscribe to live progress for a single task and patch the React
  * Query cache. Auto-reconnects with exponential backoff (cap 10 s)
@@ -88,23 +93,24 @@ export function useTaskProgress(
 
   useEffect(() => {
     if (!enabled || !Number.isFinite(taskId)) return;
-    const token = getAccessToken();
     const url = `${wsBaseUrl()}/ws/tasks/${taskId}/progress`;
 
     let socket: WebSocket | null = null;
     let retryMs = 500;
     let timer: number | null = null;
+    let reconnectAttempts = 0;
     closedByUs.current = false;
 
     const connect = () => {
-      // Pass the JWT via the WebSocket sub-protocol so it never appears
-      // in the URL (no access-log / proxy-log / browser-history leakage).
-      // The backend reads the ``Sec-WebSocket-Protocol`` header and
-      // extracts the token from it.
+      // Re-read the token on each connect attempt so reconnections after
+      // a token refresh use the latest access token (avoids stale-closure
+      // bug where reconnect uses an expired token).
+      const token = getAccessToken();
       socket = new WebSocket(url, token ? token : undefined);
 
       socket.addEventListener("open", () => {
         retryMs = 500; // reset backoff after a successful connect
+        reconnectAttempts = 0;
       });
 
       socket.addEventListener("message", (msg) => {
@@ -145,6 +151,11 @@ export function useTaskProgress(
 
       const scheduleRetry = () => {
         if (closedByUs.current) return;
+        reconnectAttempts++;
+        if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
+          // Give up --- HTTP polling (refetchInterval) will take over.
+          return;
+        }
         timer = window.setTimeout(connect, retryMs);
         retryMs = Math.min(retryMs * 2, 10_000);
       };
@@ -158,11 +169,9 @@ export function useTaskProgress(
         scheduleRetry();
       });
       socket.addEventListener("error", () => {
-        try {
-          socket?.close();
-        } catch {
-          // ignore: the close handler will trigger a reconnect
-        }
+        // The `close` event fires immediately after `error`; just let
+        // the close handler schedule the retry. Don't call close() here
+        // to avoid double-close triggering extra events.
       });
     };
 

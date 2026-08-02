@@ -13,10 +13,10 @@ All probe functions are best-effort: if a probe fails (e.g. no
 ``/proc/meminfo`` inside a container with a restricted filesystem),
 we fall back to the configured defaults.
 """
+
 from __future__ import annotations
 
 import logging
-import math
 import os
 import shutil
 from dataclasses import dataclass, field
@@ -155,7 +155,9 @@ def _detect_gpu() -> tuple[int, list[int]]:
 
             result = subprocess.run(
                 [nvidia_smi, "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
-                capture_output=True, text=True, timeout=10,
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             for line in result.stdout.strip().splitlines():
                 if line.strip():
@@ -181,9 +183,7 @@ def _calculate_concurrency(resources: WorkerResources) -> None:
 
     # GPU path: one task per GPU (Demucs typically saturates a GPU).
     if resources.gpu_count > 0 and resources.gpu_memory_mb:
-        gpu_limited = sum(
-            vram // _PER_TASK_GPU_MB for vram in resources.gpu_memory_mb
-        )
+        gpu_limited = sum(vram // _PER_TASK_GPU_MB for vram in resources.gpu_memory_mb)
         resources.gpu_concurrency = max(1, min(resources.gpu_count, gpu_limited))
         # When GPU is available, prefer GPU concurrency (faster) but also
         # respect memory constraints --- don't launch more tasks than RAM
@@ -199,8 +199,7 @@ def _calculate_concurrency(resources: WorkerResources) -> None:
     # Profile label for logging.
     if resources.gpu_count > 0:
         resources.profile = (
-            f"gpu-{resources.gpu_count}x"
-            f"({','.join(str(m) for m in resources.gpu_memory_mb)}MiB)"
+            f"gpu-{resources.gpu_count}x({','.join(str(m) for m in resources.gpu_memory_mb)}MiB)"
         )
     else:
         resources.profile = f"cpu-{resources.cpu_cores}c-{resources.total_memory_mb}MiB"

@@ -5,10 +5,10 @@ limit. `effective_max_tasks` and `effective_max_upload_bytes` consult
 the user's row first and fall back to the server-wide default; 0 in
 either place means "no limit" / "use the global default".
 """
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -31,34 +31,38 @@ _FULL_NAME_MAX = 128
 
 class EmailAlreadyExistsError(ConflictError):
     """Raised when signup is attempted with an email that is already taken."""
+
     code = "email_taken"
     message = "Email already in use."
 
 
 class UsernameAlreadyExistsError(ConflictError):
     """Raised when signup is attempted with a username that is already taken."""
+
     code = "username_taken"
     message = "Username already taken."
 
 
 class InvalidCredentialsError(AuthError):
     """Raised on a failed login (wrong email or wrong password)."""
+
     code = "invalid_credentials"
     message = "Invalid credentials."
 
 
 class UserNotFoundError(NotFoundError):
     """Raised when a lookup by id does not find the user."""
+
     code = "user_not_found"
     message = "User not found."
 
 
 # ---- reads ----------------------------------------------------------------
-def get_user(db: Session, user_id: int) -> Optional[User]:
+def get_user(db: Session, user_id: int) -> User | None:
     return db.get(User, user_id)
 
 
-def get_user_by_email(db: Session, email: str) -> Optional[User]:
+def get_user_by_email(db: Session, email: str) -> User | None:
     """Case-insensitive lookup. SQLite tests don't have a LOWER() index
     so the `func.lower` call still works; it just falls back to a scan
     on the unique index path.
@@ -69,12 +73,10 @@ def get_user_by_email(db: Session, email: str) -> Optional[User]:
     return db.scalars(stmt).first()
 
 
-def get_user_by_username(db: Session, username: str) -> Optional[User]:
+def get_user_by_username(db: Session, username: str) -> User | None:
     if not username:
         return None
-    stmt = select(User).where(
-        func.lower(User.username) == username.lower().strip()
-    )
+    stmt = select(User).where(func.lower(User.username) == username.lower().strip())
     return db.scalars(stmt).first()
 
 
@@ -99,13 +101,9 @@ def create_user(
     if not username or len(username) > _USERNAME_MAX:
         raise ValueError("invalid username")
     if len(password) < _PASSWORD_MIN:
-        raise ValueError(
-            f"password must be at least {_PASSWORD_MIN} characters"
-        )
+        raise ValueError(f"password must be at least {_PASSWORD_MIN} characters")
     if len(password) > _PASSWORD_MAX:
-        raise ValueError(
-            f"password must be at most {_PASSWORD_MAX} characters"
-        )
+        raise ValueError(f"password must be at most {_PASSWORD_MAX} characters")
     if full_name is not None and len(full_name) > _FULL_NAME_MAX:
         raise ValueError("full name too long")
 
@@ -132,9 +130,7 @@ def create_user(
     return user
 
 
-def authenticate(
-    db: Session, *, identifier: str, password: str
-) -> User:
+def authenticate(db: Session, *, identifier: str, password: str) -> User:
     """Look up by email OR username and verify the password.
 
     Raises `InvalidCredentialsError` on either unknown identifier or
@@ -143,21 +139,19 @@ def authenticate(
     """
     if not identifier or not password:
         raise InvalidCredentialsError("invalid credentials")
-    user = get_user_by_email(db, identifier) or get_user_by_username(
-        db, identifier
-    )
+    user = get_user_by_email(db, identifier) or get_user_by_username(db, identifier)
     if user is None or not user.is_active:
         raise InvalidCredentialsError("invalid credentials")
     if not auth_service.verify_password(password, user.password_hash):
         raise InvalidCredentialsError("invalid credentials")
-    user.last_login_at = datetime.now(timezone.utc)
+    user.last_login_at = datetime.now(UTC)
     db.add(user)
     db.flush()
     return user
 
 
 def touch_last_login(db: Session, user: User) -> None:
-    user.last_login_at = datetime.now(timezone.utc)
+    user.last_login_at = datetime.now(UTC)
     db.add(user)
     db.flush()
 
@@ -190,10 +184,6 @@ def count_active_tasks(db: Session, user_id: int) -> int:
     stmt = (
         select(func.count(AudioTask.id))
         .where(AudioTask.user_id == user_id)
-        .where(
-            AudioTask.status.in_(
-                [AudioTaskStatus.UPLOADED, AudioTaskStatus.PROCESSING]
-            )
-        )
+        .where(AudioTask.status.in_([AudioTaskStatus.UPLOADED, AudioTaskStatus.PROCESSING]))
     )
     return int(db.execute(stmt).scalar_one() or 0)

@@ -19,6 +19,14 @@ services:
       timeout: 5s
       retries: 10
     restart: unless-stopped
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "${POSTGRES_CPUS:-1.0}"
+          memory: ${POSTGRES_MEMORY:-1g}
+        reservations:
+          memory: 256m
 
   redis:
     # Broker + result backend for Celery.  The `api` and `worker` services
@@ -44,6 +52,14 @@ services:
       timeout: 3s
       retries: 10
     restart: unless-stopped
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "${REDIS_CPUS:-0.5}"
+          memory: ${REDIS_MEMORY:-512m}
+        reservations:
+          memory: 128m
 
   # ---------------------------------------------------------------------
   # MinIO --- S3-compatible object storage (optional, for production).
@@ -108,9 +124,26 @@ services:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:
       - backend_storage:/app/storage
-    command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+    # Use Gunicorn as process manager with multiple uvicorn workers for
+    # production concurrency.  Migrations run first, then Gunicorn spawns
+    # ``API_WORKERS`` (default: 2) uvicorn worker processes behind a
+    # preload model.  The single-uvicorn CMD in the Dockerfile is kept
+    # for direct ``docker run`` debugging.
+    command: >
+      sh -c "alembic upgrade head &&
+      gunicorn app.main:app
+      -w ${API_WORKERS:-2}
+      -k uvicorn.workers.UvicornWorker
+      -b 0.0.0.0:8000
+      --timeout 600
+      --graceful-timeout 30
+      --keepalive 5
+      --proxy-headers
+      --forwarded-allow-ips='*'
+      --access-logfile -
+      --error-logfile -"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -128,6 +161,7 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+    stop_grace_period: 30s
 
   # ---------------------------------------------------------------------
   # Worker: heavy audio pipeline (Demucs / Basic Pitch / ADTOS).
@@ -187,6 +221,16 @@ services:
       --loglevel=info
       --queues=audio_heavy
       --hostname=heavy@%h
+    healthcheck:
+      # Verify the worker process is alive and can reach Redis (broker
+      # ping via ``celery inspect ping`` requires a running worker and
+      # a responsive broker; ``-d heavy@$$HOSTNAME`` targets our own
+      # worker to avoid cross-talk with other containers).
+      test: ["CMD-SHELL", "celery -A app.celery_app:celery inspect ping -d heavy@$$(hostname) --timeout=5 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     deploy:
       resources:
         limits:
@@ -208,6 +252,7 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+    stop_grace_period: 120s
 
   # ---------------------------------------------------------------------
   # Worker: lightweight tasks (health checks, future housekeeping).
@@ -245,6 +290,12 @@ services:
       --loglevel=info
       --queues=celery
       --hostname=light@%h
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.celery_app:celery inspect ping -d light@$$(hostname) --timeout=5 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     deploy:
       resources:
         limits:
@@ -258,6 +309,51 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+    stop_grace_period: 30s
+
+  # ---------------------------------------------------------------------
+  # Celery Beat --- periodic task scheduler.
+  #
+  # Runs scheduled cleanup tasks:
+  #   - purge_expired_tokens: removes stale refresh-token rows daily
+  #   - cleanup_old_tasks: removes on-disk artifacts for finished tasks
+  #     older than 30 days
+  #
+  # Beat stores its schedule database in /tmp (ephemeral) so multiple
+  # replicas cannot race --- always run exactly ONE beat instance.
+  # ---------------------------------------------------------------------
+  celery-beat:
+    build: ./backend
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?err}
+      DB_NAME: ${POSTGRES_DB:-music_ai}
+      REDIS_URL: redis://:${REDIS_PASSWORD:?err}@redis:6379/0
+      STORAGE_DIR: /app/storage
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_JSON: ${LOG_JSON:-false}
+    command: >
+      celery -A app.celery_app:celery beat
+      --loglevel=info
+      --schedule=/tmp/celerybeat-schedule
+    volumes:
+      - backend_storage:/app/storage
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256m
+        reservations:
+          memory: 64m
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 10s
 
   # ---------------------------------------------------------------------
   # Frontend: React SPA served by nginx
@@ -274,6 +370,7 @@ services:
       api:
         condition: service_healthy
     restart: unless-stopped
+    stop_grace_period: 10s
     deploy:
       resources:
         limits:

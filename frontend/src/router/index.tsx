@@ -1,7 +1,8 @@
-import { Suspense, lazy } from "react";
+import { type ReactNode, Suspense, lazy } from "react";
 import { createBrowserRouter, Navigate } from "react-router-dom";
 
 import { MainLayout } from "@/layouts/MainLayout";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { HomePage } from "@/pages/HomePage";
 
 // Route-level code splitting: each page is its own chunk so the initial
@@ -37,60 +38,34 @@ function PageFallback() {
   );
 }
 
+/** Wrap a lazy-loaded page in Suspense + a route-level ErrorBoundary so that
+ *  a crash in one page (e.g. wavesurfer init failure) doesn't take down the
+ *  entire app. The user sees a retry button instead of a white screen. */
+function page(children: ReactNode): ReactNode {
+  return (
+    <ErrorBoundary>
+      <Suspense fallback={<PageFallback />}>{children}</Suspense>
+    </ErrorBoundary>
+  );
+}
+
 export const router = createBrowserRouter([
   {
     path: "/",
     element: <MainLayout />,
+    errorElement: (
+      <ErrorBoundary>
+        <div />
+      </ErrorBoundary>
+    ),
     children: [
       { index: true, element: <HomePage /> },
-      {
-        path: "upload",
-        element: (
-          <Suspense fallback={<PageFallback />}>
-            <UploadPage />
-          </Suspense>
-        ),
-      },
-      {
-        path: "audio",
-        element: (
-          <Suspense fallback={<PageFallback />}>
-            <AudioListPage />
-          </Suspense>
-        ),
-      },
-      {
-        path: "audio/:id",
-        element: (
-          <Suspense fallback={<PageFallback />}>
-            <AudioDetailPage />
-          </Suspense>
-        ),
-      },
-      {
-        path: "instruments",
-        element: (
-          <Suspense fallback={<PageFallback />}>
-            <SampleLibraryPage />
-          </Suspense>
-        ),
-      },
-      {
-        path: "login",
-        element: (
-          <Suspense fallback={<PageFallback />}>
-            <LoginPage />
-          </Suspense>
-        ),
-      },
-      {
-        path: "register",
-        element: (
-          <Suspense fallback={<PageFallback />}>
-            <RegisterPage />
-          </Suspense>
-        ),
-      },
+      { path: "upload", element: page(<UploadPage />) },
+      { path: "audio", element: page(<AudioListPage />) },
+      { path: "audio/:id", element: page(<AudioDetailPage />) },
+      { path: "instruments", element: page(<SampleLibraryPage />) },
+      { path: "login", element: page(<LoginPage />) },
+      { path: "register", element: page(<RegisterPage />) },
       { path: "*", element: <Navigate to="/" replace /> },
     ],
   },

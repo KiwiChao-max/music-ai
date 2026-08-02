@@ -1,10 +1,8 @@
 """Shared network utilities --- IP extraction, proxy trust, etc."""
 
-
 from __future__ import annotations
 
 import ipaddress
-from typing import Any
 
 
 def is_trusted_proxy(remote_addr: str, trusted: list[str]) -> bool:

@@ -13,6 +13,7 @@ Naming convention used to map filename -> GM note. The set of aliases covers
 the common Roland/Yamaha-style naming. Anything not recognised is recorded
 as a free-form sample and skipped on playback (still visible in the list).
 """
+
 from __future__ import annotations
 
 import logging
@@ -32,36 +33,82 @@ logger = logging.getLogger(__name__)
 # Filename alias -> GM percussion note (35..81). Lowercased, extension-free.
 _FILENAME_ALIASES: dict[str, int] = {
     # Kick family
-    "kick": 36, "bass_drum": 36, "bassdrum": 36, "bd": 36, "kik": 36,
+    "kick": 36,
+    "bass_drum": 36,
+    "bassdrum": 36,
+    "bd": 36,
+    "kik": 36,
     "acoustic_kick": 35,
     # Snare family
-    "snare": 38, "snr": 38, "sd": 38, "acoustic_snare": 38, "elec_snare": 40,
-    "rim": 37, "sidestick": 37, "rimshot": 37,
-    "clap": 39, "hand_clap": 39,
+    "snare": 38,
+    "snr": 38,
+    "sd": 38,
+    "acoustic_snare": 38,
+    "elec_snare": 40,
+    "rim": 37,
+    "sidestick": 37,
+    "rimshot": 37,
+    "clap": 39,
+    "hand_clap": 39,
     # Hi-hats
-    "closed_hat": 42, "chh": 42, "hhc": 42, "hat_closed": 42,
-    "open_hat": 46, "ohh": 46, "hho": 46, "hat_open": 46,
-    "pedal_hat": 44, "phh": 44, "hhp": 44,
+    "closed_hat": 42,
+    "chh": 42,
+    "hhc": 42,
+    "hat_closed": 42,
+    "open_hat": 46,
+    "ohh": 46,
+    "hho": 46,
+    "hat_open": 46,
+    "pedal_hat": 44,
+    "phh": 44,
+    "hhp": 44,
     # Toms (lowest to highest)
-    "low_floor_tom": 41, "lft": 41, "floor_tom": 41,
-    "low_tom": 45, "lt": 45,
-    "low_mid_tom": 47, "lmt": 47,
-    "hi_mid_tom": 48, "hmt": 48,
-    "high_tom": 50, "ht": 50,
+    "low_floor_tom": 41,
+    "lft": 41,
+    "floor_tom": 41,
+    "low_tom": 45,
+    "lt": 45,
+    "low_mid_tom": 47,
+    "lmt": 47,
+    "hi_mid_tom": 48,
+    "hmt": 48,
+    "high_tom": 50,
+    "ht": 50,
     # Cymbals
-    "crash": 49, "crash1": 49, "crash_1": 49, "crash_cymbal": 49,
-    "crash2": 57, "crash_2": 57, "splash": 55, "splash_cymbal": 55,
-    "china": 52, "chinese_cymbal": 52,
-    "ride": 51, "ride_cymbal": 51, "ride1": 51, "ride2": 59,
-    "ride_bell": 53, "bell": 53,
+    "crash": 49,
+    "crash1": 49,
+    "crash_1": 49,
+    "crash_cymbal": 49,
+    "crash2": 57,
+    "crash_2": 57,
+    "splash": 55,
+    "splash_cymbal": 55,
+    "china": 52,
+    "chinese_cymbal": 52,
+    "ride": 51,
+    "ride_cymbal": 51,
+    "ride1": 51,
+    "ride2": 59,
+    "ride_bell": 53,
+    "bell": 53,
     # Hand percussion
-    "tambourine": 54, "tamb": 54,
+    "tambourine": 54,
+    "tamb": 54,
     "cowbell": 56,
     "vibraslap": 58,
     # Latin percussion (use one slot per family for simplicity).
-    "bongo": 60, "conga": 62, "timbale": 65, "agogo": 67,
-    "cabasa": 69, "maracas": 70, "whistle": 71, "guiro": 73,
-    "claves": 75, "woodblock": 76, "cuica": 78, "triangle": 80,
+    "bongo": 60,
+    "conga": 62,
+    "timbale": 65,
+    "agogo": 67,
+    "cabasa": 69,
+    "maracas": 70,
+    "whistle": 71,
+    "guiro": 73,
+    "claves": 75,
+    "woodblock": 76,
+    "cuica": 78,
+    "triangle": 80,
 }
 
 # Audio extensions we accept.
@@ -103,6 +150,7 @@ class SampleLibraryService:
     def _classifier_service(self):
         if self._classifier is None:
             from app.services.sample_classifier_service import SampleClassifierService
+
             self._classifier = SampleClassifierService()
         return self._classifier
 
@@ -143,9 +191,9 @@ class SampleLibraryService:
             safe_name = _safe_filename(original_name)
             if not safe_name:
                 continue
-            
+
             note = _resolve_note_from_name(safe_name)
-            
+
             if note is None:
                 classification = self._classifier_service.classify_bytes(content, safe_name)
                 if classification is not None:
@@ -159,7 +207,7 @@ class SampleLibraryService:
                     )
                 else:
                     continue
-            
+
             target = library_dir / safe_name
             target.write_bytes(content)
             v_min, v_max = _resolve_velocity_range(safe_name)
@@ -208,8 +256,7 @@ class SampleLibraryService:
         ):
             files_by_library[sample_file.library_id].append(sample_file)
         return [
-            self._to_info(library, files_by_library.get(library.id, []))
-            for library in libraries
+            self._to_info(library, files_by_library.get(library.id, [])) for library in libraries
         ]
 
     def get_library(self, db: Session, library_id: int) -> LibraryInfo | None:
@@ -218,7 +265,9 @@ class SampleLibraryService:
             return None
         files = list(
             db.scalars(
-                select(SampleFile).where(SampleFile.library_id == library_id).order_by(SampleFile.midi_note)
+                select(SampleFile)
+                .where(SampleFile.library_id == library_id)
+                .order_by(SampleFile.midi_note)
             )
         )
         return self._to_info(library, files)
@@ -228,10 +277,10 @@ class SampleLibraryService:
         if library is None:
             return None
         # Atomic swap: deactivate all, activate the chosen one. The unique
-        # partial index on `is_active=1` ensures only one library is active
-        # at a time even if two requests race.
-        db.execute(update(SampleLibrary).values(is_active=0))
-        library.is_active = 1
+        # partial index on `is_active = true` ensures only one library is
+        # active at a time even if two requests race.
+        db.execute(update(SampleLibrary).values(is_active=False))
+        library.is_active = True
         db.commit()
         db.refresh(library)
         return self.get_library(db, library_id)
@@ -240,7 +289,7 @@ class SampleLibraryService:
         library = db.get(SampleLibrary, library_id)
         if library is None:
             return None
-        library.is_active = 0
+        library.is_active = False
         db.commit()
         db.refresh(library)
         return self.get_library(db, library_id)
@@ -260,7 +309,7 @@ class SampleLibraryService:
 
     def active_library(self, db: Session) -> LibraryInfo | None:
         library = db.scalars(
-            select(SampleLibrary).where(SampleLibrary.is_active == 1).limit(1)
+            select(SampleLibrary).where(SampleLibrary.is_active == True).limit(1)  # noqa: E712
         ).first()
         if library is None:
             return None
@@ -436,9 +485,7 @@ class SampleLibraryService:
         db.delete(sample_file)
         db.commit()
 
-        remaining = db.scalars(
-            select(SampleFile).where(SampleFile.library_id == library_id)
-        ).all()
+        remaining = db.scalars(select(SampleFile).where(SampleFile.library_id == library_id)).all()
         if not remaining:
             logger.warning(
                 "sample-library: library id=%d has no samples left after removal",

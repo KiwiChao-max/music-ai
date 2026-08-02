@@ -9,6 +9,7 @@ Splits the monolithic ``instruments.py`` into three focused modules:
 ``main.py`` imports ``instruments_router`` from here, which merges all
 three sub-routers under the shared ``/api/instruments`` prefix.
 """
+
 from __future__ import annotations
 
 from fastapi import APIRouter

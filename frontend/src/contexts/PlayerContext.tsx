@@ -153,8 +153,12 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
     if (!audio) return;
 
     // If the user clicks play on the track that's already loaded, treat
-    // it as a resume from pause.
-    if (current && current.url === track.url) {
+    // it as a resume from pause. Compare base URLs without query params
+    // so that refreshed download tokens don't cause the same track to
+    // be reloaded from the beginning.
+    const currentBase = current?.url?.split("?")[0] ?? "";
+    const trackBase = track.url.split("?")[0];
+    if (currentBase === trackBase && currentBase !== "") {
       audio.play().catch((err) => {
         console.error("[Player] play() failed:", err);
       });

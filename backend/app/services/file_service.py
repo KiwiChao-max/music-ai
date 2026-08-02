@@ -19,6 +19,7 @@ back to S3.  This means the worker code (which uses ``Path``
 objects extensively) stays unchanged; only the boundary methods
 here change.
 """
+
 from __future__ import annotations
 
 import logging
@@ -51,6 +52,7 @@ class UploadTooLargeError(UploadError):
 # Key construction (backend-agnostic)
 # ---------------------------------------------------------------------------
 
+
 def _upload_key(task_id: int, filename: str) -> str:
     ext = Path(safe_filename(filename)).suffix or ".bin"
     return f"uploads/{task_id}/original{ext}"
@@ -67,6 +69,7 @@ def _output_key_prefix(task_id: int) -> str:
 # ---------------------------------------------------------------------------
 # Legacy path helpers (for local storage backward compatibility)
 # ---------------------------------------------------------------------------
+
 
 def task_upload_dir(task_id: int) -> Path:
     """Directory holding this task's raw upload (local storage only)."""
@@ -89,6 +92,7 @@ def storage_path(task_id: int, filename: str) -> Path:
 # ---------------------------------------------------------------------------
 # Upload
 # ---------------------------------------------------------------------------
+
 
 def save_upload(
     task: AudioTask,
@@ -116,7 +120,7 @@ def save_upload(
     # We use a persistent temp file (not TemporaryFile) because
     # soundfile needs a real path, not a file descriptor.
     suffix = Path(safe_filename(task.filename)).suffix or ".bin"
-    tmp = tempfile.NamedTemporaryFile(
+    tmp = tempfile.NamedTemporaryFile(  # noqa: SIM115
         suffix=suffix, delete=False, dir=settings.storage_dir
     )
     tmp_path = Path(tmp.name)
@@ -138,7 +142,9 @@ def save_upload(
 
         logger.info(
             "save_upload: task %s, %d bytes -> %s",
-            task.id, written, key,
+            task.id,
+            written,
+            key,
         )
         return tmp_path
     except Exception:
@@ -151,6 +157,7 @@ def save_upload(
 # ---------------------------------------------------------------------------
 # Worker boundary helpers
 # ---------------------------------------------------------------------------
+
 
 def get_upload_for_processing(task: AudioTask) -> Path:
     """Return a *local* ``Path`` to the uploaded file for the worker.
@@ -198,10 +205,13 @@ def upload_results(task: AudioTask, local_dir: Path) -> None:
         count = storage.upload_dir(local_dir=local_dir, key_prefix=prefix)
         logger.info(
             "upload_results: task %s, %d files -> %s",
-            task.id, count, prefix,
+            task.id,
+            count,
+            prefix,
         )
         # Clean up the worker temp directory.
         import shutil
+
         shutil.rmtree(_worker_temp_dir(task.id), ignore_errors=True)
 
 
@@ -213,6 +223,7 @@ def _worker_temp_dir(task_id: int) -> Path:
 # ---------------------------------------------------------------------------
 # Download / listing helpers (for the API)
 # ---------------------------------------------------------------------------
+
 
 def list_output_files(task: AudioTask) -> list[str]:
     """Return the filenames (not full paths) of all worker output files."""
@@ -265,6 +276,7 @@ def presigned_upload_url(task: AudioTask, *, expires: int = 3600) -> str:
 # Cleanup
 # ---------------------------------------------------------------------------
 
+
 def remove_task_files(task: AudioTask) -> None:
     """Delete all files for this task from the storage backend.
 
@@ -278,7 +290,8 @@ def remove_task_files(task: AudioTask) -> None:
         except Exception:
             logger.exception(
                 "remove_task_files: delete_prefix failed for task %s, prefix=%s",
-                task.id, prefix,
+                task.id,
+                prefix,
             )
 
 
@@ -295,7 +308,8 @@ def cleanup_expired_tasks(*, max_age_days: int) -> int:
     for prefix in ("uploads/", "outputs/"):
         try:
             deleted += storage.cleanup_expired(
-                prefix=prefix, max_age_days=max_age_days,
+                prefix=prefix,
+                max_age_days=max_age_days,
             )
         except Exception:
             logger.exception("cleanup_expired_tasks: failed for prefix=%s", prefix)

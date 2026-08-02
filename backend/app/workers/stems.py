@@ -1,4 +1,5 @@
 """Stem separation --- Demucs or placeholder fallback."""
+
 from __future__ import annotations
 
 import logging
@@ -16,9 +17,7 @@ _PLACEHOLDER_STEMS: tuple[str, ...] = demucs_service.EXPECTED_STEMS
 _DEMUCS = demucs_service.DemucsService()
 
 
-def _write_silent_wav(
-    path: Path, *, seconds: float = 0.1, rate: int = 8000
-) -> None:
+def _write_silent_wav(path: Path, *, seconds: float = 0.1, rate: int = 8000) -> None:
     """Write a minimal valid silent mono 8-bit WAV."""
     with wave.open(str(path), "wb") as w:
         w.setnchannels(1)
@@ -47,9 +46,10 @@ def separate_stems(audio_path: Path, output_dir: Path) -> dict[str, Path]:
             output_dir,
         )
         return result.stems
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning("demucs unavailable; using placeholder stems: %s", exc)
         PIPELINE_MODEL_FALLBACK_TOTAL.labels(
-            model="demucs", fallback_reason="unavailable",
+            model="demucs",
+            fallback_reason="unavailable",
         ).inc()
         return emit_placeholder_stems(output_dir)

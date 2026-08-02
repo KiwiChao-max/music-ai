@@ -7,6 +7,7 @@ upload size is modest.  This module validates the *decoded* properties
 (duration, sample rate, channel count, PCM byte count) at upload time
 so the worker never has to reject a task after the fact.
 """
+
 from __future__ import annotations
 
 import logging
@@ -100,7 +101,9 @@ def probe_metadata(path: Path) -> AudioMetadata:
     if info.samplerate <= 0 or info.frames <= 0:
         logger.debug(
             "audio_validation: invalid metadata for %s (sr=%d, frames=%d)",
-            path.name, info.samplerate, info.frames,
+            path.name,
+            info.samplerate,
+            info.frames,
         )
         return meta
 
@@ -110,9 +113,7 @@ def probe_metadata(path: Path) -> AudioMetadata:
     meta.subtype = info.subtype
 
     meta.duration_seconds = round(info.frames / float(info.samplerate), 2)
-    meta.pcm_bytes = (
-        info.frames * info.channels * _bytes_per_sample(info.subtype)
-    )
+    meta.pcm_bytes = info.frames * info.channels * _bytes_per_sample(info.subtype)
 
     # --- validate against limits ----------------------------------------
     _check_duration(meta)
@@ -135,9 +136,7 @@ def _check_duration(meta: AudioMetadata) -> None:
     if limit <= 0 or meta.duration_seconds is None:
         return
     if meta.duration_seconds > limit:
-        meta.violations.append(
-            f"duration {meta.duration_seconds:.0f}s exceeds limit of {limit}s"
-        )
+        meta.violations.append(f"duration {meta.duration_seconds:.0f}s exceeds limit of {limit}s")
 
 
 def _check_sample_rate(meta: AudioMetadata) -> None:
@@ -145,9 +144,7 @@ def _check_sample_rate(meta: AudioMetadata) -> None:
     if limit <= 0 or meta.samplerate is None:
         return
     if meta.samplerate > limit:
-        meta.violations.append(
-            f"sample rate {meta.samplerate} Hz exceeds limit of {limit} Hz"
-        )
+        meta.violations.append(f"sample rate {meta.samplerate} Hz exceeds limit of {limit} Hz")
 
 
 def _check_channels(meta: AudioMetadata) -> None:
@@ -155,9 +152,7 @@ def _check_channels(meta: AudioMetadata) -> None:
     if limit <= 0 or meta.channels is None:
         return
     if meta.channels > limit:
-        meta.violations.append(
-            f"channel count {meta.channels} exceeds limit of {limit}"
-        )
+        meta.violations.append(f"channel count {meta.channels} exceeds limit of {limit}")
 
 
 def _check_pcm_size(meta: AudioMetadata) -> None:

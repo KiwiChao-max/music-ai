@@ -15,13 +15,14 @@ Two backends:
 The `get_service()` factory picks the right backend at startup based
 on the `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL` settings.
 """
+
 from __future__ import annotations
 
 import json
 import logging
-import os
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping, Protocol
+from typing import Any, Protocol
 
 import httpx
 
@@ -66,10 +67,7 @@ def build_user_prompt(analysis: Mapping[str, Any], *, filename: str = "") -> str
         if isinstance(chords, list):
             labels = []
             for c in chords[:16]:
-                if isinstance(c, dict):
-                    label = c.get("label") or c.get("chord")
-                else:
-                    label = str(c)
+                label = c.get("label") or c.get("chord") if isinstance(c, dict) else str(c)
                 if label:
                     labels.append(str(label))
             if labels:
@@ -83,9 +81,7 @@ def build_user_prompt(analysis: Mapping[str, Any], *, filename: str = "") -> str
             key=lambda pair: -float(pair[1]),
         )[:5]
         if top:
-            bits.append(
-                "Top instruments: " + ", ".join(f"{n} ({p:.0%})" for n, p in top)
-            )
+            bits.append("Top instruments: " + ", ".join(f"{n} ({p:.0%})" for n, p in top))
     return "\n".join(bits) if bits else "(no analysis data)"
 
 
@@ -109,7 +105,7 @@ class MockLlm:
 
     name = "mock"
 
-    def complete(self, system: str, user: str) -> str:  # noqa: ARG002
+    def complete(self, system: str, user: str) -> str:
         # Parse the prompt we built above and reflect it back. Anything
         # missing from `user` is replaced with a "looks like" hedge so
         # the output is always natural.
@@ -128,36 +124,33 @@ class MockLlm:
         if bpm:
             bpm_val = float(bpm)
             pace = (
-                "laid-back" if bpm_val < 80
-                else "mid-tempo" if bpm_val < 120
-                else "driving" if bpm_val < 150
+                "laid-back"
+                if bpm_val < 80
+                else "mid-tempo"
+                if bpm_val < 120
+                else "driving"
+                if bpm_val < 150
                 else "fast"
             )
-            sentences.append(
-                f"The track sits at {bpm} BPM, which is a {pace} groove."
-            )
+            sentences.append(f"The track sits at {bpm} BPM, which is a {pace} groove.")
         if key and scale:
             sentences.append(
-                f"It is in {key} {scale}, a { 'major' if scale.lower().startswith('maj') else 'minor' } tonality."
+                f"It is in {key} {scale}, a {'major' if scale.lower().startswith('maj') else 'minor'} tonality."
             )
         if ts and ts not in ("4/4",):
             sentences.append(f"The {ts} time signature gives the rhythm a slightly unusual feel.")
         if instruments:
-            sentences.append(
-                f"The mix leans on {instruments.lower()}."
-            )
+            sentences.append(f"The mix leans on {instruments.lower()}.")
         if chords:
             short = chords if len(chords) <= 80 else chords[:77] + "..."
-            sentences.append(
-                f"Chord-wise it walks through {short}."
-            )
+            sentences.append(f"Chord-wise it walks through {short}.")
         if duration:
             try:
                 secs = float(duration)
                 mins = int(secs // 60)
                 rest = int(secs % 60)
                 sentences.append(
-                    f"The clip is about {mins}m{rest:02d}s, so it works as a { 'short' if secs < 60 else 'full' } sketch."
+                    f"The clip is about {mins}m{rest:02d}s, so it works as a {'short' if secs < 60 else 'full'} sketch."
                 )
             except ValueError:
                 pass
@@ -218,9 +211,7 @@ class OpenAICompatibleLlm:
         try:
             return data["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:
-            raise RuntimeError(
-                f"unexpected LLM response shape: {data!r}"
-            ) from exc
+            raise RuntimeError(f"unexpected LLM response shape: {data!r}") from exc
 
 
 # ---- factory -------------------------------------------------------------
@@ -260,11 +251,11 @@ def generate_commentary(
 
 # Convenience for tests.
 __all__ = [
+    "SYSTEM_PROMPT",
     "CommentaryResult",
     "LlmBackend",
     "MockLlm",
     "OpenAICompatibleLlm",
-    "SYSTEM_PROMPT",
     "build_user_prompt",
     "generate_commentary",
     "get_backend",

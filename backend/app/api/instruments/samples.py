@@ -5,6 +5,7 @@ back generated drum MIDI with their samples instead of the default GM
 bank. Each library has a name, an optional description, and a list of
 samples keyed by GM percussion note (35-81).
 """
+
 from __future__ import annotations
 
 import io
@@ -19,8 +20,8 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import OptionalAuthUser
 from app.api.instruments.common import (
-    MAX_SAMPLES_PER_LIBRARY,
     MAX_SAMPLE_BYTES,
+    MAX_SAMPLES_PER_LIBRARY,
     MAX_TOTAL_BYTES,
     check_resource_owner,
 )
@@ -41,9 +42,7 @@ router = APIRouter()
 # ---- helpers ---------------------------------------------------------------
 
 
-def _safe_zip_read(
-    zf: zipfile.ZipFile, info: zipfile.ZipInfo, max_bytes: int
-) -> bytes | None:
+def _safe_zip_read(zf: zipfile.ZipFile, info: zipfile.ZipInfo, max_bytes: int) -> bytes | None:
     """Read a zip entry with a hard decompressed-size cap."""
     try:
         chunks: list[bytes] = []
@@ -58,7 +57,7 @@ def _safe_zip_read(
                     return None
                 chunks.append(chunk)
         return b"".join(chunks)
-    except Exception:  # noqa: BLE001
+    except Exception:
         return None
 
 
@@ -77,9 +76,7 @@ def _media_type_for(path: Path) -> str:
 
 def _library_response(info) -> Response:
     return Response(
-        content=json.dumps(
-            LibraryInfo.model_validate(info).model_dump(), default=str
-        ),
+        content=json.dumps(LibraryInfo.model_validate(info).model_dump(), default=str),
         media_type="application/json",
     )
 
@@ -181,10 +178,10 @@ async def create_library(
                     if len(payload) >= MAX_SAMPLES_PER_LIBRARY:
                         break
         except zipfile.BadZipFile as exc:
-            log_error(exc, context=f"create_library: invalid zip from user {getattr(user, 'id', 'anon')}")
-            raise HTTPException(
-                status_code=400, detail="invalid zip archive"
-            ) from exc
+            log_error(
+                exc, context=f"create_library: invalid zip from user {getattr(user, 'id', 'anon')}"
+            )
+            raise HTTPException(status_code=400, detail="invalid zip archive") from exc
 
     if not payload:
         raise HTTPException(
@@ -337,9 +334,7 @@ def update_sample(
     return LibraryInfo.model_validate(info)
 
 
-@router.post(
-    "/libraries/{library_id}/samples", response_model=LibraryInfo, status_code=201
-)
+@router.post("/libraries/{library_id}/samples", response_model=LibraryInfo, status_code=201)
 async def add_sample(
     library_id: int,
     file: UploadFile = File(...),
@@ -356,9 +351,7 @@ async def add_sample(
     content = await file.read()
 
     if len(content) > MAX_SAMPLE_BYTES:
-        raise HTTPException(
-            status_code=413, detail=f"sample exceeds {MAX_SAMPLE_BYTES} bytes"
-        )
+        raise HTTPException(status_code=413, detail=f"sample exceeds {MAX_SAMPLE_BYTES} bytes")
 
     try:
         result = service.add_sample_to_library(
@@ -377,9 +370,7 @@ async def add_sample(
     return LibraryInfo.model_validate(result)
 
 
-@router.delete(
-    "/libraries/{library_id}/samples/batch", response_model=LibraryInfo
-)
+@router.delete("/libraries/{library_id}/samples/batch", response_model=LibraryInfo)
 def batch_remove_samples(
     library_id: int,
     payload: BatchRemoveSamples,
@@ -398,9 +389,7 @@ def batch_remove_samples(
     return LibraryInfo.model_validate(result)
 
 
-@router.delete(
-    "/libraries/{library_id}/samples/{sample_id}", response_model=LibraryInfo
-)
+@router.delete("/libraries/{library_id}/samples/{sample_id}", response_model=LibraryInfo)
 def remove_sample(
     library_id: int,
     sample_id: int,
@@ -427,9 +416,7 @@ def get_sample_file(
 ) -> FileResponse:
     """Stream a single sample file by GM note."""
     if note < 35 or note > 81:
-        raise HTTPException(
-            status_code=400, detail="note must be in 35..81 (GM percussion)"
-        )
+        raise HTTPException(status_code=400, detail="note must be in 35..81 (GM percussion)")
     service = sample_library_service.SampleLibraryService()
     info = service.get_library(db, library_id)
     if info is None:
@@ -438,14 +425,10 @@ def get_sample_file(
         if sample.midi_note == note:
             full_path = service._root / sample.relative_path  # type: ignore[attr-defined]
             if not full_path.is_file():
-                raise HTTPException(
-                    status_code=410, detail="sample file missing on disk"
-                )
+                raise HTTPException(status_code=410, detail="sample file missing on disk")
             return FileResponse(
                 path=full_path,
                 media_type=_media_type_for(full_path),
                 filename=Path(sample.relative_path).name,
             )
-    raise HTTPException(
-        status_code=404, detail="no sample for that note in this library"
-    )
+    raise HTTPException(status_code=404, detail="no sample for that note in this library")

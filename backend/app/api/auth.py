@@ -19,6 +19,7 @@ Refresh tokens are rotated on every use --- each refresh consumes the old
 token and issues a new one.  Reuse of a consumed token (theft signal)
 revokes the entire token family, forcing re-authentication.
 """
+
 from __future__ import annotations
 
 import logging
@@ -29,13 +30,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-from app.api.deps import CurrentUser, get_current_user
+from app.api.deps import CurrentUser
 from app.config import settings
 from app.db.session import get_db
 from app.schemas.auth import (
     MessageResponse,
     RefreshRequest,
-    TokenResponse,
     UserCreate,
     UserLogin,
     UserPublic,
@@ -166,25 +166,17 @@ def register(
     except user_service.EmailAlreadyExistsError as exc:
         db.rollback()
         log_error(exc, context="registration: email already in use")
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except user_service.UsernameAlreadyExistsError as exc:
         db.rollback()
         log_error(exc, context="registration: username already taken")
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except ValueError as exc:
         db.rollback()
         log_error(exc, context="registration: invalid input")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
-    tokens = auth_service.issue_token_pair(
-        db, user.id, email=user.email, role=user.role
-    )
+    tokens = auth_service.issue_token_pair(db, user.id, email=user.email, role=user.role)
     user_service.touch_last_login(db, user)
     db.commit()
     return _token_response(
@@ -215,9 +207,7 @@ def login(
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
 
-    tokens = auth_service.issue_token_pair(
-        db, user.id, email=user.email, role=user.role
-    )
+    tokens = auth_service.issue_token_pair(db, user.id, email=user.email, role=user.role)
     db.commit()
     return _token_response(
         tokens["access_token"],
@@ -278,9 +268,7 @@ def refresh(
 
     # Re-fetch the user so the response carries up-to-date fields.
     try:
-        claims = auth_service.decode_token(
-            tokens["access_token"], expected_type="access"
-        )
+        claims = auth_service.decode_token(tokens["access_token"], expected_type="access")
         user_id = int(claims["sub"])
     except (ValueError, KeyError, TypeError):
         db.rollback()
@@ -288,7 +276,7 @@ def refresh(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="token verification failed",
             headers={"WWW-Authenticate": "Bearer"},
-        )
+        ) from None
 
     user = user_service.get_user(db, user_id)
     if user is None or not user.is_active:

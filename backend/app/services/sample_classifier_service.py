@@ -17,10 +17,10 @@ than continuous audio. It extracts:
 And maps these to drum types: kick, snare, hihat (open/closed), tom (5 sizes),
 cymbals (crash, ride, china, splash), and hand percussion.
 """
+
 from __future__ import annotations
 
 import logging
-import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -110,6 +110,7 @@ class SampleClassifierService:
     def classify_bytes(self, content: bytes, filename: str) -> SampleClassification | None:
         """Classify audio content from bytes (for upload streaming)."""
         import tempfile
+
         with tempfile.NamedTemporaryFile(suffix=Path(filename).suffix, delete=False) as f:
             f.write(content)
             temp_path = Path(f.name)
@@ -119,8 +120,8 @@ class SampleClassifierService:
             temp_path.unlink(missing_ok=True)
 
     def _extract_features(self, audio_path: Path) -> dict[str, float] | None:
-        import numpy as np
         import librosa
+        import numpy as np
 
         try:
             y, sr = librosa.load(str(audio_path), sr=self.SAMPLE_RATE, mono=True)
@@ -168,7 +169,9 @@ class SampleClassifierService:
         zcr = float(np.mean(librosa.feature.zero_crossing_rate(y=y)[0]))
 
         autocorr = librosa.autocorrelate(y, max_size=2048)
-        harmonicity = float(np.max(autocorr[1:]) / (np.max(autocorr) + 1e-9)) if len(autocorr) > 1 else 0.0
+        harmonicity = (
+            float(np.max(autocorr[1:]) / (np.max(autocorr) + 1e-9)) if len(autocorr) > 1 else 0.0
+        )
 
         decay_samples = int(0.1 * sr)
         if len(y) > decay_samples:

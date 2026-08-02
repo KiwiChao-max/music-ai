@@ -26,8 +26,10 @@ Key design decisions:
   net.  This is a best-effort fallback; the client can also re-query
   the REST API after the WS closes.
 """
+
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import time
@@ -92,7 +94,7 @@ class EventBus:
         try:
             client = self._client()
             client.publish(_CHANNEL.format(task_id=task_id), payload)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.debug("event_bus: publish failed: %s", exc)
 
     # -- public API --------------------------------------------------------
@@ -179,17 +181,13 @@ class EventBus:
             pubsub = client.pubsub(ignore_subscribe_messages=True)
             pubsub.subscribe(_CHANNEL.format(task_id=task_id))
             return pubsub
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(
-                "event_bus: subscribe failed, falling back to polling: %s", exc
-            )
+        except Exception as exc:
+            logger.warning("event_bus: subscribe failed, falling back to polling: %s", exc)
             return None
 
     def close(self) -> None:
         """Close the connection pool (called on process shutdown)."""
         if self._pool is not None:
-            try:
+            with contextlib.suppress(Exception):
                 self._pool.disconnect()
-            except Exception:  # noqa: BLE001
-                pass
             self._pool = None

@@ -5,17 +5,16 @@ matches the column type. We keep the trigger that auto-updates `updated_at` in
 the initial Alembic migration (raw SQL) since SQLAlchemy does not manage DDL
 triggers.
 """
+
 from __future__ import annotations
 
 import enum
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
     DateTime,
-    Enum as SAEnum,
     Float,
     ForeignKey,
     Index,
@@ -25,12 +24,15 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from sqlalchemy import (
+    Enum as SAEnum,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 
 
-class AudioTaskStatus(str, enum.Enum):
+class AudioTaskStatus(enum.StrEnum):
     UPLOADED = "UPLOADED"
     PROCESSING = "PROCESSING"
     FINISHED = "FINISHED"
@@ -74,28 +76,24 @@ class AudioTask(Base):
 
     # ---- processing state (Milestone 1+) ---------------------------------
     # 0-100 percent; default 0 so a row freshly inserted reads as "not started".
-    progress: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default="0"
-    )
+    progress: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     # Short human-readable description of the current step, e.g. "分离鼓组..."
     # Stored as TEXT to keep it free-form and localized in the future.
-    current_step: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    current_step: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Audio length in seconds; populated on upload by probing the file.
-    duration: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    duration: Mapped[float | None] = mapped_column(Float, nullable=True)
     # Where the worker writes its outputs (stems, MIDI, ...). Nullable until
     # the worker has actually created the directory.
-    output_dir: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    output_dir: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Last failure message; cleared on the next successful run.
-    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Set when the task reaches FINISHED or FAILED. Nullable while in flight.
-    finished_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # ---- ownership (Milestone 4) ---------------------------------------
     # Nullable so legacy tasks from before the auth migration keep working.
     # New tasks always have a non-null `user_id`; the API enforces this.
-    user_id: Mapped[Optional[int]] = mapped_column(
+    user_id: Mapped[int | None] = mapped_column(
         BigInteger().with_variant(Integer, "sqlite"),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
@@ -107,9 +105,9 @@ class AudioTask(Base):
     # tasks / failed runs keep working. The string is meant to be
     # rendered as-is on the detail page; the LLM service is responsible
     # for keeping it human-readable.
-    commentary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    commentary_model: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
-    commentary_generated_at: Mapped[Optional[datetime]] = mapped_column(
+    commentary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    commentary_model: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    commentary_generated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 
@@ -139,7 +137,7 @@ class User(Base):
     # migration; the column itself stores whatever the user typed at signup.
     username: Mapped[str] = mapped_column(String(64), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    full_name: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    full_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     role: Mapped[str] = mapped_column(
         String(32), nullable=False, default="user", server_default="user"
     )
@@ -148,9 +146,7 @@ class User(Base):
     )
 
     # Per-user quota knobs. 0 means "use the server default from settings".
-    max_tasks: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default="0"
-    )
+    max_tasks: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     max_upload_bytes: Mapped[int] = mapped_column(
         BigInteger().with_variant(Integer, "sqlite"),
         nullable=False,
@@ -167,9 +163,7 @@ class User(Base):
         onupdate=func.now(),
         nullable=False,
     )
-    last_login_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         UniqueConstraint("email", name="ux_users_email"),
@@ -203,9 +197,9 @@ class SampleLibrary(Base):
         autoincrement=True,
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(
-        Integer, nullable=False, default=0, server_default="0"
+        Boolean, nullable=False, default=False, server_default="false"
     )
     # Provider label (e.g. "drum_kit", "soundfont") so the same table can
     # hold different sample types in the future (SoundFont, SFZ, custom).
@@ -222,7 +216,7 @@ class SampleLibrary(Base):
         nullable=False,
     )
     # Owner of this library.  Nullable for backward compatibility.
-    owner_id: Mapped[Optional[int]] = mapped_column(
+    owner_id: Mapped[int | None] = mapped_column(
         BigInteger().with_variant(Integer, "sqlite"),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
@@ -255,6 +249,7 @@ class SampleFile(Base):
     )
     library_id: Mapped[int] = mapped_column(
         BigInteger().with_variant(Integer, "sqlite"),
+        ForeignKey("sample_libraries.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -270,10 +265,25 @@ class SampleFile(Base):
     # [velocity_min, velocity_max] contains the incoming note velocity.
     # Default range 1-127 means "full-range fallback".
     velocity_min: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=1, server_default="1",
+        Integer,
+        nullable=False,
+        default=1,
+        server_default="1",
     )
     velocity_max: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=127, server_default="127",
+        Integer,
+        nullable=False,
+        default=127,
+        server_default="127",
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
     )
 
     __mapper_args__ = {"eager_defaults": True}
@@ -300,18 +310,18 @@ class SoundFont(Base):
         autoincrement=True,
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     # "sf2" for real SoundFont files, "preset_table" for CSV imports
     type: Mapped[str] = mapped_column(
         String(32), nullable=False, default="sf2", server_default="sf2"
     )
     # Relative path under storage/soundfonts/ (null for CSV preset tables)
-    file_path: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    file_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     preset_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )
     is_active: Mapped[bool] = mapped_column(
-        Integer, nullable=False, default=0, server_default="0"
+        Boolean, nullable=False, default=False, server_default="false"
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -323,7 +333,7 @@ class SoundFont(Base):
         nullable=False,
     )
     # Owner of this SoundFont.  Nullable for backward compatibility.
-    owner_id: Mapped[Optional[int]] = mapped_column(
+    owner_id: Mapped[int | None] = mapped_column(
         BigInteger().with_variant(Integer, "sqlite"),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
@@ -351,6 +361,7 @@ class SoundFontPreset(Base):
     )
     soundfont_id: Mapped[int] = mapped_column(
         BigInteger().with_variant(Integer, "sqlite"),
+        ForeignKey("soundfonts.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -358,11 +369,13 @@ class SoundFontPreset(Base):
     bank_lsb: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     program: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    category: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
-    instrument_type: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    category: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    instrument_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     __table_args__ = (
-        UniqueConstraint("soundfont_id", "bank_msb", "bank_lsb", "program", name="ux_sf_preset_bank_program"),
+        UniqueConstraint(
+            "soundfont_id", "bank_msb", "bank_lsb", "program", name="ux_sf_preset_bank_program"
+        ),
     )
     __mapper_args__ = {"eager_defaults": True}
 
@@ -370,7 +383,7 @@ class SoundFontPreset(Base):
         return f"<SoundFontPreset id={self.id} sf_id={self.soundfont_id} prog={self.program}>"
 
 
-class RefreshTokenStatus(str, enum.Enum):
+class RefreshTokenStatus(enum.StrEnum):
     ACTIVE = "active"
     USED = "used"
     REVOKED = "revoked"
@@ -409,9 +422,15 @@ class RefreshToken(Base):
     token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     # Tracks the token lifecycle: active -> used (rotated) or revoked.
     status: Mapped[RefreshTokenStatus] = mapped_column(
-        SAEnum(RefreshTokenStatus, name="refresh_token_status", native_enum=True, create_constraint=False),
+        SAEnum(
+            RefreshTokenStatus,
+            name="refresh_token_status",
+            native_enum=True,
+            create_constraint=False,
+        ),
         nullable=False,
         default=RefreshTokenStatus.ACTIVE,
+        server_default=RefreshTokenStatus.ACTIVE.value,
     )
     # Groups tokens from the same rotation chain.  When a token from
     # this family is reused (indicating theft), we revoke the entire
@@ -422,13 +441,9 @@ class RefreshToken(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     # When the underlying JWT expires.  Used for cleanup queries.
-    expires_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     # When this token was consumed (rotated).  Null for active tokens.
-    used_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         UniqueConstraint("jti", name="ux_refresh_tokens_jti"),

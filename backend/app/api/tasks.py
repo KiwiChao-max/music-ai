@@ -11,6 +11,7 @@ picks the task up off Redis, runs the Demucs pipeline, and writes progress
 back to the DB. The frontend is expected to follow up with GET /status
 (poll) and finally GET /stems (once the task is FINISHED).
 """
+
 from __future__ import annotations
 
 import logging
@@ -20,14 +21,17 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from app.api.deps import OptionalAuthUser, check_task_ownership
+from app.api.deps import OptionalAuthUser, OptionalUser, check_task_ownership
 from app.config import settings
 from app.db.models import AudioTaskStatus
 from app.db.session import get_db
 from app.schemas.audio import MusicAnalysisResponse, ProcessResponse, StemInfo, TaskStatusResponse
 from app.services import (
-    auth_service, file_service, midi_mapping_service,
-    music_analysis_service, task_service, user_service,
+    auth_service,
+    file_service,
+    midi_mapping_service,
+    task_service,
+    user_service,
 )
 from app.tasks_audio import process_audio_task
 
@@ -45,11 +49,32 @@ _MIDI_SUFFIXES: set[str] = {".mid", ".midi"}
 _OUTPUT_SUFFIXES: set[str] = _AUDIO_SUFFIXES | _MIDI_SUFFIXES
 
 
-def _artifact_url(task_id: int, scope: str, filename: str) -> str:
-    """Build a task-scoped artifact URL without exposing the storage layout."""
+def _artifact_url(
+    task_id: int,
+    scope: str,
+    filename: str,
+    user_id: int | None,
+) -> str:
+    """Build a task-scoped artifact URL with a short-lived signed download token.
+
+    When ``user_id`` is None (anonymous dev mode), the URL has no token ---
+    the download endpoint will rely on the ownership check that allows
+    anonymous access to unowned tasks in dev mode.
+
+    For authenticated users the token is a dedicated "download" JWT (not
+    the user's access token) scoped to this specific task/scope/filename
+    with a 5-minute TTL. This avoids putting long-lived access tokens
+    into URLs where they could leak via server logs, browser history,
+    or Referer headers.
+    """
     from urllib.parse import quote
 
-    return f"/api/tasks/{task_id}/files/{scope}/{quote(filename, safe='')}"
+    encoded_name = quote(filename, safe="")
+    base = f"/api/tasks/{task_id}/files/{scope}/{encoded_name}"
+    if user_id is None:
+        return base
+    dl_token = auth_service.create_download_token(user_id, task_id, scope=scope, filename=filename)
+    return f"{base}?token={dl_token}"
 
 
 def _validate_artifact_filename(filename: str) -> None:
@@ -128,10 +153,8 @@ def start_processing(
                 "task could not be dispatched to the worker. "
                 "The task has been reset --- please try again."
             ),
-        )
-    logger.info(
-        "dispatched task %s to celery (celery_id=%s)", task.id, async_result.id
-    )
+        ) from None
+    logger.info("dispatched task %s to celery (celery_id=%s)", task.id, async_result.id)
 
     return ProcessResponse(task_id=task.id, status=task.status)
 
@@ -187,13 +210,14 @@ def list_stems(
     midi_stems: list[StemInfo] = []
 
     # Uploaded original file(s).
+    uid = user.id if user else None
     for name in file_service.list_upload_files(task):
         suffix = Path(name).suffix.lower()
         if suffix in _AUDIO_SUFFIXES:
             audio_stems.append(
                 StemInfo(
                     name="original",
-                    url=_artifact_url(task.id, "upload", name),
+                    url=_artifact_url(task.id, "upload", name, uid),
                     kind="audio",
                 )
             )
@@ -206,7 +230,7 @@ def list_stems(
             audio_stems.append(
                 StemInfo(
                     name=Path(name).stem,
-                    url=_artifact_url(task.id, "output", name),
+                    url=_artifact_url(task.id, "output", name, uid),
                     kind="audio",
                 )
             )
@@ -214,11 +238,9 @@ def list_stems(
             midi_stems.append(
                 StemInfo(
                     name=Path(name).stem,
-                    url=_artifact_url(task.id, "output", name),
+                    url=_artifact_url(task.id, "output", name, uid),
                     kind="midi",
-                    profile=midi_mapping_service.midi_profile_from_name(
-                        Path(name).stem
-                    ),
+                    profile=midi_mapping_service.midi_profile_from_name(Path(name).stem),
                 )
             )
     return audio_stems + midi_stems
@@ -231,14 +253,20 @@ def download_artifact(
     filename: str,
     token: str | None = None,
     db: Session = Depends(get_db),
-    user: OptionalAuthUser = None,
+    user: OptionalUser = None,
 ):
     """Stream a task artifact after applying the normal ownership policy.
 
     Supports both Bearer header auth (for API clients) and ?token= query
     parameter auth (for <a href>/<audio>/<img> elements that can't set
-    headers). The query parameter is checked only when no Bearer token is
-    present.
+    headers). The query parameter accepts a short-lived download token
+    (not the user's access token) scoped to this specific file with a
+    5-minute TTL, mitigating token leakage via logs/Referer/history.
+    The query parameter is checked only when no Bearer token is present.
+
+    Uses ``OptionalUser`` (instead of ``OptionalAuthUser``) because the
+    ?token= parameter is an auth mechanism of its own; we enforce
+    ``auth_required`` manually below after both auth paths are tried.
 
     The file is streamed from the configured storage backend (local
     filesystem or S3) so the API container does not need a shared volume
@@ -246,11 +274,26 @@ def download_artifact(
     """
     if user is None and token:
         try:
-            payload = auth_service.decode_token(token, expected_type="access")
-            user_id = int(payload["sub"])
+            user_id = auth_service.verify_download_token(
+                token,
+                task_id=task_id,
+                scope=scope,
+                filename=filename,
+            )
             user = user_service.get_user(db, user_id)
-        except (ValueError, KeyError, TypeError):
-            raise HTTPException(status_code=401, detail="invalid token")
+        except ValueError:
+            raise HTTPException(
+                status_code=401, detail="invalid or expired download token"
+            ) from None
+
+    # Enforce auth_required for production: if no user was resolved via
+    # either Bearer header or ?token=, and auth is required, reject.
+    if settings.auth_required and user is None:
+        raise HTTPException(
+            status_code=401,
+            detail="authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     task = task_service.get_task(db, task_id)
     if task is None:
@@ -332,7 +375,7 @@ def get_task_analysis(
         analysis = json.load(file_obj)
         file_obj.close()
     except Exception:
-        raise HTTPException(status_code=404, detail="analysis not found")
+        raise HTTPException(status_code=404, detail="analysis not found") from None
     # Attach the LLM commentary if the worker produced one. The two live
     # side by side so the UI can show "the AI's take" without a second
     # round-trip.
@@ -345,7 +388,9 @@ def get_task_analysis(
         normalized = []
         for item in raw_instruments:
             if isinstance(item, dict) and "instrument" in item:
-                normalized.append({"instrument": item["instrument"], "probability": item.get("probability", 0)})
+                normalized.append(
+                    {"instrument": item["instrument"], "probability": item.get("probability", 0)}
+                )
             elif isinstance(item, (list, tuple)) and len(item) >= 2:
                 normalized.append({"instrument": str(item[0]), "probability": float(item[1])})
             else:
@@ -354,9 +399,7 @@ def get_task_analysis(
     payload["commentary"] = task.commentary
     payload["commentary_model"] = task.commentary_model
     payload["commentary_generated_at"] = (
-        task.commentary_generated_at.isoformat()
-        if task.commentary_generated_at
-        else None
+        task.commentary_generated_at.isoformat() if task.commentary_generated_at else None
     )
     return MusicAnalysisResponse.model_validate(payload)
 
@@ -385,8 +428,6 @@ def get_task_commentary(
         "commentary": task.commentary,
         "commentary_model": task.commentary_model,
         "commentary_generated_at": (
-            task.commentary_generated_at.isoformat()
-            if task.commentary_generated_at
-            else None
+            task.commentary_generated_at.isoformat() if task.commentary_generated_at else None
         ),
     }

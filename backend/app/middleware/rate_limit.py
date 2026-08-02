@@ -30,13 +30,14 @@ Fail-closed endpoints
   rather than allowing unlimited attempts.  All other endpoints
   fail-open (allow the request through, using the local fallback).
 """
+
 from __future__ import annotations
 
 import logging
 import threading
 import time
 from collections import defaultdict
-from typing import Callable
+from collections.abc import Callable
 
 import redis
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -52,12 +53,12 @@ logger = logging.getLogger(__name__)
 # Login/register are tight (brute-force protection); upload/process are
 # moderate (CPU-heavy); classify is tight (FFT on arbitrary uploads).
 _ROUTE_LIMITS: list[tuple[str, int, int]] = [
-    ("/api/auth/login", 10, 60),              # 10 logins / minute
-    ("/api/auth/register", 5, 60),            # 5 registrations / minute
-    ("/api/audio/upload", 20, 60),            # 20 uploads / minute
-    ("/api/tasks/", 30, 60),                  # 30 task ops / minute
-    ("/api/instruments/classify", 10, 60),     # 10 FFT analyses / minute
-    ("/api/instruments/soundfont", 5, 60),     # 5 SF2 imports / minute
+    ("/api/auth/login", 10, 60),  # 10 logins / minute
+    ("/api/auth/register", 5, 60),  # 5 registrations / minute
+    ("/api/audio/upload", 20, 60),  # 20 uploads / minute
+    ("/api/tasks/", 30, 60),  # 30 task ops / minute
+    ("/api/instruments/classify", 10, 60),  # 10 FFT analyses / minute
+    ("/api/instruments/soundfont", 5, 60),  # 5 SF2 imports / minute
     ("/api/instruments/preset-table", 5, 60),  # 5 CSV imports / minute
 ]
 
@@ -72,9 +73,10 @@ _FAIL_CLOSED_PREFIXES: tuple[str, ...] = (
 def _is_fail_closed(path: str) -> bool:
     return any(path.startswith(p) for p in _FAIL_CLOSED_PREFIXES)
 
+
 # Circuit-breaker state (guarded by _cb_lock).
-_cb_failures = 0           # consecutive Redis failures
-_cb_next_retry = 0.0       # monotonic timestamp when we may retry Redis
+_cb_failures = 0  # consecutive Redis failures
+_cb_next_retry = 0.0  # monotonic timestamp when we may retry Redis
 _cb_lock = threading.Lock()
 
 # In-memory fallback: {key: [timestamp, ...]}.
@@ -97,9 +99,7 @@ def _cb_open() -> bool:
     with _cb_lock:
         if _cb_failures == 0:
             return False
-        if time.monotonic() < _cb_next_retry:
-            return True
-        return False
+        return time.monotonic() < _cb_next_retry
 
 
 def _cb_record_failure() -> None:
@@ -185,13 +185,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             self._redis = redis.Redis.from_url(url, decode_responses=True)
             self._redis.ping()
             logger.info("rate-limit: connected to Redis at %s", url)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning("rate-limit: Redis unavailable, limiter disabled: %s", exc)
             self._redis = None
 
-    async def dispatch(
-        self, request: Request, call_next: Callable
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
         if not settings.rate_limit_enabled:
             return await call_next(request)
 
@@ -227,7 +225,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             try:
                 allowed, retry_after = self._check(key, limit_req, limit_window)
                 _cb_record_success()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 _cb_record_failure()
                 # For login/register, fail-closed --- no rate limiting at
                 # all is worse than a temporary 503.
@@ -274,10 +272,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         window_start = now - window
 
         pipe = self._redis.pipeline()
-        pipe.zremrangebyscore(key, 0, window_start)   # evict old entries
-        pipe.zadd(key, {str(now): now})                # add current request
-        pipe.zcard(key)                                 # count entries
-        pipe.expire(key, window + 1)                    # auto-cleanup
+        pipe.zremrangebyscore(key, 0, window_start)  # evict old entries
+        pipe.zadd(key, {str(now): now})  # add current request
+        pipe.zcard(key)  # count entries
+        pipe.expire(key, window + 1)  # auto-cleanup
         _, _, count, _ = pipe.execute()
 
         if count <= limit:

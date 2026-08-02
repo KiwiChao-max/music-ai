@@ -11,6 +11,7 @@ The service prefers a pure Python path for local WAV processing so the
 app can run the model without a system FFmpeg install. The CLI path is
 retained as a fallback for formats that soundfile cannot decode.
 """
+
 from __future__ import annotations
 
 import logging
@@ -55,11 +56,13 @@ class DemucsService:
 
         try:
             return self._separate_with_python_api(audio_path, output_dir)
-        except Exception as exc:  # noqa: BLE001 - CLI fallback handles more codecs
+        except Exception as exc:
             logger.warning("demucs python-api path failed; trying CLI fallback: %s", exc)
             from app.pipeline_metrics import PIPELINE_MODEL_FALLBACK_TOTAL
+
             PIPELINE_MODEL_FALLBACK_TOTAL.labels(
-                model="demucs", fallback_reason="python_api_to_cli",
+                model="demucs",
+                fallback_reason="python_api_to_cli",
             ).inc()
             return self._separate_with_cli(audio_path, output_dir)
 
@@ -82,10 +85,7 @@ class DemucsService:
 
         ref_mean = wav.mean()
         ref_std = wav.std()
-        if float(ref_std) > 1e-8:
-            wav = (wav - ref_mean) / ref_std
-        else:
-            wav = wav - ref_mean
+        wav = (wav - ref_mean) / ref_std if float(ref_std) > 1e-08 else wav - ref_mean
 
         with torch.no_grad():
             sources = apply_model(
@@ -99,10 +99,7 @@ class DemucsService:
                 num_workers=0,
             )[0]
 
-        if float(ref_std) > 1e-8:
-            sources = (sources * ref_std) + ref_mean
-        else:
-            sources = sources + ref_mean
+        sources = sources * ref_std + ref_mean if float(ref_std) > 1e-08 else sources + ref_mean
 
         stems: dict[str, Path] = {}
         sources_names = tuple(getattr(model, "sources", EXPECTED_STEMS))
@@ -187,5 +184,5 @@ def _subprocess_env_with_ffmpeg() -> dict[str, str]:
         r"C:\tools\ffmpeg\bin",
     ]
     existing = env.get("PATH", "")
-    env["PATH"] = os.pathsep.join(path_entries + [existing])
+    env["PATH"] = os.pathsep.join([*path_entries, existing])
     return env

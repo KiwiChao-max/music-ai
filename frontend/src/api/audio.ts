@@ -12,12 +12,16 @@ export const audioApi = {
   list: () => api.get<AudioTask[]>("/audio").then((r) => r.data),
   get: (taskId: number) =>
     api.get<AudioTask>(`/audio/${taskId}`).then((r) => r.data),
-  upload: (file: File) => {
+  upload: (file: File, onUploadProgress?: (pct: number) => void, signal?: AbortSignal) => {
     const form = new FormData();
     form.append("file", file);
     return api
       .post<UploadResponse>("/audio/upload", form, {
-        headers: { "Content-Type": "multipart/form-data" },
+        onUploadProgress: (e) => {
+          if (onUploadProgress && e.total) onUploadProgress(Math.round((e.loaded / e.total) * 100));
+        },
+        signal,
+        timeout: 300_000,
       })
       .then((r) => r.data);
   },

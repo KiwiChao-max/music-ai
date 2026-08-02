@@ -10,6 +10,7 @@ In production mode the policy is strict (no ``unsafe-inline``, no
 ``unsafe-inline`` (Tailwind JIT + HMR) and ``connect-src`` to allow
 ``ws://`` for the Vite dev server.
 """
+
 from __future__ import annotations
 
 from starlette.middleware.base import BaseHTTPMiddleware

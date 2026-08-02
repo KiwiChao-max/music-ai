@@ -10,6 +10,7 @@ The metrics module keeps a couple of counters / histograms registered
 globally so the same registry backs the `/metrics` endpoint and any
 custom application instrumentation.
 """
+
 from __future__ import annotations
 
 import time
@@ -82,7 +83,7 @@ async def readyz(
     try:
         db.execute(text("SELECT 1"))
         components["postgres"] = {"status": "ok"}
-    except Exception as exc:  # noqa: BLE001 - we want the message
+    except Exception as exc:
         components["postgres"] = {"status": "down", "error": str(exc)}
 
     # Redis / Celery broker: open a fresh client per probe so a
@@ -92,7 +93,7 @@ async def readyz(
         client.ping()
         components["redis"] = {"status": "ok"}
         client.close()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         components["redis"] = {"status": "down", "error": str(exc)}
 
     all_ok = all(c.get("status") == "ok" for c in components.values())

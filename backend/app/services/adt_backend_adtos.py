@@ -18,18 +18,19 @@ If any step is missing, the backend raises ``ADTUnavailable`` on first
 rule-based :class:`DrumMidiService` for the rest of the process
 lifetime.
 """
+
 from __future__ import annotations
 
 import logging
 import sys
 from pathlib import Path
 
-from .adt_drum_service import ADTHit, ADTModelBackend
+from .adt_drum_service import ADTHit
 
 logger = logging.getLogger(__name__)
 
 
-class ADTUnavailable(RuntimeError):
+class ADTUnavailable(RuntimeError):  # noqa: N818
     """Raised when the ADTOS backend cannot be initialized."""
 
 
@@ -55,12 +56,15 @@ class ADTOSBackend:
 
         try:
             raw_predictions = self._model.predict(str(audio_path))
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise ADTUnavailable(f"ADTOS inference failed: {exc}") from exc
 
         return [
-            ADTHit(time_s=float(item["time"]), label=str(item["label"]).upper(),
-                   confidence=float(item.get("confidence", 1.0)))
+            ADTHit(
+                time_s=float(item["time"]),
+                label=str(item["label"]).upper(),
+                confidence=float(item.get("confidence", 1.0)),
+            )
             for item in raw_predictions
         ]
 
@@ -73,12 +77,12 @@ class ADTOSBackend:
 
         try:
             import torch  # noqa: F401  (presence check)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise ADTUnavailable(f"torch is not installed: {exc}") from exc
 
         try:
             import adtos  # type: ignore[import-not-found]  # noqa: F401
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise ADTUnavailable(
                 "ADTOS package not importable. Clone https://github.com/"
                 "AMAAI-Lab/ADTOS and set adt_python_path, or install "
@@ -107,12 +111,12 @@ def _build_adtos_inference(model_path: Path):
     """
     try:
         from adtos import load_model  # type: ignore[import-not-found]
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise ADTUnavailable(f"ADTOS load_model entry point missing: {exc}") from exc
 
     try:
         return load_model(str(model_path))
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise ADTUnavailable(f"ADTOS failed to load checkpoint: {exc}") from exc
 
 

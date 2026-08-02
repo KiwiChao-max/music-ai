@@ -12,6 +12,7 @@ subclasses and returns the correct HTTP status code automatically, so
 API endpoints don't need repetitive try/except blocks for expected
 business failures.
 """
+
 from __future__ import annotations
 
 import logging
@@ -47,6 +48,7 @@ MSG_RATE_LIMITED = "Too many requests. Please slow down."
 # ---------------------------------------------------------------------------
 # Unified business error hierarchy
 # ---------------------------------------------------------------------------
+
 
 class AppError(Exception):
     """Base class for expected business errors.
@@ -96,11 +98,13 @@ class AppError(Exception):
 
 class ClientError(AppError):
     """Base for 4xx errors caused by the client."""
+
     status_code = status.HTTP_400_BAD_REQUEST
 
 
 class ValidationError(ClientError):
     """Input validation failure (400)."""
+
     code = "validation_error"
     message = MSG_INVALID_INPUT
 
@@ -122,6 +126,7 @@ class ValidationError(ClientError):
 
 class NotFoundError(ClientError):
     """Requested resource does not exist (404)."""
+
     status_code = status.HTTP_404_NOT_FOUND
     code = "not_found"
     message = MSG_NOT_FOUND
@@ -129,6 +134,7 @@ class NotFoundError(ClientError):
 
 class AuthError(ClientError):
     """Authentication required or token invalid (401)."""
+
     status_code = status.HTTP_401_UNAUTHORIZED
     code = "auth_error"
     message = MSG_SESSION_EXPIRED
@@ -136,6 +142,7 @@ class AuthError(ClientError):
 
 class ForbiddenError(ClientError):
     """Authenticated but not allowed (403)."""
+
     status_code = status.HTTP_403_FORBIDDEN
     code = "forbidden"
     message = MSG_FORBIDDEN
@@ -143,12 +150,14 @@ class ForbiddenError(ClientError):
 
 class ConflictError(ClientError):
     """Resource state conflict (409), e.g. duplicate email."""
+
     status_code = status.HTTP_409_CONFLICT
     code = "conflict"
 
 
 class RateLimitError(ClientError):
     """Too many requests (429)."""
+
     status_code = status.HTTP_429_TOO_MANY_REQUESTS
     code = "rate_limited"
     message = MSG_RATE_LIMITED
@@ -156,6 +165,7 @@ class RateLimitError(ClientError):
 
 class UploadError(ClientError):
     """Upload-specific failure (400/413)."""
+
     code = "upload_error"
 
 
@@ -165,6 +175,7 @@ class ServerError(AppError):
 
 class ServiceUnavailableError(ServerError):
     """Downstream dependency unavailable (503)."""
+
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     code = "service_unavailable"
     message = MSG_SERVICE_UNAVAILABLE

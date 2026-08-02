@@ -12,15 +12,14 @@ The service stores presets in the database and provides methods to:
   - Map GM program numbers to custom presets
   - List available presets
 """
+
 from __future__ import annotations
 
 import csv
 import io
 import logging
-import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -280,10 +279,13 @@ class SoundFontService:
 
     def __init__(self, storage_dir: Path | None = None) -> None:
         from app.config import settings
+
         self._storage_dir = storage_dir or Path(settings.storage_dir) / "soundfonts"
         self._storage_dir.mkdir(parents=True, exist_ok=True)
 
-    def import_soundfont(self, name: str, content: bytes, description: str | None = None) -> SoundFontInfo | None:
+    def import_soundfont(
+        self, name: str, content: bytes, description: str | None = None
+    ) -> SoundFontInfo | None:
         """Import a SoundFont 2 (.sf2) file.
 
         Extracts preset information and stores the file. Returns SoundFontInfo
@@ -342,14 +344,16 @@ class SoundFontService:
                 if not preset_name:
                     continue
 
-                presets.append(PresetInfo(
-                    bank_msb=bank_msb,
-                    bank_lsb=bank_lsb,
-                    program=program,
-                    name=preset_name,
-                    category=row.get("category"),
-                    instrument_type=_normalize_instrument_type(row.get("instrument_type")),
-                ))
+                presets.append(
+                    PresetInfo(
+                        bank_msb=bank_msb,
+                        bank_lsb=bank_lsb,
+                        program=program,
+                        name=preset_name,
+                        category=row.get("category"),
+                        instrument_type=_normalize_instrument_type(row.get("instrument_type")),
+                    )
+                )
             except (KeyError, ValueError):
                 continue
 
@@ -370,10 +374,7 @@ class SoundFontService:
         """
         # 1. Exact instrument_type match.
         if instrument_type:
-            candidates = [
-                p for p in presets
-                if p.instrument_type == instrument_type
-            ]
+            candidates = [p for p in presets if p.instrument_type == instrument_type]
             if candidates:
                 return PresetMapping(
                     gm_program=gm_program,
@@ -384,10 +385,7 @@ class SoundFontService:
                 )
 
         # 2. Exact program match.
-        candidates = [
-            p for p in presets
-            if p.program == gm_program
-        ]
+        candidates = [p for p in presets if p.program == gm_program]
         if candidates:
             return PresetMapping(
                 gm_program=gm_program,
@@ -410,7 +408,10 @@ class SoundFontService:
             if best_preset is not None and best_score >= 0.4:
                 logger.debug(
                     "soundfont: fuzzy match gm=%d (%s) -> preset=%s (score=%.2f)",
-                    gm_program, gm_name, best_preset.name, best_score,
+                    gm_program,
+                    gm_name,
+                    best_preset.name,
+                    best_score,
                 )
                 return PresetMapping(
                     gm_program=gm_program,
@@ -485,13 +486,15 @@ class SoundFontService:
                 continue
             bank_msb = (preset.bank >> 8) & 0x7F
             bank_lsb = preset.bank & 0x7F
-            presets.append(PresetInfo(
-                bank_msb=bank_msb,
-                bank_lsb=bank_lsb,
-                program=preset.preset,
-                name=preset.name,
-                instrument_type=None,
-            ))
+            presets.append(
+                PresetInfo(
+                    bank_msb=bank_msb,
+                    bank_lsb=bank_lsb,
+                    program=preset.preset,
+                    name=preset.name,
+                    instrument_type=None,
+                )
+            )
         return presets
 
     @staticmethod
@@ -511,33 +514,35 @@ class SoundFontService:
         presets: list[PresetInfo] = []
 
         try:
-            with open(sf2_path, "rb") as f:
-                # `fileno()` gives us the raw OS file descriptor; mmap
-                # maps it into the address space without copying.
-                with mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as data:
-                    if len(data) < 4 or data[:4] != b"RIFF":
-                        return []
+            with (
+                open(sf2_path, "rb") as f,
+                mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as data,
+            ):
+                if len(data) < 4 or data[:4] != b"RIFF":
+                    return []
 
-                    preset_start = data.find(b"phdr")
-                    if preset_start == -1:
-                        return []
+                preset_start = data.find(b"phdr")
+                if preset_start == -1:
+                    return []
 
-                    offset = preset_start + 8
-                    while offset + 38 <= len(data):
-                        name = data[offset:offset+20].decode("ascii", errors="ignore").strip("\x00")
-                        preset = int.from_bytes(data[offset+20:offset+22], "little")
-                        bank = int.from_bytes(data[offset+22:offset+24], "little")
-                        offset += 38
+                offset = preset_start + 8
+                while offset + 38 <= len(data):
+                    name = data[offset : offset + 20].decode("ascii", errors="ignore").strip("\x00")
+                    preset = int.from_bytes(data[offset + 20 : offset + 22], "little")
+                    bank = int.from_bytes(data[offset + 22 : offset + 24], "little")
+                    offset += 38
 
-                        if name and preset >= 0 and preset <= 127:
-                            bank_msb = (bank >> 8) & 0xFF
-                            bank_lsb = bank & 0xFF
-                            presets.append(PresetInfo(
+                    if name and preset >= 0 and preset <= 127:
+                        bank_msb = (bank >> 8) & 0xFF
+                        bank_lsb = bank & 0xFF
+                        presets.append(
+                            PresetInfo(
                                 bank_msb=bank_msb,
                                 bank_lsb=bank_lsb,
                                 program=preset,
                                 name=name,
-                            ))
+                            )
+                        )
 
         except (ValueError, OSError) as exc:
             # ValueError: empty file (mmap can't map 0 bytes)
@@ -551,6 +556,7 @@ class SoundFontService:
     def list_soundfonts(self, db) -> list[dict]:
         """List all SoundFonts and preset tables from the database."""
         from sqlalchemy import select
+
         from app.db.models import SoundFont
 
         rows = list(db.scalars(select(SoundFont).order_by(SoundFont.created_at.desc())))
@@ -559,17 +565,22 @@ class SoundFontService:
     def get_soundfont(self, db, soundfont_id: int) -> dict | None:
         """Get a SoundFont by ID with its presets."""
         from sqlalchemy import select
+
         from app.db.models import SoundFont, SoundFontPreset
 
         sf = db.get(SoundFont, soundfont_id)
         if sf is None:
             return None
 
-        presets = list(db.scalars(
-            select(SoundFontPreset)
-            .where(SoundFontPreset.soundfont_id == soundfont_id)
-            .order_by(SoundFontPreset.bank_msb, SoundFontPreset.bank_lsb, SoundFontPreset.program)
-        ))
+        presets = list(
+            db.scalars(
+                select(SoundFontPreset)
+                .where(SoundFontPreset.soundfont_id == soundfont_id)
+                .order_by(
+                    SoundFontPreset.bank_msb, SoundFontPreset.bank_lsb, SoundFontPreset.program
+                )
+            )
+        )
 
         result = self._sf_row_to_dict(sf)
         result["presets"] = [self._preset_row_to_dict(p) for p in presets]
@@ -578,10 +589,11 @@ class SoundFontService:
     def get_active_soundfont(self, db) -> dict | None:
         """Get the currently active SoundFont, or None."""
         from sqlalchemy import select
+
         from app.db.models import SoundFont
 
         sf = db.scalars(
-            select(SoundFont).where(SoundFont.is_active == 1).limit(1)
+            select(SoundFont).where(SoundFont.is_active == True).limit(1)  # noqa: E712
         ).first()
         if sf is None:
             return None
@@ -590,14 +602,15 @@ class SoundFontService:
     def activate_soundfont(self, db, soundfont_id: int) -> dict | None:
         """Activate a SoundFont (deactivates all others)."""
         from sqlalchemy import update
+
         from app.db.models import SoundFont
 
         sf = db.get(SoundFont, soundfont_id)
         if sf is None:
             return None
 
-        db.execute(update(SoundFont).values(is_active=0))
-        sf.is_active = 1
+        db.execute(update(SoundFont).values(is_active=False))
+        sf.is_active = True
         db.commit()
         db.refresh(sf)
         return self.get_soundfont(db, soundfont_id)
@@ -605,6 +618,7 @@ class SoundFontService:
     def delete_soundfont(self, db, soundfont_id: int) -> bool:
         """Delete a SoundFont and its presets."""
         from sqlalchemy import select
+
         from app.db.models import SoundFont, SoundFontPreset
 
         sf = db.get(SoundFont, soundfont_id)
@@ -645,22 +659,24 @@ class SoundFontService:
             type=sf_type,
             file_path=file_path,
             preset_count=len(presets),
-            is_active=0,
+            is_active=False,
             owner_id=owner_id,
         )
         db.add(sf)
         db.flush()
 
         for p in presets:
-            db.add(SoundFontPreset(
-                soundfont_id=sf.id,
-                bank_msb=p.bank_msb,
-                bank_lsb=p.bank_lsb,
-                program=p.program,
-                name=p.name,
-                category=p.category,
-                instrument_type=p.instrument_type,
-            ))
+            db.add(
+                SoundFontPreset(
+                    soundfont_id=sf.id,
+                    bank_msb=p.bank_msb,
+                    bank_lsb=p.bank_lsb,
+                    program=p.program,
+                    name=p.name,
+                    category=p.category,
+                    instrument_type=p.instrument_type,
+                )
+            )
 
         db.commit()
         db.refresh(sf)

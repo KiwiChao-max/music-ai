@@ -18,7 +18,6 @@ import { useTranslation } from "react-i18next";
 import WaveSurfer from "wavesurfer.js";
 
 import { usePlayer } from "@/contexts/PlayerContext";
-import { getAccessToken } from "@/api/axios";
 import { MidiPreviewPlayer } from "@/components/MidiPreviewPlayer";
 import { useArtifactUrl } from "@/hooks/useArtifactUrl";
 import type { StemInfo } from "@/types/audio";
@@ -231,17 +230,15 @@ export function StemMixer({ stems }: StemMixerProps) {
   if (audioStems.length === 0 && midiStems.length === 0) return null;
 
   const onPlayAudio = (stem: StemInfo) => {
-    // Compare base URLs (without token) so the player identity remains stable.
+    // Compare base URLs (without query/token) so the player identity
+    // remains stable across token refreshes. The backend already
+    // appends a short-lived download token to stem.url.
     const currentBase = current?.url?.split("?")[0] ?? "";
     const stemBase = stem.url.split("?")[0];
     if (currentBase === stemBase && isPlaying) {
       pause();
     } else {
-      // Append token for the actual audio element load.
-      const token = getAccessToken();
-      const sep = stem.url.includes("?") ? "&" : "?";
-      const authUrl = token ? `${stem.url}${sep}token=${encodeURIComponent(token)}` : stem.url;
-      play({ url: authUrl, title: stemLabel(t, stem.name), kind: "audio" });
+      play({ url: stem.url, title: stemLabel(t, stem.name), kind: "audio" });
     }
   };
 

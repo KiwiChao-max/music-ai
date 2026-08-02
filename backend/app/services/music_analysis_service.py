@@ -6,9 +6,11 @@ JSON with tempo, key, chord snapshots, coarse sections, instrumentation advice,
 and arrangement suggestions. A future LLM pass can use this JSON as context,
 but the product already has useful output without an external model call.
 """
+
 from __future__ import annotations
 
 import csv
+import itertools
 import json
 import math
 from collections import Counter
@@ -125,7 +127,9 @@ class MusicAnalysisService:
         key_name, scale, key_confidence = _estimate_key(notes)
         chords = _estimate_chords(notes, duration, bpm)
         sections = _estimate_sections(notes, duration)
-        pitch_range = f"{_pitch_name(min(n.pitch for n in notes))}-{_pitch_name(max(n.pitch for n in notes))}"
+        pitch_range = (
+            f"{_pitch_name(min(n.pitch for n in notes))}-{_pitch_name(max(n.pitch for n in notes))}"
+        )
 
         if len(notes) < 8:
             warnings.append(_i18n("warn_few_notes"))
@@ -187,7 +191,7 @@ def _load_notes(output_dir: Path) -> list[NoteEvent]:
 
 def _estimate_bpm(notes: list[NoteEvent]) -> tuple[int | None, float]:
     onsets = sorted({round(note.start, 3) for note in notes})
-    intervals = [b - a for a, b in zip(onsets, onsets[1:]) if 0.12 <= b - a <= 2.0]
+    intervals = [b - a for a, b in itertools.pairwise(onsets) if 0.12 <= b - a <= 2.0]
     if not intervals:
         return None, 0.0
 
@@ -231,7 +235,9 @@ def _estimate_key(notes: list[NoteEvent]) -> tuple[str | None, str | None, float
     return _PITCH_NAMES[tonic], mode, confidence
 
 
-def _estimate_chords(notes: list[NoteEvent], duration: float, bpm: int | None) -> list[ChordSegment]:
+def _estimate_chords(
+    notes: list[NoteEvent], duration: float, bpm: int | None
+) -> list[ChordSegment]:
     if duration <= 0:
         return []
     window = 60.0 / bpm * 4.0 if bpm else max(2.0, duration / 8.0)
@@ -246,9 +252,13 @@ def _estimate_chords(notes: list[NoteEvent], duration: float, bpm: int | None) -
         if chord:
             if segments and segments[-1].chord == chord:
                 prev = segments[-1]
-                segments[-1] = ChordSegment(prev.start, end, chord, max(prev.confidence, confidence))
+                segments[-1] = ChordSegment(
+                    prev.start, end, chord, max(prev.confidence, confidence)
+                )
             else:
-                segments.append(ChordSegment(round(cursor, 2), round(end, 2), chord, round(confidence, 3)))
+                segments.append(
+                    ChordSegment(round(cursor, 2), round(end, 2), chord, round(confidence, 3))
+                )
         cursor = end
 
     return segments[:16]
@@ -321,7 +331,9 @@ def _i18n(key: str, *params: str) -> str:
     return "$" + key
 
 
-def _instrumentation_advice(notes: list[NoteEvent], key_name: str | None, scale: str | None) -> list[str]:
+def _instrumentation_advice(
+    notes: list[NoteEvent], key_name: str | None, scale: str | None
+) -> list[str]:
     low = sum(1 for note in notes if note.pitch < 48)
     mid = sum(1 for note in notes if 48 <= note.pitch <= 72)
     high = sum(1 for note in notes if note.pitch > 72)
@@ -400,7 +412,7 @@ def _section_suggestion(index: int, energy: str, note_count: int) -> str:
 def _profile_score(histogram: list[float], profile: list[float]) -> float:
     profile_total = sum(profile)
     normalized = [value / profile_total for value in profile]
-    return sum(a * b for a, b in zip(histogram, normalized))
+    return sum(a * b for a, b in zip(histogram, normalized, strict=False))
 
 
 def _rotate(values: list[float], shift: int) -> list[float]:

@@ -1,6 +1,8 @@
 """Audio task REST endpoints."""
+
 from __future__ import annotations
 
+import contextlib
 import logging
 from pathlib import Path
 
@@ -12,8 +14,8 @@ from app.api.deps import (
     check_task_ownership,
 )
 from app.config import settings
-from app.db.session import get_db
 from app.db.models import AudioTaskStatus
+from app.db.session import get_db
 from app.schemas.audio import AudioTaskRead, UploadResponse
 from app.services import file_service, task_service, user_service
 from app.utils.audio_validation import probe_metadata
@@ -64,10 +66,8 @@ def _cleanup_failed_upload(db: Session, task_id: int) -> None:
     if task is not None:
         try:
             file_service.remove_task_files(task)
-        except Exception:  # noqa: BLE001 - cleanup must never raise
-            logger.exception(
-                "cleanup_failed_upload: file removal failed for task %s", task_id
-            )
+        except Exception:
+            logger.exception("cleanup_failed_upload: file removal failed for task %s", task_id)
 
 
 @router.post("/upload", response_model=UploadResponse, status_code=201)
@@ -93,10 +93,9 @@ def upload_audio(
     # created task that pollutes the admin view.
     if user is not None:
         active = user_service.count_active_tasks(db, user.id)
-        if (
-            user_service.effective_max_tasks(user) > 0
-            and active >= user_service.effective_max_tasks(user)
-        ):
+        if user_service.effective_max_tasks(
+            user
+        ) > 0 and active >= user_service.effective_max_tasks(user):
             raise HTTPException(
                 status_code=429,
                 detail=(
@@ -138,16 +137,12 @@ def upload_audio(
     meta = probe_metadata(path)
     if not meta.is_valid:
         db.rollback()
-        try:
+        with contextlib.suppress(Exception):
             path.unlink(missing_ok=True)
-        except Exception:  # noqa: BLE001
-            pass
         # Also clean up the uploaded file from the storage backend
         # (S3 may already have a copy).
-        try:
+        with contextlib.suppress(Exception):
             file_service.remove_task_files(task)
-        except Exception:  # noqa: BLE001
-            pass
         violations = "; ".join(meta.violations)
         log_error(
             ValueError(violations),
@@ -197,8 +192,12 @@ def list_tasks(
     return [
         AudioTaskRead.model_validate(t)
         for t in task_service.list_tasks(
-            db, limit=limit, offset=offset, user_id=only_user_id,
-            public_only=public_only, status=status,
+            db,
+            limit=limit,
+            offset=offset,
+            user_id=only_user_id,
+            public_only=public_only,
+            status=status,
         )
     ]
 
@@ -232,5 +231,5 @@ def delete_task(
     db.commit()
     try:
         file_service.remove_task_files(task)
-    except Exception:  # noqa: BLE001 - cleanup must never raise
+    except Exception:
         logger.exception("delete_task: file removal failed for task %s", task_id)

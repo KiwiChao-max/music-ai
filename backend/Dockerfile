@@ -1,17 +1,25 @@
 FROM python:3.12-slim
 
-# System deps for psycopg2 and any future audio tooling.
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+# System deps for psycopg2, FFmpeg for compressed audio formats (MP3/AAC/FLAC),
+# and curl for healthchecks.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         libpq-dev \
         curl \
+        ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 # Install Python deps first so source changes don't bust the layer cache.
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Both requirements files are installed because the same image is used for
+# the API server and Celery workers (workers need demucs/basic-pitch).
+COPY requirements.txt requirements-audio.txt .
+RUN pip install --no-cache-dir -r requirements.txt -r requirements-audio.txt
 
 # Copy the rest of the source.
 COPY . .
