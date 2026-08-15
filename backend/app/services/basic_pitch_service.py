@@ -1,10 +1,16 @@
 """Audio-to-MIDI service with Basic Pitch first and a local fallback.
 
-Basic Pitch remains the preferred polyphonic transcription engine. In local
-Python 3.12 environments it can be unavailable because its TensorFlow range is
-not compatible, so this module falls back to a lightweight librosa.pyin based
-monophonic transcription. The fallback is useful for bass, vocal and simple
-melodic stems; production polyphonic quality still comes from Basic Pitch.
+Basic Pitch remains the preferred polyphonic transcription engine. When
+TensorFlow is unavailable (e.g. minimal Docker images, platforms without
+TF wheels, or environments that deliberately avoid the large TF dependency),
+this module falls back to a lightweight librosa.pyin based monophonic
+transcription. The fallback is useful for bass, vocal and simple melodic
+stems; production polyphonic quality still comes from Basic Pitch.
+
+Note: As of TensorFlow 2.16+, Python 3.12 is fully supported on Linux,
+macOS (x86_64 / arm64), and Windows. The fallback path is retained for
+environments that explicitly opt out of TensorFlow to keep image sizes
+small or avoid its dependency footprint (~600 MB).
 """
 
 from __future__ import annotations
@@ -12,10 +18,35 @@ from __future__ import annotations
 import csv
 import logging
 import math
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# Module-level Basic Pitch model cache. ``predict()`` constructs a fresh
+# ONNX InferenceSession (~400-600 MB) whenever it receives a model
+# *path*; a single task transcribes up to five melodic stems, so we load
+# the ``Model`` once per worker child and reuse it across stems and
+# tasks (the library's documented fast path). The lock only guards
+# against a threaded caller racing the initial load.
+_BASIC_PITCH_MODEL: object | None = None
+_BASIC_PITCH_MODEL_LOCK = threading.Lock()
+
+
+def _get_basic_pitch_model() -> object:
+    """Load (once) and return the Basic Pitch inference Model."""
+    global _BASIC_PITCH_MODEL
+    if _BASIC_PITCH_MODEL is not None:
+        return _BASIC_PITCH_MODEL
+    with _BASIC_PITCH_MODEL_LOCK:
+        if _BASIC_PITCH_MODEL is None:
+            from basic_pitch import ICASSP_2022_MODEL_PATH
+            from basic_pitch.inference import Model
+
+            logger.info("basic-pitch: loading ICASSP 2022 model (first use)")
+            _BASIC_PITCH_MODEL = Model(ICASSP_2022_MODEL_PATH)
+    return _BASIC_PITCH_MODEL
 
 
 @dataclass(frozen=True)
@@ -88,7 +119,6 @@ class BasicPitchService:
         min_frequency: float | None,
         max_frequency: float | None,
     ) -> BasicPitchResult:
-        from basic_pitch import ICASSP_2022_MODEL_PATH
         from basic_pitch.inference import predict
 
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -107,7 +137,7 @@ class BasicPitchService:
 
         _, midi_data, note_events = predict(
             str(audio_path),
-            model_or_model_path=ICASSP_2022_MODEL_PATH,
+            model_or_model_path=_get_basic_pitch_model(),
             onset_threshold=onset_threshold,
             frame_threshold=frame_threshold,
             minimum_note_length=min_note_length_ms,
@@ -147,7 +177,7 @@ class BasicPitchService:
         midi_path = output_dir / f"{basename}.mid"
         notes_csv_path = output_dir / f"{basename}_notes.csv"
 
-        sr = 22050
+        sr: int | float = 22050
         hop_length = 256
         y, sr = librosa.load(str(audio_path), sr=sr, mono=True)
         if y.size == 0 or float(np.max(np.abs(y))) < 1e-5:
