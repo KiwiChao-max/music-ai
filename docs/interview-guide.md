@@ -1,8 +1,9 @@
 # music-ai 项目面试知识点（问答版）
 
-> 基于当前代码库（256 tests, 6-stem Demucs, 19-part drum split, GM/XG mapping,
-> custom sample library + SF2/CSV import）。面试前过一遍，重点理解"为什么这样设计"
-> 而不是背诵答案。
+> 基于当前代码库（279 tests, 14 Alembic migrations, 6-stem Demucs, 19-part drum split,
+> GM/XG mapping, custom sample library + SF2/CSV import, PostgreSQL + Redis + Celery,
+> Docker Compose 一键部署, CI/CD + E2E + Security Scan）。面试前过一遍，
+> 重点理解"为什么这样设计"而不是背诵答案。
 
 ---
 
@@ -20,10 +21,11 @@
 6. **SoundFont / CSV 音色表导入** - 支持 SF2 文件和电子琴 CSV 音色表，自动映射 GM -> 自定义预设
 7. **音乐分析** - BPM、调式、和弦、段落检测 + LLM AI 点评
 8. **用户系统** - JWT 认证、配额管理、数据隔离
-9. **实时进度** - WebSocket 推送处理进度（Redis pub/sub + DB 兜底）
-10. **DevOps** - Docker Compose、GitHub Actions CI、Prometheus 监控、Playwright E2E
+9. **实时进度** - WebSocket 推送处理进度（Redis pub/sub + DB 轮询降级）
+10. **定时任务** - Celery Beat 定时清理过期 Token 和旧任务产物
+11. **DevOps** - Docker Compose 一键部署（PostgreSQL 16 + Redis 7 + API + Worker）、GitHub Actions CI/CD（4 个工作流）、Playwright E2E、Security Scan（每周 + push 触发）、pre-commit hooks（Ruff / ESLint / Prettier）
 
-技术栈：**FastAPI + SQLAlchemy 2.0 + PostgreSQL + Redis + React 19 / Vite + Tailwind v4 + Web Audio API**
+技术栈：**FastAPI + SQLAlchemy 2.0 + PostgreSQL 16 + Redis 7 + Celery + React 19 / Vite + Tailwind v4 + Web Audio API**
 
 ---
 
@@ -170,7 +172,22 @@
 - Basic Pitch 用轻量神经网络（ONNX 推理），可以检测**和弦**等复音
 - 输出带力度（velocity）信息
 
-> 项目中 `basic_pitch_service.py` 调用 Basic Pitch 把各乐器音轨转成 MIDI。当 Basic Pitch（TensorFlow/ONNX）不可用时，fallback 到 librosa.pyin 单音检测。两种路径都会注入完整的 GM setup（Bank Select + Program Change + CC 控制器），区别是 Basic Pitch 路径通过 `_inject_gm_setup` 后处理注入，librosa 路径在 `_write_midi` 中直接写入。
+> 项目中 `basic_pitch_service.py` 调用 Basic Pitch 把各乐器音轨转成 MIDI。**两级 fallback 容错机制**：
+
+```
+transcribe(audio)
+  ↓
+1. 优先用 Basic Pitch（_transcribe_with_basic_pitch）
+  ↓ 如果 ImportError / ModuleNotFoundError
+  （TensorFlow 未安装，如精简 Docker 镜像或不希望引入 ~600MB TF 依赖）
+2. fallback 到 librosa.pyin 单音检测（_transcribe_with_librosa）
+  ↓ 如果 Basic Pitch 运行时异常（模型崩溃等）
+3. 同样 fallback 到 librosa.pyin
+```
+
+> 两种路径都会注入完整的 GM setup（Bank Select + Program Change + CC 控制器），区别是 Basic Pitch 路径通过 `_inject_gm_setup` 后处理注入，librosa 路径在 `_write_midi` 中直接写入。librosa.pyin 虽然只能做单音检测，但对 bass、vocal 和简单旋律轨已经足够，生产级复音质量仍依赖 Basic Pitch。
+
+> 补充：TensorFlow 2.16+ 已全面支持 Python 3.12（Linux / macOS / Windows），本地开发环境 Basic Pitch 可直接运行。fallback 路径保留主要是为了不需要 TF 的轻量部署场景（精简 Docker 镜像）。
 
 ### Q12: 力度（Velocity）是怎么计算的？
 
@@ -234,13 +251,16 @@
     ↓ HTTP / WebSocket
 API 层 (FastAPI)
     ↓
-数据库 (PostgreSQL) + 缓存/消息队列 (Redis)
-    ↓ Celery
-异步 Worker (Demucs + Basic Pitch + Drum MIDI + MIDI Mapping + Analysis)
+PostgreSQL 16 (主数据库) + Redis 7 (消息队列/缓存/PubSub)
+    ↓ Celery (异步 Worker) + Celery Beat (定时任务)
+Worker 进程 (Demucs + Basic Pitch + Drum MIDI + MIDI Mapping + Analysis)
 ```
 
 - **同步**：用户上传、查询等请求直接由 FastAPI 处理
 - **异步**：音频处理耗时，通过 Celery 后台执行，WebSocket 推送进度
+- **定时**：Celery Beat 每天清理过期 refresh token 和旧任务文件
+- **部署**：Docker Compose 一键启动全部服务（PostgreSQL + Redis + API + Worker），非 root 用户运行
+- **数据库**：从 SQLite 开发阶段迁移到 PostgreSQL 16，通过 Alembic 管理 14 个迁移版本
 
 ### Q17: 为什么用 Celery？可以不用吗？
 
@@ -251,6 +271,10 @@ API 层 (FastAPI)
 - 支持任务队列、重试、并发控制
 
 > 项目中 `audio_worker.py` 就是 Celery worker，处理流程是一个 pipeline：上传 -> 分离 -> 乐器分类 -> 转 MIDI -> GM/XG 映射 -> 分析 -> AI 点评 -> 完成。每一步调用 `_report()` 更新进度并推送到 WebSocket。
+
+> 除此之外，`tasks_scheduled.py` 通过 Celery Beat 运行定时任务（每天清理过期 refresh token、清理旧任务产物），保持数据库和磁盘整洁。
+
+> 任务可靠性方面：`worker_claim` 使用 CAS（Compare-And-Swap）原子操作防止重复处理，并内置 35 分钟超时恢复机制——如果 Worker 崩溃/OOM，超时后任务会被自动回收重新处理。macOS 上需设置 `OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES` 避免 prefork 子进程因 ObjC 运行时 fork 安全问题 SIGABRT 崩溃。
 
 ### Q18: 采样库的"单激活"（一个用户只能有一个活跃库）是怎么实现的？
 
@@ -277,9 +301,10 @@ API 层 (FastAPI)
 
 **HS256 算法**，双 token 机制：
 
-- **Access Token**：24 小时有效期，用于 API 调用
-- **Refresh Token**：30 天有效期，用于换新的 access token
-- **Refresh Token 轮换**：每次用 refresh token 换新 token 时，refresh token 也会变（防止重放）
+- **Access Token**：15 分钟有效期（在内存中，不落 localStorage），用于 API 调用
+- **Refresh Token**：7 天有效期，持久化到 `refresh_tokens` 表，用于换新的 access token
+- **Refresh Token 轮换**：每次用 refresh token 换新 token 时，旧 token 失效并签发新 token（防止重放攻击）
+- **自动清理**：Celery Beat 每天定时清理过期 token（`purge_expired_tokens`）
 - **类型区分**：access token 不能当 refresh token 用，反之亦然（payload 里有 type 字段）
 
 密码用 **bcrypt** 哈希（passlib 库）。
@@ -297,16 +322,22 @@ API 层 (FastAPI)
 
 ### Q22: 数据库迁移用了什么工具？有多少张表？
 
-用 **Alembic**（SQLAlchemy 官方迁移工具），共 8 个迁移版本：
+用 **Alembic**（SQLAlchemy 官方迁移工具），共 14 个迁移版本：
 
 1. `0001_initial` - 初始表（audio_tasks 等）
-2. `0002_progress_fields` - 进度字段
+2. `0002_progress_fields` - 进度字段（progress, current_step）
 3. `0003_add_chinese_comments` - 中文注释
 4. `0004_sample_libraries` - 采样库（sample_libraries + sample_files）
-5. `0005_users` - 用户表
-6. `0006_commentary` - AI 点评
+5. `0005_users` - 用户表（users + user_quotas）
+6. `0006_commentary` - AI 点评（commentary + commentary_model）
 7. `0007_soundfonts` - 音色表（soundfonts + soundfont_presets）
 8. `0008_sample_velocity_layers` - 采样力度层（velocity_min / velocity_max）
+9. `0009_refresh_tokens` - Refresh Token 持久化与轮换（refresh_tokens 表）
+10. `0010_sample_library_owner` - 采样库归属关系（user_id FK）
+11. `0011_task_query_indexes` - 任务查询索引（status + user_id 复合索引）
+12. `0012_fix_boolean_columns` - 修复布尔列默认值（PostgreSQL 兼容）
+13. `0013_fk_constraints_and_indexes` - 外键约束完善 + 性能索引
+14. `0014_sample_file_timestamps` - 采样文件时间戳（created_at / updated_at）
 
 ### Q23: 前端播放器是怎么调度的？
 
@@ -480,11 +511,12 @@ bank_msb,bank_lsb,program,name,category,instrument_type
 
 ### Q30: 如果让你优化性能，你会从哪入手？
 
-1. **Demucs 推理加速**：用 ONNX Runtime 或 TensorRT 优化，或者换更轻量的模型
-2. **缓存**：相同文件上传直接复用结果（用文件 hash 去重）
-3. **采样分类**：当前是规则引擎，精度有限；可以引入轻量 ML 模型
-4. **前端播放**：提前预解码 AudioBuffer，播放时零延迟
-5. **数据库**：常用查询加索引，分页优化
+1. **Demucs 推理加速**：用 ONNX Runtime 或 TensorRT 优化，或换更轻量的模型（如 htdemucs_ft）
+2. **缓存**：相同文件上传直接复用结果（用文件 hash 去重），避免重复跑整个 pipeline
+3. **采样分类**：当前是规则引擎，精度有限；可引入轻量 ML 模型（如 MobileNet 分类器）
+4. **前端播放**：提前预解码 AudioBuffer，播放时零延迟；使用 Web Worker 避免主线程阻塞
+5. **数据库**：常用查询加覆盖索引，大结果集使用游标分页代替 OFFSET
+6. **Worker 调度**：根据音频时长动态调整 concurrency，短音频多并发、长音频少并发避免 OOM
 
 ### Q31: 这个项目的难点是什么？
 
@@ -504,19 +536,22 @@ bank_msb,bank_lsb,program,name,category,instrument_type
 | MIDI 转录 | Basic Pitch   | 自训练模型                | Spotify 开源，polyphonic，够用       |
 | 前端播放  | Web Audio API | MIDI.js / Tone.js         | 原生 API 零依赖，精度高              |
 | 异步任务  | Celery        | asyncio + BackgroundTasks | CPU-bound 任务需要独立进程           |
+| 数据库    | PostgreSQL 16 | SQLite                    | 并发支持、JSON 类型、FK 约束、生产级可靠性 |
+| 部署      | Docker Compose | Kubernetes               | 项目规模适中，Compose 足够简单可靠   |
 
 ### Q33: 项目有多少测试？覆盖了什么？
 
-**256 个后端测试**（pytest），覆盖：
+**279 个后端测试**（pytest，22 个测试文件），覆盖：
 
-- Service 层逻辑（Demucs / Basic Pitch / Drum MIDI / MIDI Mapping / Sample Library / SoundFont / Sample Classifier / Music Analysis）
-- API 路由（audio / tasks / instruments / auth / ws / health）
-- MIDI 操作（GM setup / CC injection / XG mapping / channel allocation）
-- Auth（JWT / refresh rotation / quota）
+- Service 层逻辑（Demucs / Basic Pitch / Drum MIDI / MIDI Mapping / Sample Library / SoundFont / Sample Classifier / Music Analysis / LLM / File / ADT Drum / Task）
+- API 路由（audio / tasks / instruments / auth / ws / health / rate limit）
+- MIDI 操作（GM setup / CC injection / XG mapping / channel allocation / drum MIDI split）
+- Auth（JWT / refresh rotation / quota / user management）
 - WebSocket（connection / progress / fallback）
+- 安全（security regression / rate limiting）
 - 边界情况（空音频 / 静音文件 / 无效文件名 / 超大文件）
 
-**前端**：TypeScript 严格编译 + 16 个 Vitest 单元测试 + Playwright E2E。
+**前端**：TypeScript 严格编译 + 11 个 Vitest 单元测试 + Playwright E2E（upload -> process -> detail 完整流程）
 
 ### Q34: 如果用户上传的音频质量很差（噪音多），系统会怎样？
 
@@ -545,11 +580,61 @@ bank_msb,bank_lsb,program,name,category,instrument_type
 | 浏览器播放         | -                                             | `components/SampleBasedDrumPlayer.tsx` |
 | WebSocket 进度     | `api/ws.py`                                 | `hooks/useTaskProgress.ts`             |
 | 用户认证           | `services/auth_service.py`                  | `contexts/AuthContext.tsx`             |
+| 定时任务           | `tasks_scheduled.py`                        | -                                        |
 | Pipeline 编排      | `workers/audio_worker.py`                   | -                                        |
+| Celery 配置        | `celery_app.py`                             | -                                        |
+| 任务状态管理       | `services/task_service.py`                  | -                                        |
+| CI/CD              | `.github/workflows/{ci,cd,e2e,security-scan}.yml` | -                                   |
 
 ---
+## 七、DevOps 与运维篇
 
-## 七、建议重点掌握
+### Q35: 项目有哪些 CI/CD 工作流？各做什么？
+
+**4 个 GitHub Actions 工作流**：
+
+| 工作流 | 触发条件 | 作用 |
+| ------ | -------- | ---- |
+| `ci.yml` | push / PR 到 main | 运行后端 pytest 279 测试 + 前端 Vitest + TypeScript 编译检查 |
+| `cd.yml` | push 到 main 或 tag v* | 构建多阶段 Docker 镜像，推送到 GitHub Container Registry (GHCR)，tag 版本产生不可变镜像 |
+| `e2e.yml` | push / PR 到 main | Playwright 端到端测试：上传音频 -> 等待处理 -> 验证详情页，使用 PostgreSQL 16 服务容器 |
+| `security-scan.yml` | push / PR 到 main + 每周一 8:00 | CodeQL 安全扫描，发现漏洞后写入 Security Events |
+
+> CI 使用 concurrency 控制避免重复运行，E2E 和 Security Scan 有 `workflow_dispatch` 支持手动触发。
+
+### Q36: Worker 崩溃后任务怎么恢复？有什么防护措施？
+
+多层防护：
+
+1. **CAS 原子认领**（`worker_claim`）：用 SQL UPDATE + WHERE 条件做 Compare-And-Swap，防止两个 Worker 同时处理同一任务
+2. **35 分钟超时恢复**：如果任务在 PROCESSING 状态超过 35 分钟（Celery `task_time_limit` 30 分钟 + 5 分钟缓冲），`worker_claim` 的 WHERE 条件会允许重新认领，回收崩溃 Worker 留下的任务
+3. **Celery `acks_late=True`**：Worker 崩溃后消息自动重新入队，不会丢失
+4. **内存保护**（`worker_limits.py`）：处理前检查 RSS 内存，超过 `WORKER_MEMORY_GATE_MB` 阈值时拒绝执行并重新入队，防止 OOM 连锁崩溃
+5. **`max_tasks_per_child=10`**：Worker 子进程每处理 10 个任务后自动重启，防止内存泄漏累积
+6. **`max_memory_per_child=3500MB`**：子进程内存超限时自动回收
+
+> 在 macOS 上还需设置 `OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES` 环境变量，因为 Celery 的 prefork 模型在 macOS 上会因 ObjC 运行时不是 fork-safe 而 SIGABRT 崩溃。
+
+### Q37: Docker Compose 部署包含哪些服务？怎么保证安全？
+
+**4 个服务**：
+
+| 服务 | 镜像 | 说明 |
+| ---- | ---- | ---- |
+| `postgres` | `postgres:16-alpine` | 数据库，仅 compose 内网可达，健康检查用 `pg_isready` |
+| `redis` | `redis:7-alpine` | 消息队列 + 缓存 + PubSub，不暴露端口 |
+| `api` | 多阶段构建 | FastAPI + Uvicorn，非 root 用户运行 |
+| `worker` | 多阶段构建 | Celery Worker + Beat，非 root 用户运行 |
+
+**安全措施**：
+- 所有容器以非 root 用户运行（`USER 1000`）
+- PostgreSQL 和 Redis 不暴露宿主机端口（仅 compose 内网可达）
+- 敏感信息通过环境变量注入（`.env` 文件），不在镜像中硬编码
+- Docker 镜像使用多阶段构建减小体积（最终镜像不含编译工具链）
+- API 带 rate limiting、CORS 白名单、CSP 安全头
+
+---
+## 八、建议重点掌握
 
 面试最常问的方向：
 
@@ -558,9 +643,9 @@ bank_msb,bank_lsb,program,name,category,instrument_type
 3. **鼓组映射** - GM 打击乐音符分配、19 个鼓部件、fill 检测、置信度回退
 4. **6 轨分离原理** - Demucs htdemucs_6s、二级乐器分类、soft mask 重建
 5. **Web Audio 播放机制** - AudioBuffer、调度方式、力度控制、velocity 层
-6. **系统架构** - 前后端分离 + Celery 异步任务 + WebSocket 实时推送 + Redis pub/sub
+6. **系统架构** - 前后端分离 + Celery 异步任务 + WebSocket 实时推送 + Celery Beat 定时任务
 7. **自定义采样** - 文件名映射、频谱自动识别、SF2/CSV 导入、GM->自定义三级匹配
-8. **工程规范** - 256 测试、Alembic 迁移、rate limiting、Docker 非root、CI/CD
+8. **工程规范** - 279 测试、14 个 Alembic 迁移、4 个 CI/CD 工作流、Docker 非 root 运行、pre-commit hooks
 
 ---
 
