@@ -4,19 +4,19 @@ These tests stub `app.db.session.SessionLocal` to return the same
 in-memory SQLite engine the rest of the suite uses, so the WS handler
 sees the same task rows the test inserted.
 """
+
 from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.config import settings
 from app.db import session as db_session
 from app.db.models import AudioTask, AudioTaskStatus
 from app.main import app
@@ -32,8 +32,8 @@ PWD = "hunter22hunter"
 def ws_engine():
     """Per-test DB engine --- Postgres when ``TEST_DATABASE_URL`` is set
     (CI), in-memory SQLite otherwise (local dev)."""
-    from app.db.base import Base
     from app.db import models  # noqa: F401  (registers models on Base.metadata)
+    from app.db.base import Base
 
     test_url = os.environ.get("TEST_DATABASE_URL")
     if test_url:
@@ -55,21 +55,22 @@ def ws_engine():
 def ws_session_factory(ws_engine):
     """Yield a session bound to the test engine and patch `SessionLocal`
     so the WebSocket handler uses the same in-memory DB."""
-    SessionTesting = sessionmaker(
+    session_testing = sessionmaker(
         bind=ws_engine,
         autoflush=False,
         autocommit=False,
         expire_on_commit=False,
     )
     real_session_local = db_session.SessionLocal
-    db_session.SessionLocal = SessionTesting
+    db_session.SessionLocal = session_testing
     # `app/api/ws.py` did `from app.db.session import SessionLocal`,
     # so the name is bound in *its* namespace too --- patch there as well.
     from app.api import ws as ws_mod
+
     real_ws_session_local = ws_mod.SessionLocal
-    ws_mod.SessionLocal = SessionTesting
+    ws_mod.SessionLocal = session_testing
     try:
-        yield SessionTesting
+        yield session_testing
     finally:
         db_session.SessionLocal = real_session_local
         ws_mod.SessionLocal = real_ws_session_local
@@ -81,15 +82,14 @@ def client(ws_session_factory) -> TestClient:
     # Reset the per-IP connection counter so a leaked slot in a prior
     # test can't poison the next one.
     from app.api import ws as ws_mod
+
     with ws_mod._ws_lock:
         ws_mod._ws_connections.clear()
     return TestClient(app)
 
 
 # ---- snapshot for new task ----------------------------------------------
-def test_ws_sends_snapshot_for_existing_task(
-    client: TestClient, ws_session_factory
-) -> None:
+def test_ws_sends_snapshot_for_existing_task(client: TestClient, ws_session_factory) -> None:
     """A fresh UPLOADED task must produce a `snapshot` event right after
     connect, with the current state from the DB."""
     with ws_session_factory() as db:
@@ -98,9 +98,7 @@ def test_ws_sends_snapshot_for_existing_task(
         db.commit()
         task_id = task.id
 
-    with client.websocket_connect(
-        f"/api/ws/tasks/{task_id}/progress"
-    ) as ws:
+    with client.websocket_connect(f"/api/ws/tasks/{task_id}/progress") as ws:
         first = ws.receive_text()
         event = json.loads(first)
         assert event["type"] == "snapshot"
@@ -110,9 +108,7 @@ def test_ws_sends_snapshot_for_existing_task(
 
 
 # ---- terminal state ------------------------------------------------------
-def test_ws_closes_immediately_for_finished_task(
-    client: TestClient, ws_session_factory
-) -> None:
+def test_ws_closes_immediately_for_finished_task(client: TestClient, ws_session_factory) -> None:
     """A FINISHED task must produce a snapshot AND a `task_finished`
     event, then close the connection."""
     with ws_session_factory() as db:
@@ -120,15 +116,13 @@ def test_ws_closes_immediately_for_finished_task(
             filename="song.wav",
             status=AudioTaskStatus.FINISHED,
             progress=100,
-            finished_at=datetime.now(timezone.utc),
+            finished_at=datetime.now(UTC),
         )
         db.add(task)
         db.commit()
         task_id = task.id
 
-    with client.websocket_connect(
-        f"/api/ws/tasks/{task_id}/progress"
-    ) as ws:
+    with client.websocket_connect(f"/api/ws/tasks/{task_id}/progress") as ws:
         snapshot = json.loads(ws.receive_text())
         assert snapshot["type"] == "snapshot"
         assert snapshot["status"] == "FINISHED"
@@ -139,24 +133,20 @@ def test_ws_closes_immediately_for_finished_task(
         assert terminal["progress"] == 100
 
 
-def test_ws_closes_for_failed_task(
-    client: TestClient, ws_session_factory
-) -> None:
+def test_ws_closes_for_failed_task(client: TestClient, ws_session_factory) -> None:
     """A FAILED task emits a `task_finished` event with the error message."""
     with ws_session_factory() as db:
         task = AudioTask(
             filename="song.wav",
             status=AudioTaskStatus.FAILED,
             error_message="demucs crashed",
-            finished_at=datetime.now(timezone.utc),
+            finished_at=datetime.now(UTC),
         )
         db.add(task)
         db.commit()
         task_id = task.id
 
-    with client.websocket_connect(
-        f"/api/ws/tasks/{task_id}/progress"
-    ) as ws:
+    with client.websocket_connect(f"/api/ws/tasks/{task_id}/progress") as ws:
         ws.receive_text()  # snapshot
         terminal = json.loads(ws.receive_text())
         assert terminal["type"] == "task_finished"
@@ -165,16 +155,14 @@ def test_ws_closes_for_failed_task(
 
 
 # ---- not found -----------------------------------------------------------
-def test_ws_emits_error_for_missing_task(
-    client: TestClient, ws_session_factory
-) -> None:
+def test_ws_emits_error_for_missing_task(client: TestClient, ws_session_factory) -> None:
     """A 404-ish task must produce an `error` event and close."""
     with client.websocket_connect("/api/ws/tasks/9999/progress") as ws:
         event = json.loads(ws.receive_text())
         assert event["type"] == "error"
         assert event["code"] == "not_found"
         # The next receive should raise (the server closed the socket).
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017 - any error proves the socket is closed
             ws.receive_text()
 
 
@@ -182,9 +170,7 @@ def test_ws_emits_error_for_missing_task(
 def test_ws_rejects_non_owner(client: TestClient, ws_session_factory) -> None:
     """A non-admin user must not be able to watch someone else's task."""
     with ws_session_factory() as db:
-        bob = user_service.create_user(
-            db, email=EMAIL_B, username="bob", password=PWD
-        )
+        bob = user_service.create_user(db, email=EMAIL_B, username="bob", password=PWD)
         db.commit()
         # Task is owned by Bob.
         task = AudioTask(
@@ -199,30 +185,22 @@ def test_ws_rejects_non_owner(client: TestClient, ws_session_factory) -> None:
 
     # Alice's access token.
     with ws_session_factory() as db:
-        alice = user_service.create_user(
-            db, email=EMAIL_A, username="alice", password=PWD
-        )
+        alice = user_service.create_user(db, email=EMAIL_A, username="alice", password=PWD)
         db.commit()
     token = _issue_token(alice.id, email=EMAIL_A, role="user")
 
-    with client.websocket_connect(
-        f"/api/ws/tasks/{task_id}/progress?token={token}"
-    ) as ws:
+    with client.websocket_connect(f"/api/ws/tasks/{task_id}/progress?token={token}") as ws:
         event = json.loads(ws.receive_text())
         assert event["type"] == "error"
         assert event["code"] == "forbidden"
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017 - any error proves the socket is closed
             ws.receive_text()
     _ = bob_id  # silence unused warning if we ever add a check
 
 
-def test_ws_allows_owner_to_watch(
-    client: TestClient, ws_session_factory
-) -> None:
+def test_ws_allows_owner_to_watch(client: TestClient, ws_session_factory) -> None:
     with ws_session_factory() as db:
-        alice = user_service.create_user(
-            db, email=EMAIL_A, username="alice", password=PWD
-        )
+        alice = user_service.create_user(db, email=EMAIL_A, username="alice", password=PWD)
         db.commit()
         task = AudioTask(
             filename="mine.wav",
@@ -234,17 +212,13 @@ def test_ws_allows_owner_to_watch(
         task_id = task.id
 
     token = _issue_token(alice.id, email=EMAIL_A, role="user")
-    with client.websocket_connect(
-        f"/api/ws/tasks/{task_id}/progress?token={token}"
-    ) as ws:
+    with client.websocket_connect(f"/api/ws/tasks/{task_id}/progress?token={token}") as ws:
         snapshot = json.loads(ws.receive_text())
         assert snapshot["type"] == "snapshot"
         assert snapshot["task_id"] == task_id
 
 
-def test_ws_allows_anonymous_for_legacy_task(
-    client: TestClient, ws_session_factory
-) -> None:
+def test_ws_allows_anonymous_for_legacy_task(client: TestClient, ws_session_factory) -> None:
     """Tasks with `user_id IS NULL` (legacy / pre-auth uploads) must be
     watchable by anyone --- the same policy the REST endpoints use."""
     with ws_session_factory() as db:
@@ -257,25 +231,19 @@ def test_ws_allows_anonymous_for_legacy_task(
         db.commit()
         task_id = task.id
 
-    with client.websocket_connect(
-        f"/api/ws/tasks/{task_id}/progress"
-    ) as ws:
+    with client.websocket_connect(f"/api/ws/tasks/{task_id}/progress") as ws:
         snapshot = json.loads(ws.receive_text())
         assert snapshot["type"] == "snapshot"
         assert snapshot["task_id"] == task_id
 
 
-def test_ws_rejects_anonymous_for_owned_task(
-    client: TestClient, ws_session_factory
-) -> None:
+def test_ws_rejects_anonymous_for_owned_task(client: TestClient, ws_session_factory) -> None:
     """Anonymous callers (no token) must NOT be able to watch a task
     that belongs to a user. Previously the ownership check only fired
     when a token was present, so anonymous clients could subscribe to
     anyone's task --- including ones carrying private error messages."""
     with ws_session_factory() as db:
-        bob = user_service.create_user(
-            db, email=EMAIL_B, username="bob", password=PWD
-        )
+        bob = user_service.create_user(db, email=EMAIL_B, username="bob", password=PWD)
         db.commit()
         task = AudioTask(
             filename="private.wav",
@@ -286,24 +254,18 @@ def test_ws_rejects_anonymous_for_owned_task(
         db.commit()
         task_id = task.id
 
-    with client.websocket_connect(
-        f"/api/ws/tasks/{task_id}/progress"
-    ) as ws:
+    with client.websocket_connect(f"/api/ws/tasks/{task_id}/progress") as ws:
         event = json.loads(ws.receive_text())
         assert event["type"] == "error"
         assert event["code"] == "forbidden"
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017 - any error proves the socket is closed
             ws.receive_text()
 
 
-def test_ws_allows_admin_to_watch_any_task(
-    client: TestClient, ws_session_factory
-) -> None:
+def test_ws_allows_admin_to_watch_any_task(client: TestClient, ws_session_factory) -> None:
     """Admins can watch any task regardless of ownership."""
     with ws_session_factory() as db:
-        bob = user_service.create_user(
-            db, email=EMAIL_B, username="bob", password=PWD
-        )
+        bob = user_service.create_user(db, email=EMAIL_B, username="bob", password=PWD)
         db.commit()
         task = AudioTask(
             filename="bob_private.wav",
@@ -315,9 +277,7 @@ def test_ws_allows_admin_to_watch_any_task(
         task_id = task.id
 
     admin_token = _issue_token(1, email="[email protected]", role="admin")
-    with client.websocket_connect(
-        f"/api/ws/tasks/{task_id}/progress?token={admin_token}"
-    ) as ws:
+    with client.websocket_connect(f"/api/ws/tasks/{task_id}/progress?token={admin_token}") as ws:
         snapshot = json.loads(ws.receive_text())
         assert snapshot["type"] == "snapshot"
         assert snapshot["task_id"] == task_id
@@ -343,13 +303,11 @@ def test_ws_rejects_too_many_connections_per_ip(
         db.commit()
         task_id = task.id
 
-    with client.websocket_connect(
-        f"/api/ws/tasks/{task_id}/progress"
-    ) as ws:
+    with client.websocket_connect(f"/api/ws/tasks/{task_id}/progress") as ws:
         event = json.loads(ws.receive_text())
         assert event["type"] == "error"
         assert event["code"] == "too_many_connections"
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017 - any error proves the socket is closed
             ws.receive_text()
 
 

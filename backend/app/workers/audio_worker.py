@@ -244,9 +244,7 @@ def process_task(task_id: int) -> None:
             db.rollback()
             logger.exception("task %s failed: %s", task_id, exc)
             # Use CAS-based failure: only mark FAILED if still PROCESSING.
-            failed = task_service.mark_failed_quick(
-                db, task_id, reason=MSG_TASK_PROCESSING_FAILED
-            )
+            failed = task_service.mark_failed_quick(db, task_id, reason=MSG_TASK_PROCESSING_FAILED)
             if failed is not None:
                 get_event_bus().publish_task_finished(
                     failed.id,

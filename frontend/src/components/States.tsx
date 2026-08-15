@@ -24,11 +24,7 @@ interface SkeletonProps {
   height?: string;
 }
 
-export function Skeleton({
-  className = "",
-  width = "w-full",
-  height = "h-4",
-}: SkeletonProps) {
+export function Skeleton({ className = "", width = "w-full", height = "h-4" }: SkeletonProps) {
   return (
     <div
       aria-hidden="true"
@@ -44,12 +40,7 @@ interface EmptyStateProps {
   icon?: ReactNode;
 }
 
-export function EmptyState({
-  title,
-  description,
-  action,
-  icon,
-}: EmptyStateProps) {
+export function EmptyState({ title, description, action, icon }: EmptyStateProps) {
   return (
     <div className="rounded-lg border border-dashed border-slate-300 bg-white p-10 text-center dark:border-slate-700 dark:bg-slate-900">
       <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">
@@ -91,11 +82,7 @@ interface ErrorStateProps {
   onRetry?: () => void;
 }
 
-export function ErrorState({
-  title,
-  error,
-  onRetry,
-}: ErrorStateProps) {
+export function ErrorState({ title, error, onRetry }: ErrorStateProps) {
   const { t } = useTranslation();
   const message =
     error instanceof Error

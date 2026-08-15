@@ -38,8 +38,10 @@ import threading
 import time
 from collections import defaultdict
 from collections.abc import Callable
+from typing import cast
 
 import redis
+from starlette.concurrency import run_in_threadpool
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -91,7 +93,7 @@ _MAX_LOCAL_KEYS = 10_000
 
 def _cb_backoff() -> float:
     """Exponential backoff: 1, 2, 4, 8, 16, 32, 60 seconds (capped)."""
-    return min(2 ** max(_cb_failures - 1, 0), 60)
+    return cast(float, min(2 ** max(_cb_failures - 1, 0), 60))
 
 
 def _cb_open() -> bool:
@@ -191,17 +193,17 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         if not settings.rate_limit_enabled:
-            return await call_next(request)
+            return cast(Response, await call_next(request))
 
         if self._redis is None:
-            return await call_next(request)
+            return cast(Response, await call_next(request))
 
         path = request.url.path
         method = request.method
 
         # Only rate-limit write/pricy endpoints.
         if method not in ("POST", "PUT", "DELETE"):
-            return await call_next(request)
+            return cast(Response, await call_next(request))
 
         # Find the matching route prefix.
         limit_req, limit_window = 0, 0
@@ -211,7 +213,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 break
 
         if limit_req == 0:
-            return await call_next(request)
+            return cast(Response, await call_next(request))
 
         client_ip = get_client_ip(
             request.client.host if request.client else None,
@@ -223,7 +225,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # ---- Redis path (circuit closed) ----
         if not _cb_open():
             try:
-                allowed, retry_after = self._check(key, limit_req, limit_window)
+                # The redis-py client is synchronous; run the pipeline off
+                # the event loop so a slow Redis (network jitter, a cold
+                # connection) doesn't stall every request in the process.
+                allowed, retry_after = await run_in_threadpool(
+                    self._check, key, limit_req, limit_window
+                )
                 _cb_record_success()
             except Exception:
                 _cb_record_failure()
@@ -260,18 +267,23 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             )
 
         _local_evict_if_needed()
-        response = await call_next(request)
+        response = cast(Response, await call_next(request))
         return response
 
     def _check(self, key: str, limit: int, window: int) -> tuple[bool, int]:
         """Sliding-window check using sorted sets in Redis.
 
         Returns ``(allowed, retry_after_seconds)``.
+
+        ``self._redis`` is only ever None when the middleware was
+        constructed without a reachable Redis; ``dispatch`` handles that
+        case before ``_check`` is ever called.
         """
+        redis_client = cast(redis.Redis, self._redis)
         now = time.time()
         window_start = now - window
 
-        pipe = self._redis.pipeline()
+        pipe = redis_client.pipeline()
         pipe.zremrangebyscore(key, 0, window_start)  # evict old entries
         pipe.zadd(key, {str(now): now})  # add current request
         pipe.zcard(key)  # count entries
@@ -282,9 +294,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return (True, 0)
 
         # Calculate retry-after: time until the oldest entry expires.
-        oldest = self._redis.zrange(key, 0, 0, withscores=True)
+        oldest = redis_client.zrange(key, 0, 0, withscores=True)
         if oldest:
-            oldest_score = oldest[0][1]
+            oldest_score = float(oldest[0][1])
             retry_after = int(oldest_score + window - now) + 1
             return (False, max(1, retry_after))
         return (False, window)

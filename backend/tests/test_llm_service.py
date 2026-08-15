@@ -3,10 +3,12 @@
 Covers the prompt builder, the mock backend's deterministic output,
 and the OpenAI-compatible HTTP backend via a stubbed `httpx.Client`.
 """
+
 from __future__ import annotations
 
 import json
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -122,11 +124,7 @@ def test_openai_compatible_llm_posts_and_extracts_content() -> None:
         api_key="sk-test",
     )
     fake = _FakeResponse(
-        {
-            "choices": [
-                {"message": {"role": "assistant", "content": "a bouncy 4/4 groove."}}
-            ]
-        }
+        {"choices": [{"message": {"role": "assistant", "content": "a bouncy 4/4 groove."}}]}
     )
     with patch("httpx.Client") as client_cls:
         client = MagicMock()
@@ -172,9 +170,11 @@ def test_get_backend_returns_mock_when_no_key() -> None:
 def test_get_backend_returns_openai_when_key_set() -> None:
     from app.config import settings
 
-    with patch.object(settings, "llm_api_key", "sk-test"), patch.object(
-        settings, "llm_base_url", "https://api.example.com/v1"
-    ), patch.object(settings, "llm_model", "gpt-x"):
+    with (
+        patch.object(settings, "llm_api_key", "sk-test"),
+        patch.object(settings, "llm_base_url", "https://api.example.com/v1"),
+        patch.object(settings, "llm_model", "gpt-x"),
+    ):
         backend = llm_service.get_backend()
     assert isinstance(backend, OpenAICompatibleLlm)
     assert backend.model == "gpt-x"

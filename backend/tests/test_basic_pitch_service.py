@@ -9,13 +9,14 @@ the pure helpers that the transcription pipeline delegates to:
 * `_inject_gm_setup` --- post-processing that prepends GM/CC messages to
   every note-bearing track in a Basic Pitch MIDI output
 """
+
 from __future__ import annotations
 
 import csv
 from pathlib import Path
 
 import pytest
-from mido import MidiFile, MetaMessage, Message, MidiTrack
+from mido import Message, MetaMessage, MidiFile, MidiTrack
 
 from app.services.basic_pitch_service import (
     BasicPitchService,
@@ -46,7 +47,6 @@ def _make_midi_with_note_track(tmp_path: Path, *, with_note: bool = True) -> Pat
 
 # ---- _track_has_notes ----------------------------------------------------
 def test_track_has_notes_true_for_note_track() -> None:
-    midi = MidiFile()
     track = MidiTrack()
     track.append(Message("note_on", note=60, velocity=80, time=0))
     track.append(Message("note_off", note=60, velocity=0, time=120))
@@ -54,7 +54,6 @@ def test_track_has_notes_true_for_note_track() -> None:
 
 
 def test_track_has_notes_false_for_meta_only_track() -> None:
-    midi = MidiFile()
     track = MidiTrack()
     track.append(MetaMessage("track_name", name="setup", time=0))
     track.append(MetaMessage("set_tempo", tempo=500000, time=0))
@@ -189,4 +188,3 @@ def test_stem_cc_config_has_synth_entry() -> None:
     """
     assert "synth" in BasicPitchService._STEM_CC_CONFIG
     assert BasicPitchService._STEM_CC_CONFIG["synth"]["program"] == 80
-

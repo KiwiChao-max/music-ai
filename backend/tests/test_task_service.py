@@ -5,11 +5,12 @@ Focuses on the business-logic invariants that the API and worker rely on:
   * `set_progress` clamps out-of-range values
   * `safe_filename` strips path traversal
 """
+
 from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.db.models import AudioTask, AudioTaskStatus
+from app.db.models import AudioTaskStatus
 from app.services import task_service
 
 

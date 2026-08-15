@@ -8,7 +8,6 @@ queue (low concurrency is fine --- they are IO-bound and quick).
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime, timedelta
 
 from app.celery_app import celery
 from app.db.session import SessionLocal

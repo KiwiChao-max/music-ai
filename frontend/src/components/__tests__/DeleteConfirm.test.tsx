@@ -38,18 +38,7 @@ vi.mock("@/api/audio", () => ({
 // ---------------------------------------------------------------------------
 // Test component: isolated delete button with confirmation
 // ---------------------------------------------------------------------------
-function DeleteButton({
-  taskId,
-  taskName,
-}: {
-  taskId: number;
-  taskName: string;
-}) {
-  // i18n mock
-  const { t } = { t: (k: string) => k } as unknown as {
-    t: (k: string, o?: Record<string, unknown>) => string;
-  };
-
+function DeleteButton({ taskId, taskName }: { taskId: number; taskName: string }) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<Error | null>(null);
 
@@ -69,9 +58,7 @@ function DeleteButton({
 
   return (
     <div>
-      {deleteError && (
-        <div role="alert">{deleteError.message}</div>
-      )}
+      {deleteError && <div role="alert">{deleteError.message}</div>}
       <button onClick={handleDelete} disabled={isDeleting}>
         {isDeleting ? "Deleting..." : "Delete"}
       </button>
@@ -103,9 +90,7 @@ describe("Delete confirmation", () => {
 
   it("renders the delete button", () => {
     renderDeleteButton();
-    expect(
-      screen.getByRole("button", { name: /delete/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /delete/i })).toBeInTheDocument();
   });
 
   it("shows window.confirm when delete is clicked", async () => {
@@ -113,9 +98,7 @@ describe("Delete confirmation", () => {
     renderDeleteButton();
     await userEvent.click(screen.getByRole("button", { name: /delete/i }));
     expect(confirmSpy).toHaveBeenCalledTimes(1);
-    expect(confirmSpy).toHaveBeenCalledWith(
-      expect.stringContaining("my-song.wav"),
-    );
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining("my-song.wav"));
     confirmSpy.mockRestore();
   });
 
@@ -141,9 +124,7 @@ describe("Delete confirmation", () => {
     renderDeleteButton();
     await userEvent.click(screen.getByRole("button", { name: /delete/i }));
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /deleting/i }),
-      ).toBeDisabled();
+      expect(screen.getByRole("button", { name: /deleting/i })).toBeDisabled();
     });
   });
 
@@ -157,8 +138,6 @@ describe("Delete confirmation", () => {
     });
     expect(screen.getByText("Permission denied")).toBeInTheDocument();
     // Button should be re-enabled after error
-    expect(
-      screen.getByRole("button", { name: /delete/i }),
-    ).toBeEnabled();
+    expect(screen.getByRole("button", { name: /delete/i })).toBeEnabled();
   });
 });

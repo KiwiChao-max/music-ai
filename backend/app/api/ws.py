@@ -163,8 +163,10 @@ async def task_progress(
     #   1. ``token`` query parameter (legacy)
     #   2. ``Authorization`` header
     #   3. ``Sec-WebSocket-Protocol`` header (browser-native, no URL leakage)
-    header_token = websocket.headers.get("Authorization", "")
-    header_token = header_token[7:] if header_token.lower().startswith("bearer ") else None
+    raw_header_token = websocket.headers.get("Authorization", "")
+    header_token: str | None = (
+        raw_header_token[7:] if raw_header_token.lower().startswith("bearer ") else None
+    )
     protocol_token = websocket.headers.get("Sec-WebSocket-Protocol", "")
     user_id, role = _decode_token_or_none(token or header_token or protocol_token)
 

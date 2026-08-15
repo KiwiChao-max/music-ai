@@ -208,9 +208,9 @@ def worker_claim(db: Session, task_id: int) -> AudioTask | None:
     # (Demucs on a 10-minute track can take 15-25 minutes on CPU) never gets
     # pre-empted, but short enough that crashed tasks are recovered without
     # manual intervention. Matches celery's task_time_limit (30 min) + buffer.
-    CLAIM_TIMEOUT_SECONDS = 60 * 35
+    claim_timeout_seconds = 60 * 35
 
-    stale_cutoff = datetime.now(UTC) - timedelta(seconds=CLAIM_TIMEOUT_SECONDS)
+    stale_cutoff = datetime.now(UTC) - timedelta(seconds=claim_timeout_seconds)
 
     stmt = (
         update(AudioTask)
@@ -221,12 +221,12 @@ def worker_claim(db: Session, task_id: int) -> AudioTask | None:
             #   2. PROCESSING but current_step IS NULL (API claimed it, no
             #      worker has started yet — the common case).
             #   3. Stuck in PROCESSING with no recent update (crashed worker).
-            (
-                AudioTask.status.in_([AudioTaskStatus.UPLOADED, AudioTaskStatus.FAILED])
-            ) | (
+            (AudioTask.status.in_([AudioTaskStatus.UPLOADED, AudioTaskStatus.FAILED]))
+            | (
                 (AudioTask.status == AudioTaskStatus.PROCESSING)
                 & (AudioTask.current_step.is_(None))
-            ) | (
+            )
+            | (
                 (AudioTask.status == AudioTaskStatus.PROCESSING)
                 & (AudioTask.updated_at < stale_cutoff)
             ),

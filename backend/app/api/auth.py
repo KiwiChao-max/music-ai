@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import logging
 import secrets
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
@@ -51,7 +51,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 # ---- cookie helpers --------------------------------------------------------
 
 
-def _refresh_cookie_settings() -> dict[str, str | int | bool]:
+def _refresh_cookie_settings() -> dict[str, Any]:
     """Return the kwargs for ``Response.set_cookie`` for the refresh token."""
     return {
         "key": settings.refresh_token_cookie_name,

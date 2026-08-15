@@ -11,11 +11,12 @@ We verify three things here:
     for stems with documented XG variations, while falling through to the
     GM voice (bank 0:0) for stems without one.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
 
-from mido import Message, MidiFile, MidiTrack, MetaMessage
+from mido import Message, MetaMessage, MidiFile, MidiTrack
 
 from app.services.midi_mapping_service import (
     MidiMappingService,
@@ -24,7 +25,6 @@ from app.services.midi_mapping_service import (
     VoiceMapping,
     _voice_for_profile,
     build_soundfont_overrides,
-    collect_raw_midi_sources,
     is_raw_midi_path,
     stem_key_from_name,
 )
@@ -257,7 +257,8 @@ def test_xg_melodic_voice_soundfont_override_takes_precedence(tmp_path: Path) ->
         ),
     ]
     result = MidiMappingService().create_variants(
-        piano, soundfont_overrides=overrides,
+        piano,
+        soundfont_overrides=overrides,
     )
     # The applied override is surfaced to the UI.
     piano_override = next(o for o in result.applied_overrides if o["stem"] == "piano")
@@ -296,9 +297,7 @@ def test_xg_file_writes_melodic_variation_banks(tmp_path: Path) -> None:
         for track in midi.tracks:
             for msg in track:
                 if msg.type == "control_change" and msg.control in (0, 32):
-                    banks.setdefault(msg.channel, []).append(
-                        msg.value if msg.control == 0 else msg.value
-                    )
+                    banks.setdefault(msg.channel, []).append(msg.value)
         out: dict[int, tuple[int, int]] = {}
         for channel, vals in banks.items():
             # Pairs of (msb, lsb) in encounter order --- first CC0 then CC32.

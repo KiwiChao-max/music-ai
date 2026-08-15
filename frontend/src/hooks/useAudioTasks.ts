@@ -16,9 +16,7 @@ export function useAudioTasks() {
     queryKey: TASKS_KEY,
     queryFn: audioApi.list,
     refetchInterval: (query) =>
-      query.state.data?.some((task) => task.status === "PROCESSING")
-        ? LIST_POLL_MS
-        : false,
+      query.state.data?.some((task) => task.status === "PROCESSING") ? LIST_POLL_MS : false,
   });
 }
 
@@ -28,25 +26,17 @@ interface UseAudioTaskOptions {
    * to drive polling off live data (e.g. only while `status === "PROCESSING"`).
    * Defaults to "no polling".
    */
-  refetchInterval?:
-    | number
-    | false
-    | ((task: AudioTask | undefined) => number | false);
+  refetchInterval?: number | false | ((task: AudioTask | undefined) => number | false);
 }
 
-export function useAudioTask(
-  taskId: number,
-  options: UseAudioTaskOptions = {},
-) {
+export function useAudioTask(taskId: number, options: UseAudioTaskOptions = {}) {
   const { refetchInterval } = options;
   return useQuery({
     queryKey: [...TASKS_KEY, taskId],
     queryFn: () => audioApi.get(taskId),
     enabled: Number.isFinite(taskId),
     refetchInterval: (query) =>
-      typeof refetchInterval === "function"
-        ? refetchInterval(query.state.data)
-        : refetchInterval,
+      typeof refetchInterval === "function" ? refetchInterval(query.state.data) : refetchInterval,
   });
 }
 

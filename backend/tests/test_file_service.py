@@ -3,6 +3,7 @@
 Covers the upload size enforcement (regression for the "write-before-check"
 bug) and the directory layout that the worker relies on.
 """
+
 from __future__ import annotations
 
 import io

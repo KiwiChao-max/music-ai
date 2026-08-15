@@ -3,10 +3,25 @@ import { useTranslation } from "react-i18next";
 import type { StemInfo } from "@/types/audio";
 
 const DRUM_PARTS = [
-  "kick", "snare", "sidestick", "hihat_closed", "hihat_open",
-  "tom_high", "tom_himid", "tom_lomid", "tom_low", "tom_floor",
-  "crash", "ride", "china", "splash", "ride_bell",
-  "tambourine", "cowbell", "percussion", "fill",
+  "kick",
+  "snare",
+  "sidestick",
+  "hihat_closed",
+  "hihat_open",
+  "tom_high",
+  "tom_himid",
+  "tom_lomid",
+  "tom_low",
+  "tom_floor",
+  "crash",
+  "ride",
+  "china",
+  "splash",
+  "ride_bell",
+  "tambourine",
+  "cowbell",
+  "percussion",
+  "fill",
 ] as const;
 
 function drumPartLabel(t: (key: string) => string, part: string): string {
@@ -23,9 +38,7 @@ export function DrumPartPanel({ stems }: { stems: StemInfo[] }) {
       const part = s.name.replace(/^drums_/, "");
       return { part, stem: s };
     })
-    .filter((entry) =>
-      DRUM_PARTS.includes(entry.part as (typeof DRUM_PARTS)[number]),
-    )
+    .filter((entry) => DRUM_PARTS.includes(entry.part as (typeof DRUM_PARTS)[number]))
     .sort(
       (a, b) =>
         DRUM_PARTS.indexOf(a.part as (typeof DRUM_PARTS)[number]) -

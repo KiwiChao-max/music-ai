@@ -12,8 +12,7 @@ vi.mock("i18next", () => ({
     t: (key: string) => {
       const defaults: Record<string, string> = {
         "errors.boundary.title": "Something went wrong",
-        "errors.boundary.description":
-          "An unexpected error occurred in this section.",
+        "errors.boundary.description": "An unexpected error occurred in this section.",
         "errors.boundary.retry": "Try again",
       };
       return defaults[key] ?? key;
@@ -81,9 +80,7 @@ describe("ErrorBoundary", () => {
         </ErrorBoundary>,
       );
     });
-    expect(
-      screen.getByRole("button", { name: /try again/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /try again/i })).toBeInTheDocument();
   });
 
   it("resets the error state when retry is clicked", async () => {

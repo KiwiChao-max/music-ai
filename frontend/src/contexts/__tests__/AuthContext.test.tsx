@@ -15,20 +15,18 @@ vi.mock("react-i18next", () => ({
 // ---------------------------------------------------------------------------
 // Mock auth API — must use vi.hoisted to avoid hoisting issues with vi.mock
 // ---------------------------------------------------------------------------
-const { mockAuthApi, mockSetCachedTokens, mockSetForceLogoutHandler } = vi.hoisted(
-  () => ({
-    mockAuthApi: {
-      login: vi.fn(),
-      register: vi.fn(),
-      refresh: vi.fn(),
-      logout: vi.fn(),
-      me: vi.fn(),
-      csrf: vi.fn(),
-    },
-    mockSetCachedTokens: vi.fn(),
-    mockSetForceLogoutHandler: vi.fn(),
-  }),
-);
+const { mockAuthApi, mockSetCachedTokens, mockSetForceLogoutHandler } = vi.hoisted(() => ({
+  mockAuthApi: {
+    login: vi.fn(),
+    register: vi.fn(),
+    refresh: vi.fn(),
+    logout: vi.fn(),
+    me: vi.fn(),
+    csrf: vi.fn(),
+  },
+  mockSetCachedTokens: vi.fn(),
+  mockSetForceLogoutHandler: vi.fn(),
+}));
 
 vi.mock("@/api/auth", () => ({
   authApi: mockAuthApi,
@@ -140,9 +138,9 @@ describe("AuthContext", () => {
       const { result } = renderHook(() => useAuth(), { wrapper: getWrapper() });
       await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-      await expect(
-        act(() => result.current.login("bad@example.com", "wrong")),
-      ).rejects.toThrow("Invalid credentials");
+      await expect(act(() => result.current.login("bad@example.com", "wrong"))).rejects.toThrow(
+        "Invalid credentials",
+      );
       expect(result.current.isAuthenticated).toBe(false);
       expect(result.current.user).toBeNull();
     });
@@ -208,9 +206,7 @@ describe("useAuth outside provider", () => {
   it("throws when used outside AuthProvider", () => {
     // Suppress the expected error from React's error boundary
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-    expect(() => renderHook(() => useAuth())).toThrow(
-      "useAuth must be used inside <AuthProvider>",
-    );
+    expect(() => renderHook(() => useAuth())).toThrow("useAuth must be used inside <AuthProvider>");
     consoleError.mockRestore();
   });
 });

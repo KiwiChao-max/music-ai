@@ -136,6 +136,7 @@
       "confidenceHigh": "高",
       "confidenceMedium": "中",
       "confidenceLow": "低",
+      "confidencePercent": "置信度 {{value}}%",
       "commentary": {
         "title": "AI 点评",
         "empty": "分析完成后,AI 点评会显示在这里。",
@@ -206,6 +207,8 @@
     "classifying": "正在分析采样类型…",
     "classificationPreview": "分类预览",
     "classificationPending": "等待分析…",
+    "classifyFailure": "{{count}} 个文件未能自动分类,已跳过。",
+    "classifyFailurePlural": "{{count}} 个文件未能自动分类,已跳过。",
     "colFile": "文件名",
     "colType": "鼓类型",
     "colNote": "MIDI音符",
@@ -245,6 +248,7 @@
     "batchDelete": "批量删除",
     "batchDeleteConfirm": "确定要删除选中的 {{count}} 个采样吗?",
     "searchSoundfont": "搜索音色表…",
+    "bankProg": "Bank:Prog",
     "filterAll": "全部类型",
     "noMatchSoundfont": "没有匹配的音色表",
     "searchPreset": "搜索预设…",
@@ -277,7 +281,9 @@
     "percussionNote": "个 GM 打击乐音符",
     "percussionNotes": "个 GM 打击乐音符",
     "emptyLibraryHint": "当前激活的采样库为空，请在采样库页面上传采样。",
-    "samplesSummary": "已加载 {{fileCount}} 个采样，覆盖 {{noteCount}} 个 GM 打击乐音符。"
+    "samplesSummary": "已加载 {{fileCount}} 个采样，覆盖 {{noteCount}} 个 GM 打击乐音符。",
+    "velocityLayers": " ({{count}} 个力度层)",
+    "velocityLayersPlural": " ({{count}} 个力度层)"
   },
   "common": {
     "retry": "重试",
@@ -293,6 +299,7 @@
     "mergedMidi": "合并 MIDI",
     "stemMixer": "分轨混音器",
     "midiStems": "MIDI 分轨",
+    "progress": "进度",
     "original": "原始音频",
     "minutes": "{{count}} 分钟",
     "seconds": "{{count}} 秒"

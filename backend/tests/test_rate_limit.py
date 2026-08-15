@@ -3,6 +3,7 @@
 These tests use a real Redis instance (same as the ws tests). If Redis is
 unavailable, the limiter degrades gracefully and the tests are skipped.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -18,6 +19,7 @@ def rate_limited_app() -> FastAPI:
     and flushes Redis rate-limit keys so each test starts clean.
     """
     import redis as redis_lib
+
     from app.config import settings
     from app.middleware.rate_limit import RateLimitMiddleware
 
@@ -56,7 +58,9 @@ def rate_limited_app() -> FastAPI:
 def _redis_available() -> bool:
     try:
         import redis
+
         from app.config import settings
+
         r = redis.Redis.from_url(settings.redis_url, decode_responses=True)
         r.ping()
         return True

@@ -1,9 +1,24 @@
 # Heavy audio ML dependencies.
 # Install these only on worker nodes that actually run Demucs / Basic Pitch.
 # CI unit tests and the API server do not need them.
+#
+# Locked versions live in requirements.lock.txt (Linux target). Regenerate:
+#   uv pip compile --strip-extras --python-platform linux --python-version 3.12 \
+#       requirements.txt requirements-audio.txt -o requirements.lock.txt
 
 # Spotify Basic Pitch: ONNX-based polyphonic audio-to-MIDI transcription.
+#
+# NOTE: basic-pitch's published metadata requires tensorflow<2.15.1 on
+# Python>=3.11, but TF ships no cp312 wheels, so pip/uv cannot resolve it
+# on Python 3.12 at all. TF is only needed for training; inference runs
+# on ONNX. The `[tool.uv.dependency-metadata]` override in pyproject.toml
+# replaces that dependency list with the real runtime deps during lock
+# generation.
 basic-pitch>=0.3,<0.5
+# ONNX runtime: basic-pitch only declares it as an optional extra on
+# Windows, but inference on Linux/macOS needs it too. Without this the
+# service silently falls back to the librosa transcription.
+onnxruntime>=1.16
 
 # Pretty MIDI: load / inspect MIDI files (used by e2e tests too, but lightweight enough to keep here)
 pretty_midi>=0.2.10

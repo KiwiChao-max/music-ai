@@ -20,8 +20,10 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +35,56 @@ EXPECTED_STEMS: tuple[str, ...] = (
     "guitar",
     "other",
 )
+
+# Module-level model cache: (model_name, device) -> loaded Demucs model.
+# ``get_model()`` rebuilds the full network from the checkpoint on every
+# call (~2 GiB RSS and tens of seconds), so we keep the model resident
+# for the lifetime of the worker child and reuse it across tasks.
+# Celery prefork children process one task at a time, so contention is
+# not an issue; the lock only guards against a threaded caller racing
+# the initial load. The worker memory gates (``worker_max_memory_per_child``
+# etc.) still bound the worst-case footprint and recycle bloated children.
+_MODEL_CACHE: dict[tuple[str, str], Any] = {}
+_MODEL_CACHE_LOCK = threading.Lock()
+
+
+def _get_cached_model(model_name: str, device: object) -> Any:
+    """Return a cached Demucs model, loading it once per (name, device)."""
+    from demucs.pretrained import get_model
+
+    key = (model_name, str(device))
+    cached = _MODEL_CACHE.get(key)
+    if cached is not None:
+        return cached
+    with _MODEL_CACHE_LOCK:
+        cached = _MODEL_CACHE.get(key)
+        if cached is None:
+            logger.info("demucs: loading model %s on %s (first use)", model_name, device)
+            cached = get_model(model_name).to(device)
+            _MODEL_CACHE[key] = cached
+    return cached
+
+
+def _resolve_torch_device():
+    """Pick the torch device for Demucs.
+
+    ``DEMUCS_DEVICE`` accepts ``auto`` (default: use CUDA when present),
+    ``cuda`` (fall back to CPU with a warning when unavailable), or
+    ``cpu`` (force CPU, e.g. to reserve the GPU for another model).
+    """
+    import torch
+
+    from app.config import settings
+
+    requested = settings.demucs_device
+    if requested == "cuda":
+        if torch.cuda.is_available():
+            return torch.device("cuda")
+        logger.warning("demucs: DEMUCS_DEVICE=cuda but CUDA is unavailable; using CPU")
+        return torch.device("cpu")
+    if requested == "cpu":
+        return torch.device("cpu")
+    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 @dataclass(frozen=True)
@@ -72,14 +124,13 @@ class DemucsService:
         import torch
         from demucs.apply import apply_model
         from demucs.audio import convert_audio
-        from demucs.pretrained import get_model
 
         data, sample_rate = sf.read(str(audio_path), always_2d=True, dtype="float32")
         if data.size == 0:
             raise RuntimeError("audio file is empty")
 
-        model = get_model(self.model_name)
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        device = _resolve_torch_device()
+        model = _get_cached_model(self.model_name, device)
         wav = torch.from_numpy(data.T).float()
         wav = convert_audio(wav, sample_rate, model.samplerate, model.audio_channels)
 

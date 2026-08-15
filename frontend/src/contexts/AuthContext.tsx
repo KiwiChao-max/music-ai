@@ -44,12 +44,7 @@ interface AuthState {
 
 interface AuthActions {
   login: (identifier: string, password: string) => Promise<void>;
-  register: (
-    email: string,
-    username: string,
-    password: string,
-    fullName?: string,
-  ) => Promise<void>;
+  register: (email: string, username: string, password: string, fullName?: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -90,22 +85,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
     };
   }, []);
 
-  const login = useCallback(
-    async (identifier: string, password: string) => {
-      const resp = await authApi.login(identifier, password);
-      setCachedTokens(resp.access_token, resp.csrf_token);
-      setUser(resp.user);
-    },
-    [],
-  );
+  const login = useCallback(async (identifier: string, password: string) => {
+    const resp = await authApi.login(identifier, password);
+    setCachedTokens(resp.access_token, resp.csrf_token);
+    setUser(resp.user);
+  }, []);
 
   const register = useCallback(
-    async (
-      email: string,
-      username: string,
-      password: string,
-      fullName?: string,
-    ) => {
+    async (email: string, username: string, password: string, fullName?: string) => {
       const resp = await authApi.register(email, username, password, fullName);
       setCachedTokens(resp.access_token, resp.csrf_token);
       setUser(resp.user);

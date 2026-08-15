@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
 import { useUploadAudio } from "@/hooks/useAudioTasks";
+import { useFileDrop } from "@/hooks/useFileDrop";
 import { MAX_UPLOAD_BYTES, looksLikeAudio, validateAudioFile } from "@/utils/upload";
 import { ErrorState } from "@/components/States";
 
@@ -11,7 +12,6 @@ const ACCEPT = "audio/*";
 export function UploadPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [picked, setPicked] = useState<File | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
   const [dropError, setDropError] = useState<string | null>(null);
   const upload = useUploadAudio();
   const navigate = useNavigate();
@@ -34,30 +34,10 @@ export function UploadPage() {
     setPicked(file);
   };
 
-  const onDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-  };
-
-  const onDragEnter = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(true);
-  };
-
-  const onDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-  };
-
-  const onDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-    const file = e.dataTransfer.files?.[0] ?? null;
-    acceptFile(file);
-  };
+  const { isDragging, onDragOver, onDragEnter, onDragLeave, onDrop } = useFileDrop({
+    multiple: false,
+    onFiles: (files) => acceptFile(files[0] ?? null),
+  });
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -82,9 +62,7 @@ export function UploadPage() {
         <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
           {t("upload.title")}
         </h1>
-        <p className="text-sm text-slate-600 dark:text-slate-400">
-          {t("upload.subtitle")}
-        </p>
+        <p className="text-sm text-slate-600 dark:text-slate-400">{t("upload.subtitle")}</p>
       </header>
 
       <form
@@ -146,9 +124,7 @@ export function UploadPage() {
             onRetry={() => upload.mutate(picked!)}
           />
         )}
-        {dropError && (
-          <p className="text-sm text-red-600 dark:text-red-400">{dropError}</p>
-        )}
+        {dropError && <p className="text-sm text-red-600 dark:text-red-400">{dropError}</p>}
         {validationError && (
           <p className="text-sm text-red-600 dark:text-red-400">{validationError}</p>
         )}

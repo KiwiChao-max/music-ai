@@ -13,6 +13,7 @@ Skips:
 from __future__ import annotations
 
 import secrets
+from typing import cast
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -24,17 +25,17 @@ from app.config import settings
 class CSRFTokenMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:
         if request.method in ("GET", "HEAD", "OPTIONS"):
-            return await call_next(request)
+            return cast(Response, await call_next(request))
         if request.url.path.startswith("/api/auth/"):
-            return await call_next(request)
+            return cast(Response, await call_next(request))
         if request.url.path.startswith("/ws/"):
-            return await call_next(request)
+            return cast(Response, await call_next(request))
 
         # When auth is disabled (e.g. E2E tests, local dev without auth),
         # there are no user sessions to protect, so CSRF validation is
         # unnecessary and would block unauthenticated uploads.
         if settings.auth_required is False:
-            return await call_next(request)
+            return cast(Response, await call_next(request))
 
         cookie_token = request.cookies.get(settings.csrf_cookie_name)
         header_token = request.headers.get(settings.csrf_header_name.lower(), "")
@@ -52,4 +53,4 @@ class CSRFTokenMiddleware(BaseHTTPMiddleware):
                 media_type="application/json",
             )
 
-        return await call_next(request)
+        return cast(Response, await call_next(request))

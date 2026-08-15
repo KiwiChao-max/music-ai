@@ -448,8 +448,12 @@ class MidiMappingService:
         profile: MidiProfile,
         *,
         soundfont_overrides: Sequence[SoundfontOverride] | None = None,
-    ) -> Path:
-        """Write one mapped MIDI file and return `output_path`."""
+    ) -> tuple[dict, ...]:
+        """Write one mapped MIDI file.
+
+        Returns the same tuple of applied SoundFont-override dicts that
+        ``map_sources`` returns.
+        """
         return self.map_sources(
             [source_path],
             output_path,

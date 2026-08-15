@@ -11,6 +11,7 @@ exact posterior values (they're tuned empirically) but we do assert:
   * `split_instrument_stem` writes at least one WAV when given a signal
     with enough energy.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -55,9 +56,7 @@ def test_detect_returns_full_posterior_set(tmp_path: Path, storage_dir: Path) ->
     assert detection.total_frames > 0
 
 
-def test_detect_on_silence_returns_zeroed_posteriors(
-    tmp_path: Path, storage_dir: Path
-) -> None:
+def test_detect_on_silence_returns_zeroed_posteriors(tmp_path: Path, storage_dir: Path) -> None:
     """A signal that's *too short* to compute any features must short-circuit
     to the documented "other_melodic" fallback. A longer silent signal goes
     through the rule engine --- its posteriors are still all ~0 because the
@@ -75,9 +74,7 @@ def test_detect_on_silence_returns_zeroed_posteriors(
     assert detection.total_frames == 0
 
 
-def test_split_instrument_stem_writes_wav_files(
-    tmp_path: Path, storage_dir: Path
-) -> None:
+def test_split_instrument_stem_writes_wav_files(tmp_path: Path, storage_dir: Path) -> None:
     audio = tmp_path / "tone.wav"
     _write_tone(audio, freq=220.0, seconds=1.5)
     output_dir = tmp_path / "out"

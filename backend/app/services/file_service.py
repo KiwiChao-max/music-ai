@@ -23,8 +23,11 @@ here change.
 from __future__ import annotations
 
 import logging
+import os
+import shutil
 import tempfile
 from pathlib import Path
+from typing import BinaryIO
 
 from app.config import settings
 from app.db.models import AudioTask
@@ -136,8 +139,28 @@ def save_upload(
             written += len(chunk)
         tmp.close()
 
-        # Upload to storage backend.
         key = _upload_key(task.id, task.filename)
+        if settings.storage_backend != "s3":
+            # Local storage: the temp file already lives under STORAGE_DIR,
+            # so `os.replace` is an instant rename. The generic upload path
+            # (`shutil.copy2`) would write up to 200 MB a second time and
+            # double peak disk usage for the duration of the upload.
+            target = storage_path(task.id, task.filename)
+            try:
+                os.replace(tmp_path, target)
+            except OSError:
+                # Cross-device (STORAGE_DIR on a different mount): copy.
+                shutil.copy2(tmp_path, target)
+                tmp_path.unlink(missing_ok=True)
+            logger.info(
+                "save_upload: task %s, %d bytes -> %s",
+                task.id,
+                written,
+                key,
+            )
+            return target
+
+        # S3: upload the temp file and return it for metadata validation.
         storage.upload(local_path=tmp_path, key=key)
 
         logger.info(
@@ -241,35 +264,41 @@ def list_upload_files(task: AudioTask) -> list[str]:
     return [Path(k).name for k in keys]
 
 
-def open_output_file(task: AudioTask, filename: str) -> object:
+def upload_file_key(task: AudioTask) -> str:
+    """Logical storage key for a task's original upload."""
+    return _upload_key(task.id, task.filename)
+
+
+def output_file_key(task: AudioTask, filename: str) -> str:
+    """Logical storage key for a worker output file."""
+    return f"{_output_key_prefix(task.id)}{filename}"
+
+
+def open_output_file(task: AudioTask, filename: str) -> BinaryIO:
     """Open a worker output file for binary reading.
 
     Returns a file-like object.  The caller is responsible for closing it.
     """
     storage = get_storage()
-    key = f"{_output_key_prefix(task.id)}{filename}"
-    return storage.open_read(key)
+    return storage.open_read(output_file_key(task, filename))
 
 
-def open_upload_file(task: AudioTask) -> object:
+def open_upload_file(task: AudioTask) -> BinaryIO:
     """Open the original uploaded file for binary reading."""
     storage = get_storage()
-    key = _upload_key(task.id, task.filename)
-    return storage.open_read(key)
+    return storage.open_read(upload_file_key(task))
 
 
 def presigned_output_url(task: AudioTask, filename: str, *, expires: int = 3600) -> str:
     """Generate a time-limited download URL for a worker output file."""
     storage = get_storage()
-    key = f"{_output_key_prefix(task.id)}{filename}"
-    return storage.presigned_url(key, expires=expires)
+    return storage.presigned_url(output_file_key(task, filename), expires=expires)
 
 
 def presigned_upload_url(task: AudioTask, *, expires: int = 3600) -> str:
     """Generate a time-limited download URL for the original upload."""
     storage = get_storage()
-    key = _upload_key(task.id, task.filename)
-    return storage.presigned_url(key, expires=expires)
+    return storage.presigned_url(upload_file_key(task), expires=expires)
 
 
 # ---------------------------------------------------------------------------

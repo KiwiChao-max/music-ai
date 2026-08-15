@@ -1,8 +1,8 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import type { ReactNode } from "react";
 
-import { PlayerProvider, usePlayer, formatTime } from "@/contexts/PlayerContext";
+import { PlayerProvider, usePlayer, usePlayerTime, formatTime } from "@/contexts/PlayerContext";
 
 // ---------------------------------------------------------------------------
 // Mock react-i18next
@@ -14,12 +14,24 @@ vi.mock("react-i18next", () => ({
 // ---------------------------------------------------------------------------
 // Mock HTMLAudioElement via prototype
 // ---------------------------------------------------------------------------
-let mockPlay: ReturnType<typeof vi.fn>;
-let mockPause: ReturnType<typeof vi.fn>;
-let mockLoad: ReturnType<typeof vi.fn>;
-let mockRemoveAttribute: ReturnType<typeof vi.fn>;
-let mockAddEventListener: ReturnType<typeof vi.fn>;
-let mockRemoveEventListener: ReturnType<typeof vi.fn>;
+let mockPlay: Mock<() => Promise<void>>;
+let mockPause: Mock<() => void>;
+let mockLoad: Mock<() => void>;
+let mockRemoveAttribute: Mock<(qualifiedName: string) => void>;
+let mockAddEventListener: Mock<
+  (
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions,
+  ) => void
+>;
+let mockRemoveEventListener: Mock<
+  (
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | EventListenerOptions,
+  ) => void
+>;
 
 beforeEach(() => {
   mockPlay = vi.fn().mockResolvedValue(undefined);
@@ -32,15 +44,11 @@ beforeEach(() => {
   vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(mockPlay);
   vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(mockPause);
   vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(mockLoad);
-  vi.spyOn(HTMLMediaElement.prototype, "addEventListener").mockImplementation(
-    mockAddEventListener,
-  );
+  vi.spyOn(HTMLMediaElement.prototype, "addEventListener").mockImplementation(mockAddEventListener);
   vi.spyOn(HTMLMediaElement.prototype, "removeEventListener").mockImplementation(
     mockRemoveEventListener,
   );
-  vi.spyOn(HTMLMediaElement.prototype, "removeAttribute").mockImplementation(
-    mockRemoveAttribute,
-  );
+  vi.spyOn(HTMLMediaElement.prototype, "removeAttribute").mockImplementation(mockRemoveAttribute);
 });
 
 afterEach(() => {
@@ -55,6 +63,10 @@ function getWrapper() {
     return <PlayerProvider>{children}</PlayerProvider>;
   };
 }
+
+// `currentTime` lives in the high-frequency PlayerTimeContext, so tests
+// that read the playhead subscribe with both hooks.
+const usePlayerAndTime = () => ({ player: usePlayer(), time: usePlayerTime() });
 
 // ---------------------------------------------------------------------------
 // formatTime tests
@@ -97,11 +109,11 @@ describe("PlayerContext", () => {
   });
 
   it("starts with no current track", () => {
-    const { result } = renderHook(() => usePlayer(), { wrapper: getWrapper() });
-    expect(result.current.current).toBeNull();
-    expect(result.current.isPlaying).toBe(false);
-    expect(result.current.duration).toBe(0);
-    expect(result.current.currentTime).toBe(0);
+    const { result } = renderHook(usePlayerAndTime, { wrapper: getWrapper() });
+    expect(result.current.player.current).toBeNull();
+    expect(result.current.player.isPlaying).toBe(false);
+    expect(result.current.player.duration).toBe(0);
+    expect(result.current.time).toBe(0);
   });
 
   describe("play", () => {
@@ -182,15 +194,15 @@ describe("PlayerContext", () => {
 
   describe("stop", () => {
     it("clears the current track and resets state", () => {
-      const { result } = renderHook(() => usePlayer(), { wrapper: getWrapper() });
+      const { result } = renderHook(usePlayerAndTime, { wrapper: getWrapper() });
       act(() => {
-        result.current.play({ url: "/audio/test.wav", title: "Track" });
+        result.current.player.play({ url: "/audio/test.wav", title: "Track" });
       });
-      act(() => result.current.stop());
-      expect(result.current.current).toBeNull();
-      expect(result.current.isPlaying).toBe(false);
-      expect(result.current.currentTime).toBe(0);
-      expect(result.current.duration).toBe(0);
+      act(() => result.current.player.stop());
+      expect(result.current.player.current).toBeNull();
+      expect(result.current.player.isPlaying).toBe(false);
+      expect(result.current.time).toBe(0);
+      expect(result.current.player.duration).toBe(0);
       expect(mockPause).toHaveBeenCalled();
       expect(mockRemoveAttribute).toHaveBeenCalledWith("src");
     });
@@ -201,22 +213,22 @@ describe("PlayerContext", () => {
       // jsdom's HTMLMediaElement.duration defaults to NaN, which causes
       // the seek clamp to always resolve to 0.  Force duration to 180.
       vi.spyOn(HTMLMediaElement.prototype, "duration", "get").mockReturnValue(180);
-      const { result } = renderHook(() => usePlayer(), { wrapper: getWrapper() });
+      const { result } = renderHook(usePlayerAndTime, { wrapper: getWrapper() });
       act(() => {
-        result.current.play({ url: "/audio/test.wav", title: "Track" });
+        result.current.player.play({ url: "/audio/test.wav", title: "Track" });
       });
-      act(() => result.current.seek(42));
-      expect(result.current.currentTime).toBe(42);
+      act(() => result.current.player.seek(42));
+      expect(result.current.time).toBe(42);
     });
 
     it("clamps seek to 0 for negative values", () => {
       vi.spyOn(HTMLMediaElement.prototype, "duration", "get").mockReturnValue(180);
-      const { result } = renderHook(() => usePlayer(), { wrapper: getWrapper() });
+      const { result } = renderHook(usePlayerAndTime, { wrapper: getWrapper() });
       act(() => {
-        result.current.play({ url: "/audio/test.wav", title: "Track" });
+        result.current.player.play({ url: "/audio/test.wav", title: "Track" });
       });
-      act(() => result.current.seek(-50));
-      expect(result.current.currentTime).toBe(0);
+      act(() => result.current.player.seek(-50));
+      expect(result.current.time).toBe(0);
     });
   });
 
@@ -242,6 +254,14 @@ describe("usePlayer outside provider", () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     expect(() => renderHook(() => usePlayer())).toThrow(
       "usePlayer must be used inside <PlayerProvider>",
+    );
+    consoleError.mockRestore();
+  });
+
+  it("usePlayerTime throws when used outside PlayerProvider", () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(() => renderHook(() => usePlayerTime())).toThrow(
+      "usePlayerTime must be used inside <PlayerProvider>",
     );
     consoleError.mockRestore();
   });

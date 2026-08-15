@@ -21,12 +21,16 @@ import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db.models import SampleFile, SampleLibrary
+
+if TYPE_CHECKING:
+    from app.services.sample_classifier_service import SampleClassifierService
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +148,7 @@ class SampleLibraryService:
 
     def __init__(self, root: Path | None = None) -> None:
         self._root = root or Path(settings.storage_dir) / "sample-libraries"
-        self._classifier = None
+        self._classifier: SampleClassifierService | None = None
 
     @property
     def _classifier_service(self):
@@ -243,10 +247,20 @@ class SampleLibraryService:
         )
         return self._to_info(library, sample_files)
 
-    def list_libraries(self, db: Session) -> list[LibraryInfo]:
-        libraries = list(
-            db.scalars(select(SampleLibrary).order_by(SampleLibrary.created_at.desc()))
-        )
+    def list_libraries(
+        self, db: Session, *, limit: int | None = None, offset: int = 0
+    ) -> list[LibraryInfo]:
+        """List libraries newest-first, optionally paginated.
+
+        Without pagination a user with hundreds of libraries pulls every
+        library and every sample file into memory in two un-bounded
+        queries. ``limit=None`` preserves the old unlimited behaviour for
+        callers that don't paginate yet.
+        """
+        query = select(SampleLibrary).order_by(SampleLibrary.created_at.desc())
+        if limit is not None:
+            query = query.limit(limit)
+        libraries = list(db.scalars(query.offset(offset)))
         if not libraries:
             return []
         library_ids = [lib.id for lib in libraries]

@@ -175,7 +175,7 @@ class SampleClassifierService:
 
         decay_samples = int(0.1 * sr)
         if len(y) > decay_samples:
-            peak_pos = np.argmax(np.abs(y))
+            peak_pos = int(np.argmax(np.abs(y)))
             tail_start = min(peak_pos + decay_samples, len(y) - 1)
             tail_energy = float(np.sum(np.abs(y[tail_start:]))) / (len(y) - tail_start)
             attack_ratio = float(np.abs(y[peak_pos])) / (tail_energy + 1e-9)

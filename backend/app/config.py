@@ -293,15 +293,20 @@ class Settings(BaseSettings):
     # Set to 0 to disable (worker children live forever).
     worker_max_tasks_per_child: int = 10
 
-    # Device preference for the three heavy models.  Each can be "cpu" or
-    # "cuda".  When a model is not installed (e.g. torch not available),
-    # the setting is silently ignored and CPU is used.
+    # Device preference for the heavy models.
+    #
+    # ``DEMUCS_DEVICE`` accepts "auto" (default: use CUDA when present),
+    # "cuda" (fall back to CPU with a warning when unavailable), or "cpu".
+    # ``BASIC_PITCH_DEVICE`` is accepted for forward compatibility but the
+    # Basic Pitch ONNX session currently runs on CPU (CPUExecutionProvider
+    # is the faster choice for this model); ``ADT_DEVICE`` is not wired
+    # yet either --- ADTOS runs on CPU.
     #
     # In a Docker Compose setup with a single GPU, set:
     #   DEMUCS_DEVICE=cuda
     #   BASIC_PITCH_DEVICE=cpu     # ONNX is CPU-optimised
-    #   ADT_DEVICE=cuda
-    demucs_device: str = "cpu"
+    #   ADT_DEVICE=cpu
+    demucs_device: str = "auto"
     basic_pitch_device: str = "cpu"
     adt_device: str = "cpu"
 

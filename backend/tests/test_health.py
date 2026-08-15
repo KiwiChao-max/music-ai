@@ -6,6 +6,7 @@ Covers:
   * /metrics serves Prometheus text format
   * CORS preflight on the API routes works
 """
+
 from __future__ import annotations
 
 import pytest
@@ -25,6 +26,7 @@ def client(db_session: Session) -> TestClient:
             pass
 
     from app.db.session import get_db
+
     app.dependency_overrides[get_db] = _override_get_db
     try:
         yield TestClient(app)
@@ -49,9 +51,7 @@ def test_root_returns_welcome(client: TestClient) -> None:
 
 
 # ---- /readyz -------------------------------------------------------------
-def test_readyz_includes_components(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_readyz_includes_components(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     """Even with Redis down, the endpoint must respond with a structured body
     and a non-2xx status so a k8s probe can detect the issue.
     """
@@ -97,9 +97,7 @@ def test_metrics_returns_prometheus_text(client: TestClient) -> None:
         assert status in resp.text
 
 
-def test_metrics_reflects_task_counts(
-    client: TestClient, db_session: Session
-) -> None:
+def test_metrics_reflects_task_counts(client: TestClient, db_session: Session) -> None:
     # Add a known set of tasks and confirm the gauge labels reflect them.
     from app.db.models import AudioTask, AudioTaskStatus
 

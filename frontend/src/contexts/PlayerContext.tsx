@@ -49,7 +49,6 @@ export interface PlayerTrack {
 interface PlayerState {
   current: PlayerTrack | null;
   isPlaying: boolean;
-  currentTime: number;
   duration: number;
   volume: number;
   /** True while the audio is buffering the new src. */
@@ -65,7 +64,22 @@ interface PlayerControls extends PlayerState {
   setVolume: (vol: number) => void;
 }
 
+/**
+ * Two contexts, not one:
+ *
+ *  - `PlayerContext` carries the low-frequency state (current track,
+ *    isPlaying, duration, volume, loading) plus the controls. Its value
+ *    only changes when the user actually plays/pauses/switches tracks,
+ *    so `usePlayer()` consumers render at human pace.
+ *  - `PlayerTimeContext` carries `currentTime`, which the audio element
+ *    updates ~4x/sec during playback. Only components that render the
+ *    playhead (the transport bar) subscribe to it via `usePlayerTime()`.
+ *
+ * Before the split, every `usePlayer()` consumer re-rendered 4x/sec
+ * during playback (PlayerBar, StemMixer, every stem row...).
+ */
 const PlayerContext = createContext<PlayerControls | null>(null);
+const PlayerTimeContext = createContext<number | undefined>(undefined);
 
 /**
  * Format a time in seconds as `m:ss` (or `h:mm:ss` past the hour mark).
@@ -148,31 +162,34 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
     };
   }, []);
 
-  const play = useCallback((track: PlayerTrack) => {
-    const audio = audioRef.current;
-    if (!audio) return;
+  const play = useCallback(
+    (track: PlayerTrack) => {
+      const audio = audioRef.current;
+      if (!audio) return;
 
-    // If the user clicks play on the track that's already loaded, treat
-    // it as a resume from pause. Compare base URLs without query params
-    // so that refreshed download tokens don't cause the same track to
-    // be reloaded from the beginning.
-    const currentBase = current?.url?.split("?")[0] ?? "";
-    const trackBase = track.url.split("?")[0];
-    if (currentBase === trackBase && currentBase !== "") {
+      // If the user clicks play on the track that's already loaded, treat
+      // it as a resume from pause. Compare base URLs without query params
+      // so that refreshed download tokens don't cause the same track to
+      // be reloaded from the beginning.
+      const currentBase = current?.url?.split("?")[0] ?? "";
+      const trackBase = track.url.split("?")[0];
+      if (currentBase === trackBase && currentBase !== "") {
+        audio.play().catch((err) => {
+          console.error("[Player] play() failed:", err);
+        });
+        return;
+      }
+
+      setCurrent(track);
+      setLoading(true);
+      audio.src = track.url;
+      audio.currentTime = 0;
       audio.play().catch((err) => {
         console.error("[Player] play() failed:", err);
       });
-      return;
-    }
-
-    setCurrent(track);
-    setLoading(true);
-    audio.src = track.url;
-    audio.currentTime = 0;
-    audio.play().catch((err) => {
-      console.error("[Player] play() failed:", err);
-    });
-  }, [current]);
+    },
+    [current],
+  );
 
   const toggle = useCallback(() => {
     const audio = audioRef.current;
@@ -222,7 +239,6 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
     () => ({
       current,
       isPlaying,
-      currentTime,
       duration,
       volume,
       loading,
@@ -233,23 +249,14 @@ export function PlayerProvider({ children }: PlayerProviderProps) {
       seek,
       setVolume,
     }),
-    [
-      current,
-      isPlaying,
-      currentTime,
-      duration,
-      volume,
-      loading,
-      play,
-      toggle,
-      pause,
-      stop,
-      seek,
-      setVolume,
-    ],
+    [current, isPlaying, duration, volume, loading, play, toggle, pause, stop, seek, setVolume],
   );
 
-  return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
+  return (
+    <PlayerContext.Provider value={value}>
+      <PlayerTimeContext.Provider value={currentTime}>{children}</PlayerTimeContext.Provider>
+    </PlayerContext.Provider>
+  );
 }
 
 export function usePlayer(): PlayerControls {
@@ -258,4 +265,13 @@ export function usePlayer(): PlayerControls {
     throw new Error("usePlayer must be used inside <PlayerProvider>");
   }
   return ctx;
+}
+
+/** High-frequency playback position (seconds). See PlayerProvider docs. */
+export function usePlayerTime(): number {
+  const currentTime = useContext(PlayerTimeContext);
+  if (currentTime === undefined) {
+    throw new Error("usePlayerTime must be used inside <PlayerProvider>");
+  }
+  return currentTime;
 }

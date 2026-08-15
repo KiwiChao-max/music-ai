@@ -85,29 +85,28 @@ export interface LibraryExport {
   format: string;
   note_range: [number, number];
   sample_count: number;
-  mapping: Record<number, {
-    label: string;
-    velocity_offset: number;
-    relative_path: string;
-  }>;
+  mapping: Record<
+    number,
+    {
+      label: string;
+      velocity_offset: number;
+      relative_path: string;
+    }
+  >;
 }
 
 export const instrumentsApi = {
-  list: () =>
-    api.get<SampleLibraryInfo[]>("/instruments/libraries").then((r) => r.data),
+  list: () => api.get<SampleLibraryInfo[]>("/instruments/libraries").then((r) => r.data),
   active: async (): Promise<SampleLibraryInfo | null> => {
-    const response = await api.get<SampleLibraryInfo | "" | null>(
-      "/instruments/active",
-      { validateStatus: (s) => (s >= 200 && s < 300) || s === 204 },
-    );
+    const response = await api.get<SampleLibraryInfo | "" | null>("/instruments/active", {
+      validateStatus: (s) => (s >= 200 && s < 300) || s === 204,
+    });
     if (response.status === 204) return null;
     if (response.data === "" || response.data === null) return null;
     return response.data as SampleLibraryInfo;
   },
   get: (libraryId: number) =>
-    api
-      .get<SampleLibraryInfo>(`/instruments/libraries/${libraryId}`)
-      .then((r) => r.data),
+    api.get<SampleLibraryInfo>(`/instruments/libraries/${libraryId}`).then((r) => r.data),
   create: (params: {
     name: string;
     description?: string;
@@ -125,36 +124,33 @@ export const instrumentsApi = {
     if (params.zipFile) {
       form.append("zip_file", params.zipFile);
     }
-    return api
-      .post<SampleLibraryInfo>("/instruments/libraries", form)
-      .then((r) => r.data);
+    return api.post<SampleLibraryInfo>("/instruments/libraries", form).then((r) => r.data);
   },
   activate: (libraryId: number) =>
-    api
-      .post<SampleLibraryInfo>(
-        `/instruments/libraries/${libraryId}/activate`,
-      )
-      .then((r) => r.data),
+    api.post<SampleLibraryInfo>(`/instruments/libraries/${libraryId}/activate`).then((r) => r.data),
   deactivate: (libraryId: number) =>
     api
-      .post<SampleLibraryInfo>(
-        `/instruments/libraries/${libraryId}/deactivate`,
-      )
+      .post<SampleLibraryInfo>(`/instruments/libraries/${libraryId}/deactivate`)
       .then((r) => r.data),
   remove: async (libraryId: number): Promise<void> => {
     await api.delete(`/instruments/libraries/${libraryId}`);
   },
-  update: (libraryId: number, params: { name?: string; description?: string }): Promise<SampleLibraryInfo> =>
-    api
-      .patch<SampleLibraryInfo>(`/instruments/libraries/${libraryId}`, params)
-      .then((r) => r.data),
+  update: (
+    libraryId: number,
+    params: { name?: string; description?: string },
+  ): Promise<SampleLibraryInfo> =>
+    api.patch<SampleLibraryInfo>(`/instruments/libraries/${libraryId}`, params).then((r) => r.data),
   batchRemoveSamples: (libraryId: number, sampleIds: number[]): Promise<SampleLibraryInfo> =>
     api
       .delete<SampleLibraryInfo>(`/instruments/libraries/${libraryId}/samples/batch`, {
         data: { sample_ids: sampleIds },
       })
       .then((r) => r.data),
-  updateSample: (libraryId: number, sampleId: number, params: { midi_note?: number; label?: string }): Promise<SampleLibraryInfo> => {
+  updateSample: (
+    libraryId: number,
+    sampleId: number,
+    params: { midi_note?: number; label?: string },
+  ): Promise<SampleLibraryInfo> => {
     const form = new FormData();
     if (params.midi_note !== undefined) {
       form.append("midi_note", String(params.midi_note));
@@ -177,18 +173,17 @@ export const instrumentsApi = {
       .then((r) => r.data);
   },
   removeSample: (libraryId: number, sampleId: number): Promise<SampleLibraryInfo> =>
-    api.delete<SampleLibraryInfo>(`/instruments/libraries/${libraryId}/samples/${sampleId}`).then((r) => r.data),
+    api
+      .delete<SampleLibraryInfo>(`/instruments/libraries/${libraryId}/samples/${sampleId}`)
+      .then((r) => r.data),
   sampleUrl: (libraryId: number, note: number) =>
     `${API_BASE_URL}/instruments/libraries/${libraryId}/files/${note}`,
   classify: (file: File): Promise<SampleClassification> => {
     const form = new FormData();
     form.append("file", file);
-    return api
-      .post<SampleClassification>("/instruments/classify", form)
-      .then((r) => r.data);
+    return api.post<SampleClassification>("/instruments/classify", form).then((r) => r.data);
   },
-  listDrumTypes: () =>
-    api.get<DrumTypeInfo[]>("/instruments/drum-types").then((r) => r.data),
+  listDrumTypes: () => api.get<DrumTypeInfo[]>("/instruments/drum-types").then((r) => r.data),
   listGmInstruments: () =>
     api.get<GmInstrumentInfo[]>("/instruments/gm-instruments").then((r) => r.data),
   importPresetTable: (file: File, name: string): Promise<PresetTableImportResult> => {
@@ -206,17 +201,13 @@ export const instrumentsApi = {
     if (description) {
       form.append("description", description);
     }
-    return api
-      .post<SoundFontInfo>("/instruments/soundfont/import", form)
-      .then((r) => r.data);
+    return api.post<SoundFontInfo>("/instruments/soundfont/import", form).then((r) => r.data);
   },
-  listSoundFonts: () =>
-    api.get<SoundFontInfo[]>("/instruments/soundfonts").then((r) => r.data),
+  listSoundFonts: () => api.get<SoundFontInfo[]>("/instruments/soundfonts").then((r) => r.data),
   activeSoundFont: async (): Promise<SoundFontInfo | null> => {
-    const response = await api.get<SoundFontInfo | "" | null>(
-      "/instruments/soundfonts/active",
-      { validateStatus: (s) => (s >= 200 && s < 300) || s === 204 },
-    );
+    const response = await api.get<SoundFontInfo | "" | null>("/instruments/soundfonts/active", {
+      validateStatus: (s) => (s >= 200 && s < 300) || s === 204,
+    });
     if (response.status === 204) return null;
     if (response.data === "" || response.data === null) return null;
     return response.data as SoundFontInfo;

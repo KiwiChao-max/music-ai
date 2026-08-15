@@ -25,6 +25,7 @@ vi.mock("react-i18next", () => ({
         "detail.retryError": "Retry failed",
         "detail.status": "Status",
         "detail.finished": "Finished",
+        "common.progress": "progress",
       };
       return defaults[key] ?? key;
     },
@@ -35,9 +36,7 @@ vi.mock("react-i18next", () => ({
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-function makeTask(
-  overrides: Partial<AudioTask> = {},
-): AudioTask {
+function makeTask(overrides: Partial<AudioTask> = {}): AudioTask {
   return {
     id: 1,
     filename: "test.wav",
@@ -117,26 +116,20 @@ describe("TaskStatusPanel", () => {
   describe("UPLOADED status", () => {
     it("shows the 'Start Processing' button", () => {
       renderTaskStatusPanel(makeTask({ status: "UPLOADED" }));
-      expect(
-        screen.getByRole("button", { name: /start processing/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /start processing/i })).toBeInTheDocument();
     });
 
     it("disables the button while starting", () => {
       renderTaskStatusPanel(makeTask({ status: "UPLOADED" }), {
         isStarting: true,
       });
-      expect(
-        screen.getByRole("button", { name: /starting/i }),
-      ).toBeDisabled();
+      expect(screen.getByRole("button", { name: /starting/i })).toBeDisabled();
     });
 
     it("calls onStart when button is clicked", async () => {
       const onStart = vi.fn();
       renderTaskStatusPanel(makeTask({ status: "UPLOADED" }), { onStart });
-      await userEvent.click(
-        screen.getByRole("button", { name: /start processing/i }),
-      );
+      await userEvent.click(screen.getByRole("button", { name: /start processing/i }));
       expect(onStart).toHaveBeenCalledTimes(1);
     });
 
@@ -145,9 +138,7 @@ describe("TaskStatusPanel", () => {
         startError: new Error("broker connection failed"),
       });
       expect(screen.getByRole("alert")).toBeInTheDocument();
-      expect(
-        screen.getByText("broker connection failed"),
-      ).toBeInTheDocument();
+      expect(screen.getByText("broker connection failed")).toBeInTheDocument();
     });
   });
 
@@ -166,9 +157,7 @@ describe("TaskStatusPanel", () => {
     });
 
     it("shows default step text when current_step is null", () => {
-      renderTaskStatusPanel(
-        makeTask({ status: "PROCESSING", progress: 10, current_step: null }),
-      );
+      renderTaskStatusPanel(makeTask({ status: "PROCESSING", progress: 10, current_step: null }));
       expect(screen.getByText("Starting...")).toBeInTheDocument();
     });
   });
@@ -183,17 +172,12 @@ describe("TaskStatusPanel", () => {
       );
       expect(screen.getByText(/processing failed/i)).toBeInTheDocument();
       expect(screen.getByText("Demucs model not found")).toBeInTheDocument();
-      expect(
-        screen.getByRole("button", { name: /retry/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
     });
 
     it("calls onStart when retry is clicked", async () => {
       const onStart = vi.fn();
-      renderTaskStatusPanel(
-        makeTask({ status: "FAILED", error_message: "timeout" }),
-        { onStart },
-      );
+      renderTaskStatusPanel(makeTask({ status: "FAILED", error_message: "timeout" }), { onStart });
       await userEvent.click(screen.getByRole("button", { name: /retry/i }));
       expect(onStart).toHaveBeenCalledTimes(1);
     });
@@ -201,9 +185,7 @@ describe("TaskStatusPanel", () => {
 
   describe("FINISHED status", () => {
     it("shows the finished status indicator", () => {
-      renderTaskStatusPanel(
-        makeTask({ status: "FINISHED", progress: 100 }),
-      );
+      renderTaskStatusPanel(makeTask({ status: "FINISHED", progress: 100 }));
       expect(screen.getByText("Finished")).toBeInTheDocument();
     });
   });

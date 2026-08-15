@@ -13,12 +13,13 @@ Add ``boto3`` to your requirements when using this backend:
 If ``boto3`` is not installed, importing this module will raise an
 ``ImportError`` with a helpful message.
 """
+
 from __future__ import annotations
 
 import logging
 import time
 from pathlib import Path
-from typing import BinaryIO
+from typing import BinaryIO, cast
 
 from app.storage.base import StorageBackend
 
@@ -77,7 +78,8 @@ class S3Storage(StorageBackend):
         except Exception as exc:
             logger.warning(
                 "S3 bucket %r check failed: %s.  Ensure the bucket exists.",
-                bucket, exc,
+                bucket,
+                exc,
             )
 
     # ------------------------------------------------------------------
@@ -107,15 +109,35 @@ class S3Storage(StorageBackend):
         )
 
     def open_read(self, key: str) -> BinaryIO:
-        # boto3 get_object returns a StreamingBody; wrap it in a
-        # BytesIO-like interface for compatibility.
-        import io
-
+        # Stream the object lazily instead of buffering it into a
+        # BytesIO: stems can be tens of MB and the API serves many
+        # downloads concurrently. boto3's StreamingBody is file-like
+        # (read / iter_chunks / close) and only pulls data on demand.
         resp = self._client.get_object(
             Bucket=self._bucket,
             Key=self._sanitize_key(key),
         )
-        return io.BytesIO(resp["Body"].read())
+        return cast(BinaryIO, resp["Body"])
+
+    def open_read_range(self, key: str, *, start: int, end: int) -> BinaryIO:
+        """Stream a byte range of an object (``end`` inclusive)."""
+        resp = self._client.get_object(
+            Bucket=self._bucket,
+            Key=self._sanitize_key(key),
+            Range=f"bytes={start}-{end}",
+        )
+        return cast(BinaryIO, resp["Body"])
+
+    def get_size(self, key: str) -> int | None:
+        """Return the object's total size in bytes, or None if missing."""
+        try:
+            head = self._client.head_object(
+                Bucket=self._bucket,
+                Key=self._sanitize_key(key),
+            )
+        except Exception:
+            return None
+        return int(head.get("ContentLength", 0))
 
     def delete(self, key: str) -> None:
         self._client.delete_object(
@@ -166,14 +188,14 @@ class S3Storage(StorageBackend):
         return sorted(keys)
 
     def presigned_url(self, key: str, *, expires: int = 3600) -> str:
-        return self._client.generate_presigned_url(
+        return cast(str, self._client.generate_presigned_url(
             ClientMethod="get_object",
             Params={
                 "Bucket": self._bucket,
                 "Key": self._sanitize_key(key),
             },
             ExpiresIn=expires,
-        )
+        ))
 
     def cleanup_expired(self, *, prefix: str, max_age_days: int) -> int:
         """Delete objects older than *max_age_days*.

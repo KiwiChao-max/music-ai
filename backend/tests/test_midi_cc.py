@@ -5,6 +5,7 @@ that every generated MIDI file ships the same controller reset
 (CC0/CC32/program/CC7/CC11/CC10/CC64). These tests pin the exact messages
 so that a change to the setup sequence is a deliberate, reviewable event.
 """
+
 from __future__ import annotations
 
 from mido import Message
@@ -20,8 +21,7 @@ from app.services.midi_cc import (
 def test_gm_setup_messages_returns_controller_reset_in_canonical_order() -> None:
     messages = gm_setup_messages(channel=0, program=4)
     types_and_controls = [
-        (msg.type, getattr(msg, "control", None), getattr(msg, "program", None))
-        for msg in messages
+        (msg.type, getattr(msg, "control", None), getattr(msg, "program", None)) for msg in messages
     ]
     # Bank MSB, Bank LSB, Program, Volume, Expression, Pan, Sustain.
     assert types_and_controls == [

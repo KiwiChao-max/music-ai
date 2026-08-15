@@ -9,6 +9,7 @@ counts, but we *can* assert that:
     reasonably varied synthetic input (this is the regression for the
     19-part expansion).
 """
+
 from __future__ import annotations
 
 import json
@@ -69,9 +70,7 @@ def _write_drum_signal(
     signal += _lowpass(noise, 200.0, sample_rate) * envelope(0.10, 0.001) * 1.5
 
     # Snare: mid-band noise burst.
-    signal += (
-        _bandpass(noise, 1500.0, 4000.0, sample_rate) * envelope(0.80, 0.002) * 1.2
-    )
+    signal += _bandpass(noise, 1500.0, 4000.0, sample_rate) * envelope(0.80, 0.002) * 1.2
 
     # High-band noise shared by both hat variants. Built once and reused so
     # the two hits share the same high-frequency content --- only the
@@ -95,9 +94,7 @@ def _write_drum_signal(
     sf.write(str(path), signal, sample_rate, subtype="PCM_16")
 
 
-def test_drum_midi_writes_combined_and_per_part_files(
-    tmp_path: Path, storage_dir: Path
-) -> None:
+def test_drum_midi_writes_combined_and_per_part_files(tmp_path: Path, storage_dir: Path) -> None:
     audio = tmp_path / "drums.wav"
     _write_drum_signal(audio)
     output_dir = tmp_path / "out"
@@ -148,9 +145,7 @@ def test_drum_midi_contains_gm_setup_messages(tmp_path: Path, storage_dir: Path)
     assert controllers[10] == 64  # pan center
 
 
-def test_drum_midi_emits_events_json_with_bpm_and_hits(
-    tmp_path: Path, storage_dir: Path
-) -> None:
+def test_drum_midi_emits_events_json_with_bpm_and_hits(tmp_path: Path, storage_dir: Path) -> None:
     audio = tmp_path / "drums.wav"
     _write_drum_signal(audio)
     output_dir = tmp_path / "out"
@@ -175,9 +170,7 @@ def test_drum_midi_emits_events_json_with_bpm_and_hits(
     assert len(payload["events"]) == result.event_count
 
 
-def test_drum_classifier_emits_multiple_distinct_parts(
-    tmp_path: Path, storage_dir: Path
-) -> None:
+def test_drum_classifier_emits_multiple_distinct_parts(tmp_path: Path, storage_dir: Path) -> None:
     """Regression for the 19-part expansion: a varied synthetic input must
     spread across at least 2 distinct drum parts (kick + one more). A real
     recording can easily span 5-10 parts; the synthetic signal is a lower

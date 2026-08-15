@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from fastapi import HTTPException
 
+from app.db.models import User
+
 # Size / count limits shared across sub-modules.
 MAX_SAMPLES_PER_LIBRARY = 80
 MAX_SAMPLE_BYTES = 5 * 1024 * 1024  # 5 MB per sample
@@ -12,7 +14,7 @@ MAX_SF2_BYTES = 200 * 1024 * 1024  # 200 MB per SF2 upload
 MAX_CSV_BYTES = 1 * 1024 * 1024  # 1 MB per CSV preset table
 
 
-def check_resource_owner(user: object | None, owner_id: int | None) -> None:
+def check_resource_owner(user: User | None, owner_id: int | None) -> None:
     """Raise 403 if the user does not own the resource and is not an admin.
 
     A resource with ``owner_id=None`` is a legacy / global resource

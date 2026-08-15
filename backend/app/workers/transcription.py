@@ -61,7 +61,9 @@ def _run_drum_midi(stem_path: Path, output_dir: Path) -> Path | None:
     """Generate GM drum MIDI for the drum stem."""
     service = _get_drum_midi_service()
     try:
-        result = service.create_drum_midi(stem_path, output_dir, stem_name="drums")
+        result: drum_midi_service.DrumMidiResult = service.create_drum_midi(
+            stem_path, output_dir, stem_name="drums"
+        )
     except ADTUnavailable as exc:
         _disable_adt_drum(f"ADTOS unavailable, falling back to rule-based: {exc}")
         PIPELINE_MODEL_FALLBACK_TOTAL.labels(

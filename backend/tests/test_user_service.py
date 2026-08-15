@@ -3,13 +3,14 @@
 Covers the user lifecycle (create, lookup, authenticate) and the quota
 helpers that the API and worker both consult.
 """
+
 from __future__ import annotations
 
 import pytest
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.db.models import AudioTask, AudioTaskStatus, User
+from app.db.models import AudioTask, AudioTaskStatus
 from app.services import user_service
 
 # Concatenated to keep the test source free of literal email patterns.
@@ -52,9 +53,7 @@ def test_create_user_normalises_email_and_username(db_session: Session) -> None:
 
 def test_create_user_rejects_short_password(db_session: Session) -> None:
     with pytest.raises(ValueError, match="at least"):
-        user_service.create_user(
-            db_session, email=EMAIL_A, username="x", password="short"
-        )
+        user_service.create_user(db_session, email=EMAIL_A, username="x", password="short")
 
 
 def test_create_user_rejects_oversized_password(db_session: Session) -> None:
@@ -69,19 +68,13 @@ def test_create_user_rejects_oversized_password(db_session: Session) -> None:
 
 def test_create_user_rejects_empty_email_or_username(db_session: Session) -> None:
     with pytest.raises(ValueError):
-        user_service.create_user(
-            db_session, email="", username="x", password=PWD
-        )
+        user_service.create_user(db_session, email="", username="x", password=PWD)
     with pytest.raises(ValueError):
-        user_service.create_user(
-            db_session, email=EMAIL_A, username="", password=PWD
-        )
+        user_service.create_user(db_session, email=EMAIL_A, username="", password=PWD)
 
 
 def test_create_user_rejects_duplicate_email(db_session: Session) -> None:
-    user_service.create_user(
-        db_session, email=EMAIL_A, username="alice", password=PWD
-    )
+    user_service.create_user(db_session, email=EMAIL_A, username="alice", password=PWD)
     db_session.commit()
     with pytest.raises(user_service.EmailAlreadyExistsError):
         user_service.create_user(
@@ -93,9 +86,7 @@ def test_create_user_rejects_duplicate_email(db_session: Session) -> None:
 
 
 def test_create_user_rejects_duplicate_username(db_session: Session) -> None:
-    user_service.create_user(
-        db_session, email=EMAIL_A, username="alice", password=PWD
-    )
+    user_service.create_user(db_session, email=EMAIL_A, username="alice", password=PWD)
     db_session.commit()
     with pytest.raises(user_service.UsernameAlreadyExistsError):
         user_service.create_user(
@@ -122,9 +113,7 @@ def test_create_user_accepts_optional_full_name(db_session: Session) -> None:
 def test_get_user_by_email_and_username_are_case_insensitive(
     db_session: Session,
 ) -> None:
-    user_service.create_user(
-        db_session, email=EMAIL_A, username="Alice", password=PWD
-    )
+    user_service.create_user(db_session, email=EMAIL_A, username="Alice", password=PWD)
     db_session.commit()
     assert user_service.get_user_by_email(db_session, EMAIL_A.upper()) is not None
     assert user_service.get_user_by_email(db_session, f"  {EMAIL_A}  ") is not None
@@ -142,46 +131,32 @@ def test_get_user_returns_none_for_unknown(db_session: Session) -> None:
 def test_authenticate_with_email_and_correct_password(
     db_session: Session,
 ) -> None:
-    user_service.create_user(
-        db_session, email=EMAIL_A, username="alice", password=PWD
-    )
+    user_service.create_user(db_session, email=EMAIL_A, username="alice", password=PWD)
     db_session.commit()
 
-    user = user_service.authenticate(
-        db_session, identifier=EMAIL_A, password=PWD
-    )
+    user = user_service.authenticate(db_session, identifier=EMAIL_A, password=PWD)
     assert user.email == EMAIL_A
     assert user.last_login_at is not None
 
 
 def test_authenticate_with_username(db_session: Session) -> None:
-    user_service.create_user(
-        db_session, email=EMAIL_A, username="alice", password=PWD
-    )
+    user_service.create_user(db_session, email=EMAIL_A, username="alice", password=PWD)
     db_session.commit()
 
-    user = user_service.authenticate(
-        db_session, identifier="alice", password=PWD
-    )
+    user = user_service.authenticate(db_session, identifier="alice", password=PWD)
     assert user.username == "alice"
 
 
 def test_authenticate_rejects_wrong_password(db_session: Session) -> None:
-    user_service.create_user(
-        db_session, email=EMAIL_A, username="alice", password=PWD
-    )
+    user_service.create_user(db_session, email=EMAIL_A, username="alice", password=PWD)
     db_session.commit()
     with pytest.raises(user_service.InvalidCredentialsError):
-        user_service.authenticate(
-            db_session, identifier=EMAIL_A, password="wrong-password"
-        )
+        user_service.authenticate(db_session, identifier=EMAIL_A, password="wrong-password")
 
 
 def test_authenticate_rejects_unknown_user(db_session: Session) -> None:
     with pytest.raises(user_service.InvalidCredentialsError):
-        user_service.authenticate(
-            db_session, identifier="ghost", password=PWD
-        )
+        user_service.authenticate(db_session, identifier="ghost", password=PWD)
 
 
 def test_authenticate_rejects_empty_input(db_session: Session) -> None:
@@ -192,32 +167,24 @@ def test_authenticate_rejects_empty_input(db_session: Session) -> None:
 
 
 def test_authenticate_rejects_inactive_user(db_session: Session) -> None:
-    user = user_service.create_user(
-        db_session, email=EMAIL_A, username="alice", password=PWD
-    )
+    user = user_service.create_user(db_session, email=EMAIL_A, username="alice", password=PWD)
     db_session.commit()
     user.is_active = False
     db_session.commit()
     with pytest.raises(user_service.InvalidCredentialsError):
-        user_service.authenticate(
-            db_session, identifier=EMAIL_A, password=PWD
-        )
+        user_service.authenticate(db_session, identifier=EMAIL_A, password=PWD)
 
 
 # ---- quota ---------------------------------------------------------------
 def test_effective_max_tasks_uses_user_override(db_session: Session) -> None:
-    user = user_service.create_user(
-        db_session, email=EMAIL_A, username="alice", password=PWD
-    )
+    user = user_service.create_user(db_session, email=EMAIL_A, username="alice", password=PWD)
     user.max_tasks = 7
     db_session.commit()
     assert user_service.effective_max_tasks(user) == 7
 
 
 def test_effective_max_tasks_falls_back_to_default(db_session: Session) -> None:
-    user = user_service.create_user(
-        db_session, email=EMAIL_A, username="alice", password=PWD
-    )
+    user = user_service.create_user(db_session, email=EMAIL_A, username="alice", password=PWD)
     user.max_tasks = 0
     db_session.commit()
     assert user_service.effective_max_tasks(user) == settings.default_max_tasks_per_user
@@ -229,15 +196,11 @@ def test_effective_max_tasks_uses_default_when_user_is_none() -> None:
 
 def test_effective_max_upload_bytes_priority(db_session: Session) -> None:
     """User override > per-user default > global max."""
-    user = user_service.create_user(
-        db_session, email=EMAIL_A, username="alice", password=PWD
-    )
+    user = user_service.create_user(db_session, email=EMAIL_A, username="alice", password=PWD)
     # No user override -> falls back to settings.max_upload_bytes.
     user.max_upload_bytes = 0
     db_session.commit()
-    assert (
-        user_service.effective_max_upload_bytes(user) == settings.max_upload_bytes
-    )
+    assert user_service.effective_max_upload_bytes(user) == settings.max_upload_bytes
 
     # Per-user override wins.
     user.max_upload_bytes = 1234
@@ -249,9 +212,7 @@ def test_effective_max_upload_bytes_priority(db_session: Session) -> None:
 def test_count_active_tasks_only_includes_in_flight(
     db_session: Session,
 ) -> None:
-    user = user_service.create_user(
-        db_session, email=EMAIL_A, username="alice", password=PWD
-    )
+    user = user_service.create_user(db_session, email=EMAIL_A, username="alice", password=PWD)
     db_session.commit()
 
     for status in (
@@ -268,12 +229,8 @@ def test_count_active_tasks_only_includes_in_flight(
 
 
 def test_count_active_tasks_scoped_to_user(db_session: Session) -> None:
-    a = user_service.create_user(
-        db_session, email=EMAIL_A, username="alice", password=PWD
-    )
-    b = user_service.create_user(
-        db_session, email=EMAIL_B, username="bob", password=PWD
-    )
+    a = user_service.create_user(db_session, email=EMAIL_A, username="alice", password=PWD)
+    b = user_service.create_user(db_session, email=EMAIL_B, username="bob", password=PWD)
     db_session.commit()
 
     db_session.add(AudioTask(filename="a1.wav", user_id=a.id))

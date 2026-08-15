@@ -3,6 +3,8 @@ import { useTranslation } from "react-i18next";
 
 import { instrumentsApi, type SampleLibraryInfo } from "@/api/instruments";
 import { api, ApiError } from "@/api/axios";
+import { getSharedAudioContext } from "@/utils/audioContext";
+import i18n from "@/i18n";
 
 interface DrumEvent {
   t: number; // seconds from start
@@ -24,10 +26,7 @@ interface SampleBasedDrumPlayerProps {
 }
 
 type LoadState =
-  | { kind: "idle" }
-  | { kind: "loading" }
-  | { kind: "ready" }
-  | { kind: "error"; message: string };
+  { kind: "idle" } | { kind: "loading" } | { kind: "ready" } | { kind: "error"; message: string };
 
 /**
  * Sample-based drum player.
@@ -54,40 +53,47 @@ export function SampleBasedDrumPlayer({
   // Cache: key = `${note}:${vMin}:${vMax}`, value = decoded AudioBuffer.
   const buffersRef = useRef<Map<string, AudioBuffer>>(new Map());
   // Velocity-layer metadata for each buffer key: { note, vMin, vMax }.
-  const layerMetaRef = useRef<Map<string, { note: number; vMin: number; vMax: number }>>(
-    new Map(),
-  );
+  const layerMetaRef = useRef<Map<string, { note: number; vMin: number; vMax: number }>>(new Map());
   const masterRef = useRef<GainNode | null>(null);
   // The list of nodes we've already scheduled so we can stop them on pause.
   const activeSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
-  const playbackStartRef = useRef<{ contextTime: number; songTime: number } | null>(
-    null,
-  );
+  const playbackStartRef = useRef<{ contextTime: number; songTime: number } | null>(null);
   const rafIdRef = useRef<number | null>(null);
   const eventListRef = useRef<DrumEventList | null>(null);
 
-  const hasSamples = useMemo(
-    () => (library ? library.files.length > 0 : false),
-    [library],
-  );
+  const hasSamples = useMemo(() => (library ? library.files.length > 0 : false), [library]);
 
   // Decode samples for every note the library covers. We do this once per
-  // (library, events) change; the buffers are cached on `buffersRef` and
-  // reused across play / pause cycles.
+  // library change; the buffers are cached on `buffersRef` and reused across
+  // play / pause cycles.
+  //
+  // Note: `t` is intentionally NOT a dependency. react-i18next changes `t`'s
+  // identity on language switch, which would re-run this effect and re-download
+  // every sample for no reason. Error strings inside are built with the
+  // module-level `i18n.t` instead.
   useEffect(() => {
     if (!library || !hasSamples) {
       buffersRef.current.clear();
+      layerMetaRef.current.clear();
       if (masterRef.current) {
-        try { masterRef.current.disconnect(); } catch { /* ignore */ }
+        try {
+          masterRef.current.disconnect();
+        } catch {
+          /* ignore */
+        }
         masterRef.current = null;
       }
       return;
     }
-    const ac = ensureContext(contextRef);
+    const ac = getSharedAudioContext();
     // Disconnect the previous master GainNode to prevent orphan node leaks
     // when the library changes.
     if (masterRef.current) {
-      try { masterRef.current.disconnect(); } catch { /* ignore */ }
+      try {
+        masterRef.current.disconnect();
+      } catch {
+        /* ignore */
+      }
     }
     masterRef.current = ac.createGain();
     masterRef.current.gain.value = 0.9;
@@ -97,11 +103,25 @@ export function SampleBasedDrumPlayer({
     const abortController = new AbortController();
     (async () => {
       try {
-        const decoded = new Map<string, AudioBuffer>();
-        const meta = new Map<string, { note: number; vMin: number; vMax: number }>();
+        // Seed with the existing cache and only fetch what's missing, so a
+        // spurious effect re-run (library identity change with the same
+        // content) doesn't re-download everything. Keys are scoped by
+        // library id + updated_at so switching libraries never reuses a
+        // buffer belonging to a different (or edited) library.
+        const decoded = new Map(buffersRef.current);
+        const meta = new Map(layerMetaRef.current);
         for (const file of library.files) {
-          const key = `${file.midi_note}:${file.velocity_min}:${file.velocity_max}`;
-          if (decoded.has(key)) continue;
+          const key = `${library.id}:${library.updated_at}:${file.midi_note}:${file.velocity_min}:${file.velocity_max}`;
+          if (decoded.has(key)) {
+            if (!meta.has(key)) {
+              meta.set(key, {
+                note: file.midi_note,
+                vMin: file.velocity_min ?? 1,
+                vMax: file.velocity_max ?? 127,
+              });
+            }
+            continue;
+          }
           const url = instrumentsApi.sampleUrl(library.id, file.midi_note);
           const response = await api.get<ArrayBuffer>(url, {
             responseType: "arraybuffer",
@@ -127,7 +147,7 @@ export function SampleBasedDrumPlayer({
           } else {
             setState({
               kind: "error",
-              message: err instanceof Error ? err.message : t("errors.loadSamples"),
+              message: err instanceof Error ? err.message : i18n.t("errors.loadSamples"),
             });
           }
         }
@@ -138,9 +158,12 @@ export function SampleBasedDrumPlayer({
       cancelled = true;
       abortController.abort();
     };
-  }, [library, hasSamples, t]);
+  }, [library, hasSamples]);
 
-  // Fetch the event list whenever the URL changes.
+  // Fetch the event list whenever the URL changes. Same note as above:
+  // `t` must not be a dependency --- its identity changes on language
+  // switch and would reset the player to "loading" + re-fetch the events
+  // file even though the URL didn't change.
   useEffect(() => {
     if (!eventsUrl) {
       eventListRef.current = null;
@@ -169,7 +192,7 @@ export function SampleBasedDrumPlayer({
           } else {
             setState({
               kind: "error",
-              message: err instanceof Error ? err.message : t("errors.loadEvents"),
+              message: err instanceof Error ? err.message : i18n.t("errors.loadEvents"),
             });
           }
         }
@@ -178,7 +201,7 @@ export function SampleBasedDrumPlayer({
     return () => {
       cancelled = true;
     };
-  }, [eventsUrl, t]);
+  }, [eventsUrl]);
 
   // Stop all scheduled sources --- used on pause and on unmount.
   const stopAllScheduled = useCallback(() => {
@@ -192,41 +215,39 @@ export function SampleBasedDrumPlayer({
     activeSourcesRef.current.clear();
   }, []);
 
-  const playFrom = useCallback(
-    (fromSeconds: number) => {
-      const ac = ensureContext(contextRef);
-      const master = masterRef.current;
-      const events = eventListRef.current?.events ?? [];
-      const buffers = buffersRef.current;
-      const meta = layerMetaRef.current;
-      if (!master || events.length === 0) return;
+  const playFrom = useCallback((fromSeconds: number) => {
+    const ac = getSharedAudioContext();
+    contextRef.current = ac;
+    const master = masterRef.current;
+    const events = eventListRef.current?.events ?? [];
+    const buffers = buffersRef.current;
+    const meta = layerMetaRef.current;
+    if (!master || events.length === 0) return;
 
-      const startContextTime = ac.currentTime + 0.05;
-      playbackStartRef.current = { contextTime: startContextTime, songTime: fromSeconds };
+    const startContextTime = ac.currentTime + 0.05;
+    playbackStartRef.current = { contextTime: startContextTime, songTime: fromSeconds };
 
-      for (const event of events) {
-        if (event.t < fromSeconds) continue;
-        const buffer = _pickBuffer(buffers, meta, event.note, event.velocity);
-        if (!buffer) continue;
-        const source = ac.createBufferSource();
-        source.buffer = buffer;
-        const gain = ac.createGain();
-        // velocity 0..127 -> gain 0..1.0 with a small floor so quiet hits
-        // are still audible in the browser preview.
-        const v = Math.max(1, Math.min(127, event.velocity)) / 127;
-        gain.gain.value = Math.max(0.05, v);
-        source.connect(gain).connect(master);
-        const when = startContextTime + (event.t - fromSeconds);
-        source.start(when);
-        activeSourcesRef.current.add(source);
-        source.onended = () => {
-          activeSourcesRef.current.delete(source);
-        };
-      }
-      setIsPlaying(true);
-    },
-    [],
-  );
+    for (const event of events) {
+      if (event.t < fromSeconds) continue;
+      const buffer = _pickBuffer(buffers, meta, event.note, event.velocity);
+      if (!buffer) continue;
+      const source = ac.createBufferSource();
+      source.buffer = buffer;
+      const gain = ac.createGain();
+      // velocity 0..127 -> gain 0..1.0 with a small floor so quiet hits
+      // are still audible in the browser preview.
+      const v = Math.max(1, Math.min(127, event.velocity)) / 127;
+      gain.gain.value = Math.max(0.05, v);
+      source.connect(gain).connect(master);
+      const when = startContextTime + (event.t - fromSeconds);
+      source.start(when);
+      activeSourcesRef.current.add(source);
+      source.onended = () => {
+        activeSourcesRef.current.delete(source);
+      };
+    }
+    setIsPlaying(true);
+  }, []);
 
   const onPlay = useCallback(() => {
     if (state.kind !== "ready") return;
@@ -274,16 +295,12 @@ export function SampleBasedDrumPlayer({
     };
   }, [isPlaying, duration, stopAllScheduled]);
 
-  // Cleanup on unmount.
+  // Cleanup on unmount. Note: the AudioContext itself is shared (see
+  // getSharedAudioContext) and must NOT be closed here --- other players
+  // may still be using it.
   useEffect(() => {
     return () => {
       stopAllScheduled();
-      if (contextRef.current) {
-        contextRef.current.close().catch(() => {
-          // already closed
-        });
-        contextRef.current = null;
-      }
     };
   }, [stopAllScheduled]);
 
@@ -293,9 +310,9 @@ export function SampleBasedDrumPlayer({
 
   const noteCount = new Set(library?.files.map((f) => f.midi_note) ?? []).size;
   const fileCount = library?.files.length ?? 0;
-  const layerCount = library?.files.filter(
-    (f) => (f.velocity_min ?? 1) > 1 || (f.velocity_max ?? 127) < 127,
-  ).length ?? 0;
+  const layerCount =
+    library?.files.filter((f) => (f.velocity_min ?? 1) > 1 || (f.velocity_max ?? 127) < 127)
+      .length ?? 0;
 
   return (
     <section className="space-y-4 rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
@@ -305,7 +322,10 @@ export function SampleBasedDrumPlayer({
         </h3>
         <p className="text-xs text-slate-500 dark:text-slate-400">
           {library
-            ? t("player.playingWithLibrary", { count: eventListRef.current?.events.length ?? 0, name: library.name })
+            ? t("player.playingWithLibrary", {
+                count: eventListRef.current?.events.length ?? 0,
+                name: library.name,
+              })
             : t("player.noLibraryHint")}
         </p>
       </header>
@@ -358,33 +378,29 @@ export function SampleBasedDrumPlayer({
       </div>
 
       {state.kind === "loading" && (
-        <p className="text-xs text-slate-500 dark:text-slate-400">{t("player.loadingDrumEvents")}</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          {t("player.loadingDrumEvents")}
+        </p>
       )}
       {state.kind === "error" && (
-        <p className="text-xs text-red-600 dark:text-red-400">{t("player.playerError")}: {state.message}</p>
+        <p className="text-xs text-red-600 dark:text-red-400">
+          {t("player.playerError")}: {state.message}
+        </p>
       )}
       {library && hasSamples && (
         <p className="text-xs text-slate-500 dark:text-slate-400">
           {t("player.samplesSummary", { fileCount, noteCount })}
-          {layerCount > 0 && ` (${layerCount} velocity layers)`}
+          {layerCount > 0 &&
+            t(layerCount === 1 ? "player.velocityLayers" : "player.velocityLayersPlural", {
+              count: layerCount,
+            })}
         </p>
       )}
       {library && !hasSamples && (
-        <p className="text-xs text-amber-700 dark:text-amber-300">
-          {t("player.emptyLibraryHint")}
-        </p>
+        <p className="text-xs text-amber-700 dark:text-amber-300">{t("player.emptyLibraryHint")}</p>
       )}
     </section>
   );
-}
-
-function ensureContext(ref: React.MutableRefObject<AudioContext | null>): AudioContext {
-  if (ref.current) return ref.current;
-  const Ctor =
-    window.AudioContext ||
-    (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-  ref.current = new Ctor();
-  return ref.current;
 }
 
 /**

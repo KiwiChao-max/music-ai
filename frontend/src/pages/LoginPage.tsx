@@ -22,9 +22,7 @@ export function LoginPage() {
       await login(identifier.trim(), password);
       navigate("/", { replace: true });
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : t("auth.loginError"),
-      );
+      setError(err instanceof Error ? err.message : t("auth.loginError"));
     } finally {
       setSubmitting(false);
     }

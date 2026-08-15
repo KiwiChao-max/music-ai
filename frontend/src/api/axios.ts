@@ -24,10 +24,7 @@ let _cachedAccessToken: string | null = null;
 let _cachedCsrfToken: string | null = null;
 
 /** Call this from AuthProvider to prime the cache after login/refresh. */
-export function setCachedTokens(
-  accessToken: string | null,
-  csrfToken: string | null,
-): void {
+export function setCachedTokens(accessToken: string | null, csrfToken: string | null): void {
   _cachedAccessToken = accessToken;
   _cachedCsrfToken = csrfToken;
 }

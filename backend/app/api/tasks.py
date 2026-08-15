@@ -16,14 +16,15 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Any, cast
 
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.api.deps import OptionalAuthUser, OptionalUser, check_task_ownership
 from app.config import settings
-from app.db.models import AudioTaskStatus
+from app.db.models import AudioTask, AudioTaskStatus
 from app.db.session import get_db
 from app.schemas.audio import MusicAnalysisResponse, ProcessResponse, StemInfo, TaskStatusResponse
 from app.services import (
@@ -33,6 +34,7 @@ from app.services import (
     task_service,
     user_service,
 )
+from app.storage import get_storage
 from app.tasks_audio import process_audio_task
 
 logger = logging.getLogger(__name__)
@@ -156,7 +158,9 @@ def start_processing(
         ) from None
     logger.info("dispatched task %s to celery (celery_id=%s)", task.id, async_result.id)
 
-    return ProcessResponse(task_id=task.id, status=task.status)
+    # The DB model and the schema declare structurally-identical StrEnum
+    # statuses; the schema accepts the model's member unchanged.
+    return ProcessResponse(task_id=task.id, status=cast(Any, task.status))
 
 
 # ---------------------------------------------------------------------------
@@ -176,7 +180,7 @@ def get_task_status(
     if task is None:
         raise HTTPException(status_code=404, detail="task not found")
     check_task_ownership(task, user)
-    return TaskStatusResponse(status=task.status, progress=task.progress)
+    return TaskStatusResponse(status=cast(Any, task.status), progress=task.progress)
 
 
 # ---------------------------------------------------------------------------
@@ -251,6 +255,7 @@ def download_artifact(
     task_id: int,
     scope: str,
     filename: str,
+    request: Request,
     token: str | None = None,
     db: Session = Depends(get_db),
     user: OptionalUser = None,
@@ -301,19 +306,24 @@ def download_artifact(
     check_task_ownership(task, user)
     _validate_artifact_filename(filename)
 
-    if scope == "upload":
-        file_obj = file_service.open_upload_file(task)
-    elif scope == "output":
-        file_obj = file_service.open_output_file(task, filename)
-    else:
+    if scope not in ("upload", "output"):
         raise HTTPException(status_code=404, detail="artifact not found")
 
     suffix = Path(filename).suffix.lower()
     media_type = _media_type_for_suffix(suffix)
 
-    # 获取文件路径后关闭 storage 层打开的文件句柄，改用 FileResponse
-    # 直接读文件，原生支持 Range 请求，浏览器拖动进度条时才能正确
-    # seek 到指定位置，而不是从头重新播放。
+    if settings.storage_backend == "s3":
+        return _stream_s3_artifact(task, scope, filename, media_type, request.headers.get("range"))
+
+    # Local storage: close the storage-layer handle and let FileResponse
+    # read the file directly --- it natively supports Range requests, so
+    # the browser can seek to any position when dragging the progress
+    # bar instead of replaying from the start.
+    file_obj = (
+        file_service.open_upload_file(task)
+        if scope == "upload"
+        else file_service.open_output_file(task, filename)
+    )
     file_path = file_obj.name
     file_obj.close()
 
@@ -324,6 +334,101 @@ def download_artifact(
             "Content-Disposition": f'inline; filename="{filename}"',
         },
     )
+
+
+def _stream_s3_artifact(
+    task: AudioTask,
+    scope: str,
+    filename: str,
+    media_type: str,
+    range_header: str | None,
+) -> StreamingResponse:
+    """Stream a task artifact from S3 without buffering it in memory.
+
+    The S3 backend has no local path, so FileResponse is not an option;
+    boto3's lazy ``StreamingBody`` is handed to a StreamingResponse
+    instead. Byte ranges are honored explicitly so audio seeking (206
+    Partial Content) behaves exactly like the local-storage path.
+    """
+    from app.storage.s3 import S3Storage
+
+    storage = get_storage()
+    assert isinstance(storage, S3Storage)
+    key = (
+        file_service.upload_file_key(task)
+        if scope == "upload"
+        else file_service.output_file_key(task, filename)
+    )
+    size = storage.get_size(key)
+    if size is None:
+        raise HTTPException(status_code=404, detail="artifact not found")
+
+    byte_range = _parse_byte_range(range_header, size)
+    if byte_range is None:
+        body = storage.open_read(key)
+        status_code = 200
+        content_length = size
+        headers: dict[str, str] = {}
+    else:
+        start, end = byte_range
+        body = storage.open_read_range(key, start=start, end=end)
+        status_code = 206
+        content_length = end - start + 1
+        headers = {"Content-Range": f"bytes {start}-{end}/{size}"}
+
+    headers.update(
+        {
+            "Accept-Ranges": "bytes",
+            "Content-Length": str(content_length),
+            "Content-Disposition": f'inline; filename="{filename}"',
+        }
+    )
+    return StreamingResponse(
+        _iter_s3_chunks(body),
+        status_code=status_code,
+        media_type=media_type,
+        headers=headers,
+    )
+
+
+def _iter_s3_chunks(body, *, chunk_size: int = 64 * 1024):
+    """Yield chunks from an S3 StreamingBody, always closing it."""
+    try:
+        yield from body.iter_chunks(chunk_size=chunk_size)
+    finally:
+        body.close()
+
+
+def _parse_byte_range(range_header: str | None, size: int) -> tuple[int, int] | None:
+    """Parse a single-range ``Range: bytes=a-b`` header.
+
+    Returns inclusive (start, end) bounds. Returns None when the header
+    is absent, malformed, or unsatisfiable --- the caller then serves the
+    full 200 response, matching RFC 7233's "ignore the Range header"
+    fallback.
+    """
+    if not range_header or size <= 0 or "," in range_header:
+        return None
+    if not range_header.startswith("bytes="):
+        return None
+    spec = range_header[len("bytes=") :].strip()
+    start_s, sep, end_s = spec.partition("-")
+    if not sep:
+        return None
+    try:
+        if start_s == "":
+            # Suffix range: the last N bytes.
+            n = int(end_s)
+            if n <= 0:
+                return None
+            return (max(0, size - n), size - 1)
+        start = int(start_s)
+        end = int(end_s) if end_s else size - 1
+    except ValueError:
+        return None
+    if start < 0 or start >= size or end < start:
+        return None
+    return (start, min(end, size - 1))
 
 
 def _media_type_for_suffix(suffix: str) -> str:

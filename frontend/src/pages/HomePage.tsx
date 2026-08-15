@@ -36,9 +36,7 @@ export function HomePage() {
             <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
               {t(c.titleKey)}
             </h2>
-            <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-              {t(c.descriptionKey)}
-            </p>
+            <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">{t(c.descriptionKey)}</p>
             <p className="mt-4 text-sm font-medium text-slate-900 group-hover:underline dark:text-slate-100">
               {t(c.ctaKey)} -&gt;
             </p>

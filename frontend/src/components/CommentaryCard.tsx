@@ -22,10 +22,7 @@ function formatTimestamp(iso: string | null | undefined): string | null {
   }
 }
 
-function modelLabel(
-  model: string | null | undefined,
-  t: (key: string) => string,
-): string {
+function modelLabel(model: string | null | undefined, t: (key: string) => string): string {
   if (!model) return t("detail.analysis.commentary.model");
   if (model === "mock") return t("detail.analysis.commentary.modelPreview");
   if (model === "openai-compatible") return t("detail.analysis.commentary.model");
@@ -38,14 +35,14 @@ export function CommentaryCard({ analysis }: CommentaryCardProps) {
   const text = analysis.commentary;
   if (!text) {
     return (
-    <div
-      data-testid="commentary-empty"
-      className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400"
-    >
-      {t("detail.analysis.commentary.empty")}
-    </div>
-  );
-}
+      <div
+        data-testid="commentary-empty"
+        className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400"
+      >
+        {t("detail.analysis.commentary.empty")}
+      </div>
+    );
+  }
 
   const ts = formatTimestamp(analysis.commentary_generated_at);
 

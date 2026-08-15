@@ -11,6 +11,8 @@ import { useTranslation } from "react-i18next";
 
 import axios from "axios";
 
+import { getSharedAudioContext } from "@/utils/audioContext";
+
 interface MidiNote {
   note: number;
   start: number;
@@ -46,13 +48,24 @@ function getOscType(program: number): OscillatorType {
   return "triangle";
 }
 
-function getEnvelope(program: number): { attack: number; decay: number; sustain: number; release: number } {
-  if (program >= 40 && program <= 47) return { attack: 0.08, decay: 0.1, sustain: 0.7, release: 0.2 };
-  if (program >= 48 && program <= 55) return { attack: 0.15, decay: 0.1, sustain: 0.8, release: 0.3 };
-  if (program >= 80 && program <= 87) return { attack: 0.01, decay: 0.05, sustain: 0.8, release: 0.05 };
-  if (program >= 88 && program <= 95) return { attack: 0.2, decay: 0.3, sustain: 0.7, release: 0.5 };
-  if (program >= 32 && program <= 39) return { attack: 0.01, decay: 0.1, sustain: 0.8, release: 0.1 };
-  if (program >= 24 && program <= 31) return { attack: 0.005, decay: 0.05, sustain: 0.6, release: 0.05 };
+function getEnvelope(program: number): {
+  attack: number;
+  decay: number;
+  sustain: number;
+  release: number;
+} {
+  if (program >= 40 && program <= 47)
+    return { attack: 0.08, decay: 0.1, sustain: 0.7, release: 0.2 };
+  if (program >= 48 && program <= 55)
+    return { attack: 0.15, decay: 0.1, sustain: 0.8, release: 0.3 };
+  if (program >= 80 && program <= 87)
+    return { attack: 0.01, decay: 0.05, sustain: 0.8, release: 0.05 };
+  if (program >= 88 && program <= 95)
+    return { attack: 0.2, decay: 0.3, sustain: 0.7, release: 0.5 };
+  if (program >= 32 && program <= 39)
+    return { attack: 0.01, decay: 0.1, sustain: 0.8, release: 0.1 };
+  if (program >= 24 && program <= 31)
+    return { attack: 0.005, decay: 0.05, sustain: 0.6, release: 0.05 };
   return { attack: 0.005, decay: 0.08, sustain: 0.6, release: 0.08 };
 }
 
@@ -80,8 +93,10 @@ function parseMidi(buffer: ArrayBuffer): MidiData {
   };
 
   const magic = String.fromCharCode(
-    view.getUint8(offset), view.getUint8(offset + 1),
-    view.getUint8(offset + 2), view.getUint8(offset + 3),
+    view.getUint8(offset),
+    view.getUint8(offset + 1),
+    view.getUint8(offset + 2),
+    view.getUint8(offset + 3),
   );
   offset += 4;
   const headerLen = view.getUint32(offset);
@@ -103,8 +118,10 @@ function parseMidi(buffer: ArrayBuffer): MidiData {
 
   for (let t = 0; t < numTracks; t++) {
     const trackMagic = String.fromCharCode(
-      view.getUint8(offset), view.getUint8(offset + 1),
-      view.getUint8(offset + 2), view.getUint8(offset + 3),
+      view.getUint8(offset),
+      view.getUint8(offset + 1),
+      view.getUint8(offset + 2),
+      view.getUint8(offset + 3),
     );
     offset += 4;
     const trackLen = view.getUint32(offset);
@@ -135,7 +152,10 @@ function parseMidi(buffer: ArrayBuffer): MidiData {
         const metaType = view.getUint8(offset++);
         const metaLen = readVarLen();
         if (metaType === 0x51 && metaLen === 3) {
-          const usPerBeat = (view.getUint8(offset) << 16) | (view.getUint8(offset + 1) << 8) | view.getUint8(offset + 2);
+          const usPerBeat =
+            (view.getUint8(offset) << 16) |
+            (view.getUint8(offset + 1) << 8) |
+            view.getUint8(offset + 2);
           tempoChanges.push({ tick, usPerBeat });
         }
         offset += metaLen;
@@ -228,6 +248,7 @@ export function MidiPreviewPlayer({ url }: MidiPreviewPlayerProps) {
   const rafRef = useRef<number | null>(null);
   const midiDataRef = useRef<MidiData | null>(null);
   const stopAllRef = useRef<() => void>(() => {});
+  const playTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     midiDataRef.current = midiData;
@@ -235,7 +256,11 @@ export function MidiPreviewPlayer({ url }: MidiPreviewPlayerProps) {
 
   const stopAll = useCallback(() => {
     for (const a of activeRef.current) {
-      try { a.stop(); } catch { /* */ }
+      try {
+        a.stop();
+      } catch {
+        /* */
+      }
     }
     activeRef.current = [];
     if (rafRef.current !== null) {
@@ -255,10 +280,14 @@ export function MidiPreviewPlayer({ url }: MidiPreviewPlayerProps) {
     return () => {
       _activePlayers.delete(stopFn);
       stopAllRef.current();
-      if (contextRef.current) {
-        contextRef.current.close().catch(() => {});
-        contextRef.current = null;
+      // Cancel a pending play-from-start scheduled by onPlay so playback
+      // can't start after this component has unmounted.
+      if (playTimeoutRef.current !== null) {
+        window.clearTimeout(playTimeoutRef.current);
+        playTimeoutRef.current = null;
       }
+      // Note: the AudioContext is shared (getSharedAudioContext) and must
+      // NOT be closed here --- other players may still be using it.
     };
   }, []);
 
@@ -277,85 +306,105 @@ export function MidiPreviewPlayer({ url }: MidiPreviewPlayerProps) {
     }
   }, [url, midiData, t]);
 
-  const playFrom = useCallback((fromSec: number) => {
-    if (!midiDataRef.current) return;
-    stopOtherPlayers(stopAll);
-    const ctx = contextRef.current ?? new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
-    contextRef.current = ctx;
-    if (ctx.state === "suspended") ctx.resume();
-
-    const master = ctx.createGain();
-    master.gain.value = 0.5;
-    master.connect(ctx.destination);
-    masterRef.current = master;
-
-    const startCtxTime = ctx.currentTime + 0.05;
-    startRef.current = { ctxTime: startCtxTime, songTime: fromSec };
-    const dur = midiDataRef.current.duration;
-
-    for (const note of midiDataRef.current.notes) {
-      if (note.start < fromSec) continue;
-      const freq = midiToFreq(note.note);
-      const oscType = getOscType(note.program);
-      const env = getEnvelope(note.program);
-      const filterFreq = getFilterFreq(note.program);
-      const v = Math.max(1, Math.min(127, note.velocity)) / 127;
-
-      const osc = ctx.createOscillator();
-      osc.type = oscType;
-      osc.frequency.value = freq;
-
-      const filter = ctx.createBiquadFilter();
-      filter.type = "lowpass";
-      filter.frequency.value = filterFreq;
-      filter.Q.value = 1;
-
-      const gain = ctx.createGain();
-      const noteStart = startCtxTime + (note.start - fromSec);
-      const noteDur = Math.max(0.05, note.duration);
-      const attackEnd = noteStart + env.attack;
-      const decayEnd = attackEnd + env.decay;
-      const sustainEnd = noteStart + noteDur;
-      const releaseEnd = sustainEnd + env.release;
-      const peakGain = v * 0.3;
-      const sustainGain = peakGain * env.sustain;
-
-      gain.gain.setValueAtTime(0, noteStart);
-      gain.gain.linearRampToValueAtTime(peakGain, attackEnd);
-      gain.gain.linearRampToValueAtTime(sustainGain, decayEnd);
-      gain.gain.setValueAtTime(sustainGain, sustainEnd);
-      gain.gain.linearRampToValueAtTime(0, releaseEnd);
-
-      osc.connect(filter).connect(gain).connect(master);
-      osc.start(noteStart);
-      osc.stop(releaseEnd + 0.01);
-      const oscRef = osc;
-      activeRef.current.push({ stop: () => { try { oscRef.stop(); } catch { /* */ } } });
-    }
-
-    const tick = () => {
-      const s = startRef.current;
-      if (!s || !contextRef.current) return;
-      const elapsed = contextRef.current.currentTime - s.ctxTime;
-      const pos = s.songTime + elapsed;
-      if (pos >= dur) {
-        setPosition(dur);
-        stopAll();
-        setPosition(0);
-        startRef.current = null;
-        return;
+  const playFrom = useCallback(
+    (fromSec: number) => {
+      if (!midiDataRef.current) return;
+      stopOtherPlayers(stopAll);
+      const ctx = getSharedAudioContext();
+      contextRef.current = ctx;
+      if (ctx.state === "suspended") {
+        void ctx.resume().catch(() => {
+          // Autoplay policy still blocks it --- ignore, the gesture is fresh.
+        });
       }
-      setPosition(pos);
+
+      const master = ctx.createGain();
+      master.gain.value = 0.5;
+      master.connect(ctx.destination);
+      masterRef.current = master;
+
+      const startCtxTime = ctx.currentTime + 0.05;
+      startRef.current = { ctxTime: startCtxTime, songTime: fromSec };
+      const dur = midiDataRef.current.duration;
+
+      for (const note of midiDataRef.current.notes) {
+        if (note.start < fromSec) continue;
+        const freq = midiToFreq(note.note);
+        const oscType = getOscType(note.program);
+        const env = getEnvelope(note.program);
+        const filterFreq = getFilterFreq(note.program);
+        const v = Math.max(1, Math.min(127, note.velocity)) / 127;
+
+        const osc = ctx.createOscillator();
+        osc.type = oscType;
+        osc.frequency.value = freq;
+
+        const filter = ctx.createBiquadFilter();
+        filter.type = "lowpass";
+        filter.frequency.value = filterFreq;
+        filter.Q.value = 1;
+
+        const gain = ctx.createGain();
+        const noteStart = startCtxTime + (note.start - fromSec);
+        const noteDur = Math.max(0.05, note.duration);
+        const attackEnd = noteStart + env.attack;
+        const decayEnd = attackEnd + env.decay;
+        const sustainEnd = noteStart + noteDur;
+        const releaseEnd = sustainEnd + env.release;
+        const peakGain = v * 0.3;
+        const sustainGain = peakGain * env.sustain;
+
+        gain.gain.setValueAtTime(0, noteStart);
+        gain.gain.linearRampToValueAtTime(peakGain, attackEnd);
+        gain.gain.linearRampToValueAtTime(sustainGain, decayEnd);
+        gain.gain.setValueAtTime(sustainGain, sustainEnd);
+        gain.gain.linearRampToValueAtTime(0, releaseEnd);
+
+        osc.connect(filter).connect(gain).connect(master);
+        osc.start(noteStart);
+        osc.stop(releaseEnd + 0.01);
+        const oscRef = osc;
+        activeRef.current.push({
+          stop: () => {
+            try {
+              oscRef.stop();
+            } catch {
+              /* */
+            }
+          },
+        });
+      }
+
+      const tick = () => {
+        const s = startRef.current;
+        if (!s || !contextRef.current) return;
+        const elapsed = contextRef.current.currentTime - s.ctxTime;
+        const pos = s.songTime + elapsed;
+        if (pos >= dur) {
+          setPosition(dur);
+          stopAll();
+          setPosition(0);
+          startRef.current = null;
+          return;
+        }
+        setPosition(pos);
+        rafRef.current = requestAnimationFrame(tick);
+      };
       rafRef.current = requestAnimationFrame(tick);
-    };
-    rafRef.current = requestAnimationFrame(tick);
-    setIsPlaying(true);
-  }, [stopAll]);
+      setIsPlaying(true);
+    },
+    [stopAll],
+  );
 
   const onPlay = useCallback(() => {
     if (!midiData) {
       loadMidi().then(() => {
-        setTimeout(() => playFrom(0), 100);
+        // Store the timer so the unmount cleanup can cancel it; otherwise
+        // navigating away within 100ms starts playback post-unmount.
+        if (playTimeoutRef.current !== null) {
+          window.clearTimeout(playTimeoutRef.current);
+        }
+        playTimeoutRef.current = window.setTimeout(() => playFrom(0), 100);
       });
       return;
     }
@@ -373,7 +422,8 @@ export function MidiPreviewPlayer({ url }: MidiPreviewPlayerProps) {
     startRef.current = null;
   }, [stopAll]);
 
-  const pct = midiData && midiData.duration > 0 ? Math.min(100, (position / midiData.duration) * 100) : 0;
+  const pct =
+    midiData && midiData.duration > 0 ? Math.min(100, (position / midiData.duration) * 100) : 0;
 
   return (
     <div className="flex items-center gap-2">
@@ -412,9 +462,17 @@ export function MidiPreviewPlayer({ url }: MidiPreviewPlayerProps) {
         aria-valuemax={100}
         aria-label={t("player.midiPlayback")}
       >
-        <div className="h-full bg-indigo-500 transition-all" style={{ width: `${pct}%` }} aria-hidden="true" />
+        <div
+          className="h-full bg-indigo-500 transition-all"
+          style={{ width: `${pct}%` }}
+          aria-hidden="true"
+        />
       </div>
-      {error && <span className="text-[10px] text-red-500" title={error}>{t("player.playerError")}: {error}</span>}
+      {error && (
+        <span className="text-[10px] text-red-500" title={error}>
+          {t("player.playerError")}: {error}
+        </span>
+      )}
     </div>
   );
 }

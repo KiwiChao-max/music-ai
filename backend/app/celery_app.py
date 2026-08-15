@@ -62,11 +62,28 @@ _default_queue = Queue(
     durable=True,
 )
 
+
 # ---------------------------------------------------------------------------
 # Resource probe (best-effort --- non-Linux platforms skip gracefully)
+#
+# The probe imports torch and shells out to nvidia-smi, so it only runs
+# in the worker process. The API imports this module to dispatch tasks
+# and never needs a concurrency figure; probing there would add seconds
+# of startup latency (and a GPU dependency) to every API boot.
 # ---------------------------------------------------------------------------
+def _running_as_worker() -> bool:
+    """True when this process is a Celery worker (``celery -A app worker``).
+
+    The API (uvicorn/gunicorn) and ``celery beat`` never match, so the
+    probe stays out of their import path.
+    """
+    import sys
+
+    return any(arg == "worker" for arg in sys.argv[1:])
+
+
 _worker_concurrency = settings.worker_concurrency
-if _worker_concurrency <= 0:
+if _worker_concurrency <= 0 and _running_as_worker():
     try:
         from app.worker_probe import probe_resources, resolve_concurrency
 
@@ -83,12 +100,13 @@ if _worker_concurrency <= 0:
 if settings.worker_concurrency > 0:
     _worker_concurrency = settings.worker_concurrency
 
-logger.info(
-    "celery: concurrency=%d, max_memory_per_child=%d MiB, max_tasks_per_child=%d",
-    _worker_concurrency,
-    settings.worker_max_memory_per_child_mb,
-    settings.worker_max_tasks_per_child,
-)
+if _running_as_worker():
+    logger.info(
+        "celery: concurrency=%d, max_memory_per_child=%d MiB, max_tasks_per_child=%d",
+        _worker_concurrency,
+        settings.worker_max_memory_per_child_mb,
+        settings.worker_max_tasks_per_child,
+    )
 
 # ---------------------------------------------------------------------------
 # Celery app

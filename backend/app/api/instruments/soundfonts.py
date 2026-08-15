@@ -28,7 +28,7 @@ def list_gm_instruments() -> list[dict]:
 
 
 @router.post("/preset-table/import")
-async def import_preset_table(
+def import_preset_table(
     file: UploadFile = File(...),
     name: str = Form(...),
     db: Session = Depends(get_db),
@@ -43,10 +43,12 @@ async def import_preset_table(
       - name (required, preset name)
       - category (optional)
       - instrument_type (optional: piano, guitar, bass, strings, etc.)
+
+    Sync endpoint: the CSV parse + DB write run in the threadpool.
     """
     from app.services.soundfont_service import SoundFontService
 
-    content = await file.read()
+    content = file.file.read()
     if len(content) > MAX_CSV_BYTES:
         raise HTTPException(
             status_code=413,
@@ -70,17 +72,21 @@ async def import_preset_table(
 
 
 @router.post("/soundfont/import")
-async def import_soundfont(
+def import_soundfont(
     file: UploadFile = File(...),
     name: str = Form(...),
     description: str | None = Form(default=None),
     db: Session = Depends(get_db),
     user: OptionalAuthUser = None,
 ) -> dict:
-    """Import a SoundFont 2 (.sf2) file, extract presets, and save."""
+    """Import a SoundFont 2 (.sf2) file, extract presets, and save.
+
+    Sync endpoint: the full SF2 file write + mmap parse + DB commit run
+    in the threadpool.
+    """
     from app.services.soundfont_service import SoundFontService
 
-    content = await file.read()
+    content = file.file.read()
     if len(content) > MAX_SF2_BYTES:
         raise HTTPException(
             status_code=413,

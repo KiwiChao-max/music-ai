@@ -30,17 +30,16 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: |
-            backend/requirements.txt
-            backend/requirements-dev.txt
+            backend/requirements.lock.txt
+            backend/requirements-dev.lock.txt
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install -r requirements-dev.txt
+          pip install -r requirements-dev.lock.txt
       - name: Ruff lint
-        run: ruff check app/
+        run: ruff check app/ tests/
       - name: Ruff format check
-        run: ruff format --check app/
+        run: ruff format --check app/ tests/
       - name: Mypy type check
         run: mypy app/
 
@@ -115,13 +114,12 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: |
-            backend/requirements.txt
-            backend/requirements-dev.txt
+            backend/requirements.lock.txt
+            backend/requirements-dev.lock.txt
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install -r requirements-dev.txt
+          pip install -r requirements-dev.lock.txt
       - name: Run pytest
         env:
           PASSLIB_BCRYPT_FORCE_BACKEND: pure-python

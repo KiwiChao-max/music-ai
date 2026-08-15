@@ -13,13 +13,12 @@
  * the row scrolls into view (`IntersectionObserver`) so we only pay
  * the decode cost for stems the user is actually looking at.
  */
-import { useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import WaveSurfer from "wavesurfer.js";
 
 import { usePlayer } from "@/contexts/PlayerContext";
 import { MidiPreviewPlayer } from "@/components/MidiPreviewPlayer";
-import { useArtifactUrl } from "@/hooks/useArtifactUrl";
 import type { StemInfo } from "@/types/audio";
 
 function stemLabel(t: (key: string) => string, name: string): string {
@@ -32,7 +31,7 @@ interface StemRowProps {
   stem: StemInfo;
   isCurrent: boolean;
   isPlaying: boolean;
-  onPlay: () => void;
+  onPlay: (stem: StemInfo) => void;
 }
 
 function StemWaveform({ url, reloadKey }: { url: string; reloadKey: string }) {
@@ -66,10 +65,10 @@ function StemWaveform({ url, reloadKey }: { url: string; reloadKey: string }) {
   return <div ref={containerRef} className="h-9 w-full" />;
 }
 
-function StemRow({ stem, isCurrent, isPlaying, onPlay }: StemRowProps) {
+const StemRow = memo(function StemRow({ stem, isCurrent, isPlaying, onPlay }: StemRowProps) {
   const { t } = useTranslation();
   const label = stemLabel(t, stem.name);
-  const artifactUrl = useArtifactUrl(stem.url);
+  const artifactUrl = stem.url;
   return (
     <li className="grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
       <div className="flex w-32 shrink-0 flex-col gap-1">
@@ -86,13 +85,17 @@ function StemRow({ stem, isCurrent, isPlaying, onPlay }: StemRowProps) {
       <div className="flex shrink-0 items-center gap-2">
         <button
           type="button"
-          onClick={onPlay}
+          onClick={() => onPlay(stem)}
           className={`inline-flex min-w-20 items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
             isCurrent && isPlaying
               ? "bg-emerald-600 text-white hover:bg-emerald-700"
               : "bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
           }`}
-          aria-label={isCurrent && isPlaying ? `${t("player.pause")} ${label}` : `${t("player.play")} ${label}`}
+          aria-label={
+            isCurrent && isPlaying
+              ? `${t("player.pause")} ${label}`
+              : `${t("player.play")} ${label}`
+          }
         >
           {isCurrent && isPlaying ? t("player.pause") : t("player.play")}
         </button>
@@ -106,17 +109,17 @@ function StemRow({ stem, isCurrent, isPlaying, onPlay }: StemRowProps) {
       </div>
     </li>
   );
-}
+});
 
 interface StemSkeletonProps {
   stem: StemInfo;
-  onPlay: () => void;
+  onPlay: (stem: StemInfo) => void;
 }
 
 function StemSkeleton({ stem, onPlay }: StemSkeletonProps) {
   const { t } = useTranslation();
   const label = stemLabel(t, stem.name);
-  const artifactUrl = useArtifactUrl(stem.url);
+  const artifactUrl = stem.url;
   return (
     <div className="grid h-[68px] grid-cols-[auto_1fr_auto] items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
       <div className="w-32 shrink-0">
@@ -131,7 +134,7 @@ function StemSkeleton({ stem, onPlay }: StemSkeletonProps) {
       <div className="flex shrink-0 items-center gap-2">
         <button
           type="button"
-          onClick={onPlay}
+          onClick={() => onPlay(stem)}
           className="inline-flex min-w-20 items-center justify-center rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
         >
           {t("player.play")}
@@ -153,15 +156,15 @@ interface MidiStemRowProps {
   midiProfileLabel: (profile?: string) => string;
 }
 
-function MidiStemRow({ stem, midiProfileLabel }: MidiStemRowProps) {
+const MidiStemRow = memo(function MidiStemRow({ stem, midiProfileLabel }: MidiStemRowProps) {
   const { t } = useTranslation();
-  const artifactUrl = useArtifactUrl(stem.url);
+  const artifactUrl = stem.url;
   return (
-    <li
-      className="flex items-center justify-between gap-2 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
-    >
+    <li className="flex items-center justify-between gap-2 rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
       <div className="flex min-w-0 items-center gap-2">
-        <span className="truncate font-medium text-slate-700 dark:text-slate-300">{stemLabel(t, stem.name)}</span>
+        <span className="truncate font-medium text-slate-700 dark:text-slate-300">
+          {stemLabel(t, stem.name)}
+        </span>
         {stem.profile && (
           <span className="shrink-0 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:bg-slate-700 dark:text-slate-400">
             {midiProfileLabel(stem.profile)}
@@ -182,7 +185,7 @@ function MidiStemRow({ stem, midiProfileLabel }: MidiStemRowProps) {
       </div>
     </li>
   );
-}
+});
 
 interface StemMixerProps {
   stems: StemInfo[];
@@ -190,8 +193,11 @@ interface StemMixerProps {
 
 export function StemMixer({ stems }: StemMixerProps) {
   const { t } = useTranslation();
-  const audioStems = stems.filter((s) => s.kind === "audio");
-  const midiStems = stems.filter((s) => s.kind === "midi");
+  // Filter once per `stems` change. These arrays feed an IntersectionObserver
+  // effect below; a fresh array identity per render would tear the observer
+  // down and recreate it on every re-render (4x/sec during playback).
+  const audioStems = useMemo(() => stems.filter((s) => s.kind === "audio"), [stems]);
+  const midiStems = useMemo(() => stems.filter((s) => s.kind === "midi"), [stems]);
   const { current, isPlaying, play, pause } = usePlayer();
 
   const [activated, setActivated] = useState<Set<string>>(new Set());
@@ -227,45 +233,56 @@ export function StemMixer({ stems }: StemMixerProps) {
     return () => observer.disconnect();
   }, [audioStems]);
 
+  // Stable callbacks so the memoized rows don't re-render while the
+  // player ticks `currentTime` at 4 Hz. (Declared before the early return
+  // below so the hook order stays unconditional.)
+  const onPlayAudio = useCallback(
+    (stem: StemInfo) => {
+      // Compare base URLs (without query/token) so the player identity
+      // remains stable across token refreshes. The backend already
+      // appends a short-lived download token to stem.url.
+      const currentBase = current?.url?.split("?")[0] ?? "";
+      const stemBase = stem.url.split("?")[0];
+      if (currentBase === stemBase && isPlaying) {
+        pause();
+      } else {
+        play({ url: stem.url, title: stemLabel(t, stem.name), kind: "audio" });
+      }
+    },
+    [current, isPlaying, play, pause, t],
+  );
+
+  const midiProfileLabel = useCallback(
+    (profile?: string) => {
+      switch (profile) {
+        case "gm":
+          return t("common.gmMidi");
+        case "xg":
+          return t("common.xgMidi");
+        default:
+          return t("common.rawMidi");
+      }
+    },
+    [t],
+  );
+
   if (audioStems.length === 0 && midiStems.length === 0) return null;
-
-  const onPlayAudio = (stem: StemInfo) => {
-    // Compare base URLs (without query/token) so the player identity
-    // remains stable across token refreshes. The backend already
-    // appends a short-lived download token to stem.url.
-    const currentBase = current?.url?.split("?")[0] ?? "";
-    const stemBase = stem.url.split("?")[0];
-    if (currentBase === stemBase && isPlaying) {
-      pause();
-    } else {
-      play({ url: stem.url, title: stemLabel(t, stem.name), kind: "audio" });
-    }
-  };
-
-  const midiProfileLabel = (profile?: string) => {
-    switch (profile) {
-      case "gm":
-        return t("common.gmMidi");
-      case "xg":
-        return t("common.xgMidi");
-      default:
-        return t("common.rawMidi");
-    }
-  };
 
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{t("common.stemMixer")}</h2>
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+          {t("common.stemMixer")}
+        </h2>
         <span className="text-xs text-slate-500 dark:text-slate-400">
-          {audioStems.length} {t("common.audio").toLowerCase()} · {midiStems.length} {t("common.midi").toLowerCase()}
+          {audioStems.length} {t("common.audio").toLowerCase()} · {midiStems.length}{" "}
+          {t("common.midi").toLowerCase()}
         </span>
       </div>
       {audioStems.length > 0 && (
         <ul className="space-y-2">
           {audioStems.map((stem) => {
             const isCurrent = (current?.url?.split("?")[0] ?? "") === stem.url.split("?")[0];
-            const label = stemLabel(t, stem.name);
             return (
               <li
                 key={stem.name}
@@ -279,10 +296,10 @@ export function StemMixer({ stems }: StemMixerProps) {
                     stem={stem}
                     isCurrent={isCurrent}
                     isPlaying={isCurrent && isPlaying}
-                    onPlay={() => onPlayAudio(stem)}
+                    onPlay={onPlayAudio}
                   />
                 ) : (
-                  <StemSkeleton stem={stem} onPlay={() => onPlayAudio(stem)} />
+                  <StemSkeleton stem={stem} onPlay={onPlayAudio} />
                 )}
               </li>
             );

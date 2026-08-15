@@ -9,16 +9,15 @@ drum-type labels for every synthetic signal. Instead we verify:
   * classify_bytes() works with raw bytes + a filename hint;
   * the label helper returns non-empty strings for every known drum type.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
 
 import numpy as np
 import soundfile as sf
-import pytest
 
 from app.services.sample_classifier_service import SampleClassifierService
-
 
 SAMPLE_RATE = 22050
 
@@ -80,7 +79,7 @@ def test_get_drum_type_label_returns_label() -> None:
     service = SampleClassifierService()
     types = service.get_all_drum_types()
     assert len(types) > 0
-    drum_type, midi_note, label = types[0]
+    drum_type, _midi_note, label = types[0]
     assert service.get_drum_type_label(drum_type) == label
 
 

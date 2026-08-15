@@ -13,7 +13,7 @@
  * token never appears in the URL, keeping it out of access logs, proxy
  * logs, and browser history.
  */
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import type { AudioTask, AudioTaskStatus } from "@/types/audio";
@@ -22,8 +22,7 @@ import { getAccessToken } from "@/api/axios";
 function wsBaseUrl(): string {
   // In dev, Vite proxies `/api/*` to the FastAPI backend on the same
   // host:port, so we just need to switch the protocol to ws/wss.
-  const base =
-    import.meta.env.VITE_API_BASE_URL ?? `${window.location.origin}/api`;
+  const base = import.meta.env.VITE_API_BASE_URL ?? `${window.location.origin}/api`;
   if (base.startsWith("https://")) {
     return `wss://${base.slice("https://".length)}`;
   }
@@ -49,10 +48,7 @@ function isTerminal(status: AudioTaskStatus | undefined): boolean {
   return status === "FINISHED" || status === "FAILED";
 }
 
-function patchTask(
-  prev: AudioTask | undefined,
-  event: ProgressEvent,
-): AudioTask | undefined {
+function patchTask(prev: AudioTask | undefined, event: ProgressEvent): AudioTask | undefined {
   if (!prev || prev.id !== event.task_id) {
     return prev;
   }
@@ -81,14 +77,13 @@ const MAX_RECONNECT_ATTEMPTS = 30;
  * Query cache. Auto-reconnects with exponential backoff (cap 10 s)
  * while the task is still in a non-terminal state.
  */
-export function useTaskProgress(
-  taskId: number,
-  options: UseTaskProgressOptions = {},
-) {
+export function useTaskProgress(taskId: number, options: UseTaskProgressOptions = {}) {
   const { enabled = true } = options;
   const qc = useQueryClient();
-  const detailKey = ["audio-tasks", taskId] as const;
-  const listKey = ["audio-tasks"] as const;
+  // Stable identities so the effect below can list them as deps without
+  // re-running on every render.
+  const detailKey = useMemo(() => ["audio-tasks", taskId] as const, [taskId]);
+  const listKey = useMemo(() => ["audio-tasks"] as const, []);
   const closedByUs = useRef(false);
 
   useEffect(() => {
@@ -187,5 +182,5 @@ export function useTaskProgress(
         }
       }
     };
-  }, [taskId, enabled, qc]);
+  }, [taskId, enabled, qc, detailKey, listKey]);
 }

@@ -25,17 +25,10 @@ export function RegisterPage() {
     setError(null);
     setSubmitting(true);
     try {
-      await register(
-        email.trim(),
-        username.trim(),
-        password,
-        fullName.trim() || undefined,
-      );
+      await register(email.trim(), username.trim(), password, fullName.trim() || undefined);
       navigate("/", { replace: true });
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : t("auth.registerError"),
-      );
+      setError(err instanceof Error ? err.message : t("auth.registerError"));
     } finally {
       setSubmitting(false);
     }
@@ -105,9 +98,7 @@ export function RegisterPage() {
             className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300"
           >
             {t("auth.fullName")}{" "}
-            <span className="font-normal text-slate-400">
-              ({t("auth.optional")})
-            </span>
+            <span className="font-normal text-slate-400">({t("auth.optional")})</span>
           </label>
           <input
             id="reg-fullname"

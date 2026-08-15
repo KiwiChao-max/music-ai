@@ -1,0 +1,17 @@
+[[dependency-metadata]]
+name = "basic-pitch"
+requires-dist = [
+    "librosa>=0.8.0",
+    "mir-eval>=0.6",
+    "numpy>=1.18",
+    "pretty-midi>=0.2.9",
+    "resampy<0.4.3,>=0.2.2",
+    "scikit-learn",
+    "scipy>=1.4.1",
+    "typing-extensions",
+]
+
+# NOTE: basic-pitch's published metadata requires tensorflow<2.15.1 on
+# Python>=3.11, which has no cp312 wheels --- unresolvable on Python 3.12.
+# TF is only needed for training; inference runs on ONNX, so the real
+# runtime deps are listed here instead. (See requirements-audio.txt.)

@@ -14,6 +14,7 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.db.models import User
 from app.db.session import get_db
 from app.logging_config import set_user_id
 from app.services import auth_service, user_service
@@ -37,7 +38,7 @@ def _credentials_error(message: str) -> HTTPException:
 def get_current_user(
     token: Annotated[str, Depends(_oauth2_scheme)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> User:
     """Resolve the access-token bearer into a `User` row.
 
     Raises 401 on missing / invalid / expired / wrong-type token, or
@@ -61,7 +62,7 @@ def get_current_user(
     return user
 
 
-CurrentUser = Annotated[object, Depends(get_current_user)]
+CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
 def get_current_user_optional(
@@ -69,7 +70,7 @@ def get_current_user_optional(
         str | None, Depends(OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False))
     ],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> User | None:
     """Like `get_current_user` but returns `None` instead of raising when
     no token is presented. Used for endpoints that work both with and
     without auth (e.g. listing public tasks).
@@ -91,10 +92,10 @@ def get_current_user_optional(
     return user
 
 
-OptionalUser = Annotated[object, Depends(get_current_user_optional)]
+OptionalUser = Annotated[User | None, Depends(get_current_user_optional)]
 
 
-def require_admin(user: CurrentUser) -> object:
+def require_admin(user: CurrentUser) -> User:
     """Gate admin-only endpoints. Must be applied after `CurrentUser`."""
     if getattr(user, "role", None) != "admin":
         raise HTTPException(
@@ -111,7 +112,7 @@ def require_admin(user: CurrentUser) -> object:
 # an auth check.
 
 
-def require_auth_or_none(user: OptionalUser) -> OptionalUser:
+def require_auth_or_none(user: OptionalUser) -> User | None:
     """Optional auth gate used by endpoints that work both with and
     without authentication (upload, list, etc.).
 
@@ -128,7 +129,7 @@ def require_auth_or_none(user: OptionalUser) -> OptionalUser:
     return user
 
 
-OptionalAuthUser = Annotated[OptionalUser, Depends(require_auth_or_none)]
+OptionalAuthUser = Annotated[User | None, Depends(require_auth_or_none)]
 
 
 def check_task_ownership(

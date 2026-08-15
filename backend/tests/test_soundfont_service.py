@@ -10,6 +10,7 @@ Verifies:
   * map_gm_to_custom() matches by instrument type when present;
   * SF2 import returns None for non-SF2 bytes (graceful failure).
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -130,7 +131,9 @@ def test_map_gm_to_custom_by_instrument_type() -> None:
     service = SoundFontService()
     presets = [
         PresetInfo(bank_msb=121, bank_lsb=0, program=5, name="XG EPiano", instrument_type="piano"),
-        PresetInfo(bank_msb=121, bank_lsb=0, program=27, name="XG Clean Guitar", instrument_type="guitar"),
+        PresetInfo(
+            bank_msb=121, bank_lsb=0, program=27, name="XG Clean Guitar", instrument_type="guitar"
+        ),
     ]
     mapping = service.map_gm_to_custom(0, presets, instrument_type="piano")
     assert mapping is not None
@@ -167,11 +170,26 @@ def test_preset_info_is_frozen() -> None:
 
 # ---- database CRUD tests --------------------------------------------------
 
+
 def test_save_and_list_soundfonts(db_session, storage_dir: Path) -> None:
     service = SoundFontService(storage_dir=storage_dir / "sf")
     presets = [
-        PresetInfo(bank_msb=0, bank_lsb=0, program=0, name="Piano 1", category="piano", instrument_type="piano"),
-        PresetInfo(bank_msb=0, bank_lsb=0, program=1, name="Bright Piano", category="piano", instrument_type="piano"),
+        PresetInfo(
+            bank_msb=0,
+            bank_lsb=0,
+            program=0,
+            name="Piano 1",
+            category="piano",
+            instrument_type="piano",
+        ),
+        PresetInfo(
+            bank_msb=0,
+            bank_lsb=0,
+            program=1,
+            name="Bright Piano",
+            category="piano",
+            instrument_type="piano",
+        ),
     ]
     saved = service.save_soundfont_to_db(
         db_session,
@@ -220,11 +238,19 @@ def test_get_soundfont_returns_none_for_missing(db_session, storage_dir: Path) -
 def test_activate_soundfont(db_session, storage_dir: Path) -> None:
     service = SoundFontService(storage_dir=storage_dir / "sf")
     sf1 = service.save_soundfont_to_db(
-        db_session, name="SF1", description=None, sf_type="sf2", file_path=None,
+        db_session,
+        name="SF1",
+        description=None,
+        sf_type="sf2",
+        file_path=None,
         presets=[PresetInfo(bank_msb=0, bank_lsb=0, program=0, name="A")],
     )
     sf2 = service.save_soundfont_to_db(
-        db_session, name="SF2", description=None, sf_type="sf2", file_path=None,
+        db_session,
+        name="SF2",
+        description=None,
+        sf_type="sf2",
+        file_path=None,
         presets=[PresetInfo(bank_msb=0, bank_lsb=0, program=1, name="B")],
     )
 
@@ -254,7 +280,11 @@ def test_activate_soundfont_missing_returns_none(db_session, storage_dir: Path) 
 def test_delete_soundfont(db_session, storage_dir: Path) -> None:
     service = SoundFontService(storage_dir=storage_dir / "sf")
     saved = service.save_soundfont_to_db(
-        db_session, name="To Delete", description=None, sf_type="sf2", file_path=None,
+        db_session,
+        name="To Delete",
+        description=None,
+        sf_type="sf2",
+        file_path=None,
         presets=[PresetInfo(bank_msb=0, bank_lsb=0, program=0, name="X")],
     )
     assert len(service.list_soundfonts(db_session)) == 1
@@ -272,7 +302,11 @@ def test_delete_soundfont_missing_returns_false(db_session, storage_dir: Path) -
 def test_get_active_soundfont_when_none_active(db_session, storage_dir: Path) -> None:
     service = SoundFontService(storage_dir=storage_dir / "sf")
     service.save_soundfont_to_db(
-        db_session, name="Inactive", description=None, sf_type="sf2", file_path=None,
+        db_session,
+        name="Inactive",
+        description=None,
+        sf_type="sf2",
+        file_path=None,
         presets=[PresetInfo(bank_msb=0, bank_lsb=0, program=0, name="Y")],
     )
     assert service.get_active_soundfont(db_session) is None

@@ -100,7 +100,7 @@ class InstrumentClassifierService:
                 total_frames=0,
             )
         posterior = self._aggregate_posteriors(features_per_frame)
-        dominant = max(posterior, key=posterior.get)
+        dominant = max(posterior, key=lambda name: posterior.get(name, 0.0))
         return InstrumentDetection(
             probabilities=posterior,
             dominant=dominant,
@@ -136,7 +136,9 @@ class InstrumentClassifierService:
                 detection=empty_detection,
             )
 
-        features_per_frame = self._compute_features(audio_path)
+        # The signal is already loaded above --- reuse it instead of
+        # decoding the file a second time.
+        features_per_frame = self._compute_features_from_signal(y, sr)
         if not features_per_frame:
             empty_detection = InstrumentDetection(
                 probabilities={name: 0.0 for name in INSTRUMENTS},
@@ -177,7 +179,7 @@ class InstrumentClassifierService:
                 except Exception as exc:
                     logger.warning("instrument-classifier: MIDI failed for %s: %s", instrument, exc)
 
-        dominant = max(posterior, key=posterior.get)
+        dominant = max(posterior, key=lambda name: posterior.get(name, 0.0))
         return InstrumentSplitResult(
             instrument_paths=instrument_paths,
             detection=InstrumentDetection(
@@ -195,64 +197,77 @@ class InstrumentClassifierService:
         if sr != self.SAMPLE_RATE:
             y = _resample_linear(y, sr, self.SAMPLE_RATE)
             sr = self.SAMPLE_RATE
+        return self._compute_features_from_signal(y, sr)
+
+    def _compute_features_from_signal(self, y: np.ndarray, sr: int) -> list[dict[str, float]]:
         if y.size < self.HOP_LENGTH:
             return []
 
         # Per-frame spectral descriptors via numpy FFT (cheaper than
-        # librosa.feature.* and dependency-free).
-        frames = _frame_signal(y, self.FRAME_LENGTH, self.HOP_LENGTH)
+        # librosa.feature.* and dependency-free). Processed in chunks:
+        # materializing the framed signal for a whole 30-minute track
+        # costs ~700 MB of float32 plus an equally large rfft output;
+        # per chunk it stays at ~16 MB. All computations are per-frame,
+        # so chunking does not change the results.
         window = np.hanning(self.FRAME_LENGTH)
-        framed = frames * window
-        spectrum = np.abs(np.fft.rfft(framed, axis=1))
         freqs = np.fft.rfftfreq(self.FRAME_LENGTH, d=1.0 / sr)
+        n_frames = max(0, 1 + (len(y) - self.FRAME_LENGTH) // self.HOP_LENGTH)
 
-        # Pre-compute denominator / sums once.
-        total_energy = spectrum.sum(axis=1) + 1e-9
-        # Spectral centroid (mean frequency) per frame.
-        centroid = (spectrum * freqs).sum(axis=1) / total_energy
-        # Spectral bandwidth.
-        bandwidth = np.sqrt(
-            ((freqs - centroid[:, None]) ** 2 * spectrum).sum(axis=1) / total_energy
-        )
-        # Spectral rolloff: frequency below which 85% of energy lies.
-        cumulative = np.cumsum(spectrum, axis=1)
-        rolloff_threshold = 0.85 * total_energy
-        rolloff_idx = (cumulative >= rolloff_threshold[:, None]).argmax(axis=1)
-        rolloff = freqs[rolloff_idx]
-        # Spectral flatness: geometric mean / arithmetic mean of spectrum.
-        log_spectrum = np.log(spectrum + 1e-9)
-        flatness = np.exp(log_spectrum.mean(axis=1)) / (spectrum.mean(axis=1) + 1e-9)
-        # Time-domain zero-crossing rate.
-        zero_crossings = np.abs(np.diff(np.sign(frames), axis=1)).sum(axis=1) / self.FRAME_LENGTH
-        # HF ratio.
-        hf_mask = freqs >= 4000.0
-        hf_ratio = spectrum[:, hf_mask].sum(axis=1) / total_energy
-        # Mid ratio (1k..4k).
-        mid_mask = (freqs >= 1000.0) & (freqs < 4000.0)
-        mid_ratio = spectrum[:, mid_mask].sum(axis=1) / total_energy
-        # Low ratio (<250 Hz).
-        low_mask = freqs < 250.0
-        low_ratio = spectrum[:, low_mask].sum(axis=1) / total_energy
-        # Harmonicity proxy: peakiness of the spectrum.
-        peakiness = spectrum.max(axis=1) / (spectrum.mean(axis=1) + 1e-9)
-
-        frame_count = frames.shape[0]
         features_per_frame: list[dict[str, float]] = []
-        for i in range(frame_count):
-            features_per_frame.append(
-                {
-                    "centroid": float(centroid[i]),
-                    "bandwidth": float(bandwidth[i]),
-                    "rolloff": float(rolloff[i]),
-                    "flatness": float(min(1.0, flatness[i])),
-                    "zcr": float(zero_crossings[i]),
-                    "hf_ratio": float(hf_ratio[i]),
-                    "mid_ratio": float(mid_ratio[i]),
-                    "low_ratio": float(low_ratio[i]),
-                    "peakiness": float(min(50.0, peakiness[i])),
-                    "rms": float(np.sqrt(np.mean(frames[i] ** 2))),
-                }
+        for start_frame in range(0, n_frames, _FEATURE_CHUNK_FRAMES):
+            end_frame = min(n_frames, start_frame + _FEATURE_CHUNK_FRAMES)
+            start_sample = start_frame * self.HOP_LENGTH
+            end_sample = (end_frame - 1) * self.HOP_LENGTH + self.FRAME_LENGTH
+            frames = _frame_signal(y[start_sample:end_sample], self.FRAME_LENGTH, self.HOP_LENGTH)
+            framed = frames * window
+            spectrum = np.abs(np.fft.rfft(framed, axis=1))
+
+            total_energy = spectrum.sum(axis=1) + 1e-9
+            # Spectral centroid (mean frequency) per frame.
+            centroid = (spectrum * freqs).sum(axis=1) / total_energy
+            # Spectral bandwidth.
+            bandwidth = np.sqrt(
+                ((freqs - centroid[:, None]) ** 2 * spectrum).sum(axis=1) / total_energy
             )
+            # Spectral rolloff: frequency below which 85% of energy lies.
+            cumulative = np.cumsum(spectrum, axis=1)
+            rolloff_threshold = 0.85 * total_energy
+            rolloff_idx = (cumulative >= rolloff_threshold[:, None]).argmax(axis=1)
+            rolloff = freqs[rolloff_idx]
+            # Spectral flatness: geometric mean / arithmetic mean of spectrum.
+            log_spectrum = np.log(spectrum + 1e-9)
+            flatness = np.exp(log_spectrum.mean(axis=1)) / (spectrum.mean(axis=1) + 1e-9)
+            # Time-domain zero-crossing rate.
+            zero_crossings = (
+                np.abs(np.diff(np.sign(frames), axis=1)).sum(axis=1) / self.FRAME_LENGTH
+            )
+            # HF ratio.
+            hf_mask = freqs >= 4000.0
+            hf_ratio = spectrum[:, hf_mask].sum(axis=1) / total_energy
+            # Mid ratio (1k..4k).
+            mid_mask = (freqs >= 1000.0) & (freqs < 4000.0)
+            mid_ratio = spectrum[:, mid_mask].sum(axis=1) / total_energy
+            # Low ratio (<250 Hz).
+            low_mask = freqs < 250.0
+            low_ratio = spectrum[:, low_mask].sum(axis=1) / total_energy
+            # Harmonicity proxy: peakiness of the spectrum.
+            peakiness = spectrum.max(axis=1) / (spectrum.mean(axis=1) + 1e-9)
+
+            for i in range(frames.shape[0]):
+                features_per_frame.append(
+                    {
+                        "centroid": float(centroid[i]),
+                        "bandwidth": float(bandwidth[i]),
+                        "rolloff": float(rolloff[i]),
+                        "flatness": float(min(1.0, flatness[i])),
+                        "zcr": float(zero_crossings[i]),
+                        "hf_ratio": float(hf_ratio[i]),
+                        "mid_ratio": float(mid_ratio[i]),
+                        "low_ratio": float(low_ratio[i]),
+                        "peakiness": float(min(50.0, peakiness[i])),
+                        "rms": float(np.sqrt(np.mean(frames[i] ** 2))),
+                    }
+                )
         return features_per_frame
 
     # ---- posterior aggregation ---------------------------------------------
@@ -382,6 +397,11 @@ class InstrumentClassifierService:
 # ---------------------------------------------------------------------------
 # Helpers (no external deps beyond numpy / soundfile)
 # ---------------------------------------------------------------------------
+# Frames per chunk for the streaming feature extractor. ~16 MB of float32
+# frames per chunk vs ~700 MB for a whole 30-minute track.
+_FEATURE_CHUNK_FRAMES = 2048
+
+
 def _frame_signal(y: np.ndarray, frame_length: int, hop_length: int) -> np.ndarray:
     n_frames = max(0, 1 + (len(y) - frame_length) // hop_length)
     if n_frames == 0:

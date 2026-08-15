@@ -15,6 +15,13 @@ const queryClient = new QueryClient({
     queries: {
       retry: 1,
       refetchOnWindowFocus: false,
+      // Static reference data (sample libraries, drum types, GM
+      // instruments, soundfonts) doesn't change between mounts; without a
+      // staleTime every navigation refetched it. Mutations invalidate the
+      // affected keys, so 5 minutes of staleness can't go stale on the
+      // user. Task queries poll explicitly via refetchInterval and are
+      // unaffected.
+      staleTime: 5 * 60 * 1000,
     },
   },
 });
@@ -30,5 +37,5 @@ createRoot(document.getElementById("root")!).render(
         </AuthProvider>
       </QueryClientProvider>
     </ErrorBoundary>
-  </StrictMode>
+  </StrictMode>,
 );

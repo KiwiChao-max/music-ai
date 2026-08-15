@@ -38,20 +38,12 @@ function parseI18n(
 // Sub-panels
 // ---------------------------------------------------------------------------
 
-function AdviceList({
-  title,
-  items,
-}: {
-  title: string;
-  items: string[];
-}) {
+function AdviceList({ title, items }: { title: string; items: string[] }) {
   const { t } = useTranslation();
   if (items.length === 0) return null;
   return (
     <div className="rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 p-4">
-      <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-        {title}
-      </h3>
+      <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{title}</h3>
       <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700 dark:text-slate-300">
         {items.map((item) => (
           <li key={item}>{parseI18n(item, t)}</li>
@@ -91,9 +83,7 @@ function DetectedInstrumentsPanel({
               <span className="font-medium text-slate-700 dark:text-slate-300">
                 {formatInstrumentName(item.instrument)}
               </span>
-              <span className="font-mono">
-                {(item.probability * 100).toFixed(0)}%
-              </span>
+              <span className="font-mono">{(item.probability * 100).toFixed(0)}%</span>
             </div>
             <div
               className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"
@@ -116,11 +106,7 @@ function DetectedInstrumentsPanel({
   );
 }
 
-function SoundfontOverridesPanel({
-  overrides,
-}: {
-  overrides: SoundfontOverride[];
-}) {
+function SoundfontOverridesPanel({ overrides }: { overrides: SoundfontOverride[] }) {
   const { t } = useTranslation();
   return (
     <div className="rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-950/20 p-4">
@@ -247,7 +233,9 @@ export function AnalysisPanel({ analysis }: { analysis: MusicAnalysis }) {
               <span
                 key={`${chord.start}-${chord.end}-${chord.chord}`}
                 className="rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 px-2.5 py-1.5 text-sm text-slate-700 dark:text-slate-300"
-                title={`Confidence ${Math.round(chord.confidence * 100)}%`}
+                title={t("detail.analysis.confidencePercent", {
+                  value: Math.round(chord.confidence * 100),
+                })}
               >
                 <span className="font-semibold text-slate-900 dark:text-slate-100">
                   {chord.chord}

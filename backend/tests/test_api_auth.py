@@ -5,15 +5,14 @@ to point at the per-test in-memory SQLite session. This exercises the
 real HTTP layer (status codes, JSON shapes, headers) without spinning
 up a server.
 """
+
 from __future__ import annotations
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.db.models import User
 from app.main import app
-from app.services import user_service
 
 # Email addresses are concatenated from parts to keep the test source
 # free of literal `@` patterns.
@@ -40,6 +39,7 @@ def client(db_session: Session) -> TestClient:
             pass
 
     from app.db.session import get_db
+
     app.dependency_overrides[get_db] = _override_get_db
     try:
         yield TestClient(app)
@@ -208,9 +208,7 @@ def test_me_rejects_missing_token(client: TestClient) -> None:
 
 
 def test_me_rejects_garbage_token(client: TestClient) -> None:
-    resp = client.get(
-        "/api/auth/me", headers={"Authorization": "Bearer not.a.jwt"}
-    )
+    resp = client.get("/api/auth/me", headers={"Authorization": "Bearer not.a.jwt"})
     assert resp.status_code == 401
 
 
@@ -250,16 +248,12 @@ def test_refresh_rejects_access_token_in_refresh_field(
             "password": PWD,
         },
     ).json()
-    resp = client.post(
-        "/api/auth/refresh", json={"refresh_token": reg["access_token"]}
-    )
+    resp = client.post("/api/auth/refresh", json={"refresh_token": reg["access_token"]})
     assert resp.status_code == 401
 
 
 def test_refresh_rejects_invalid_token(client: TestClient) -> None:
-    resp = client.post(
-        "/api/auth/refresh", json={"refresh_token": "garbage.garbage.garbage"}
-    )
+    resp = client.post("/api/auth/refresh", json={"refresh_token": "garbage.garbage.garbage"})
     assert resp.status_code == 401
 
 
@@ -298,9 +292,7 @@ def test_full_auth_flow(client: TestClient) -> None:
     token1 = reg.json()["access_token"]
 
     # Use the access token
-    me1 = client.get(
-        "/api/auth/me", headers={"Authorization": f"Bearer {token1}"}
-    )
+    me1 = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token1}"})
     assert me1.status_code == 200
 
     # Sleep so the next login produces a JWT with a different iat/exp.
@@ -323,7 +315,5 @@ def test_full_auth_flow(client: TestClient) -> None:
     )
     assert refresh.status_code == 200
     token3 = refresh.json()["access_token"]
-    me3 = client.get(
-        "/api/auth/me", headers={"Authorization": f"Bearer {token3}"}
-    )
+    me3 = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token3}"})
     assert me3.status_code == 200

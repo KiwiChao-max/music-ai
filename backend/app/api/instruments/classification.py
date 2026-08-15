@@ -11,7 +11,7 @@ router = APIRouter()
 
 
 @router.post("/classify")
-async def classify_sample(
+def classify_sample(
     file: UploadFile = File(...),
     user: OptionalAuthUser = None,
 ) -> dict:
@@ -20,10 +20,13 @@ async def classify_sample(
     Returns the detected drum type, GM MIDI note, confidence score,
     and extracted features. Useful for previewing classification before
     uploading a full library.
+
+    Declared as a sync endpoint so Starlette runs the FFT/spectral
+    analysis in its threadpool instead of blocking the event loop.
     """
     from app.services.sample_classifier_service import SampleClassifierService
 
-    content = await file.read()
+    content = file.file.read()
     if len(content) > MAX_SAMPLE_BYTES:
         raise HTTPException(
             status_code=413,

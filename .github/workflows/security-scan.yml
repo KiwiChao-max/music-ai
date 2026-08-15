@@ -42,9 +42,7 @@ jobs:
         run: |
           pip-audit \
             -r requirements.txt \
-            --require-hashes \
-            --ignore-vuln PYSEC-2026-0 \
-            || true
+            --ignore-vuln PYSEC-2026-0
 
 # ---------------------------------------------------------------------------
 # Python: SAST (bandit)
@@ -70,8 +68,7 @@ jobs:
             -f sarif \
             -o bandit-results.sarif \
             -ll \
-            --exclude tests/ \
-            || true
+            --exclude tests/
       - name: Upload SARIF
         uses: github/codeql-action/upload-sarif@v3
         with:
@@ -132,7 +129,7 @@ jobs:
         run: npm ci
       - name: Audit dependencies
         run: |
-          npm audit --audit-level=high || true
+          npm audit --audit-level=high
 
 # ---------------------------------------------------------------------------
 # JavaScript: license compliance (license-checker)
@@ -184,12 +181,10 @@ jobs:
             --config=auto \
             --sarif \
             --output=semgrep-results.sarif \
-            --error=false \
             --exclude="tests/" \
             --exclude="__pycache__/" \
             --exclude="node_modules/" \
-            --exclude=".venv/" \
-            || true
+            --exclude=".venv/"
       - name: Upload SARIF
         if: always()
         uses: github/codeql-action/upload-sarif@v3
@@ -214,7 +209,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           args: detect --source . --verbose --redact --config-path .gitleaks.toml
-        continue-on-error: true
 
 # ---------------------------------------------------------------------------
 # Container image scan (trivy)
@@ -245,7 +239,7 @@ jobs:
           output: trivy-results.sarif
           severity: CRITICAL,HIGH
           timeout: 10m
-          exit-code: 0
+          exit-code: 1
       - name: Upload SARIF
         if: always()
         uses: github/codeql-action/upload-sarif@v3

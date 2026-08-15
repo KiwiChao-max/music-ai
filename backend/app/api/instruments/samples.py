@@ -13,8 +13,9 @@ import json
 import logging
 import zipfile
 from pathlib import Path
+from typing import cast
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
@@ -94,10 +95,16 @@ def get_active_library(db: Session = Depends(get_db)) -> Response:
 
 
 @router.get("/libraries", response_model=list[LibraryInfo])
-def list_libraries(db: Session = Depends(get_db)) -> list[LibraryInfo]:
+def list_libraries(
+    db: Session = Depends(get_db),
+    limit: int | None = Query(default=None, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+) -> list[LibraryInfo]:
     return [
         LibraryInfo.model_validate(info)
-        for info in sample_library_service.SampleLibraryService().list_libraries(db)
+        for info in sample_library_service.SampleLibraryService().list_libraries(
+            db, limit=limit, offset=offset
+        )
     ]
 
 
@@ -110,7 +117,7 @@ def get_library(library_id: int, db: Session = Depends(get_db)) -> LibraryInfo:
 
 
 @router.post("/libraries", response_model=LibraryInfo, status_code=201)
-async def create_library(
+def create_library(
     name: str = Form(...),
     description: str | None = Form(default=None),
     files: list[UploadFile] = File(default=[]),
@@ -125,6 +132,10 @@ async def create_library(
     * ``files`` --- multiple ``UploadFile`` form parts (drag-and-drop).
     * ``zip_file`` --- a single ``.zip`` archive whose members are the
       samples. Useful for batch imports from a third-party pack.
+
+    Declared sync so Starlette runs the zip decompression, per-sample
+    classification, disk writes and DB commit in its threadpool instead
+    of blocking the event loop.
     """
     service = sample_library_service.SampleLibraryService()
     payload: list[tuple[str, bytes]] = []
@@ -133,7 +144,7 @@ async def create_library(
     for upload in files or []:
         if not upload.filename:
             continue
-        content = await upload.read()
+        content = upload.file.read()
         if len(content) > MAX_SAMPLE_BYTES:
             raise HTTPException(
                 status_code=413,
@@ -150,7 +161,7 @@ async def create_library(
             break
 
     if zip_file is not None and zip_file.filename:
-        zip_bytes = await zip_file.read()
+        zip_bytes = zip_file.file.read()
         if len(zip_bytes) > MAX_TOTAL_BYTES:
             raise HTTPException(status_code=413, detail="zip archive too large")
         try:
@@ -190,7 +201,7 @@ async def create_library(
         )
 
     try:
-        info = service.create_library(
+        result = service.create_library(
             db,
             name=name,
             files=payload,
@@ -200,7 +211,7 @@ async def create_library(
     except ValueError as exc:
         log_error(exc, context=f"create_library failed for user {getattr(user, 'id', 'anon')}")
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return LibraryInfo.model_validate(info)
+    return LibraryInfo.model_validate(result)
 
 
 @router.post("/libraries/{library_id}/activate", response_model=LibraryInfo)
@@ -259,7 +270,9 @@ def update_library(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if updated is None:
         raise HTTPException(status_code=404, detail="library not found")
-    return updated
+    # The service returns its own dataclass; the schema validates it into
+    # the response model (same fields, same values).
+    return cast(LibraryInfo, updated)
 
 
 @router.delete("/libraries/{library_id}", status_code=204)
@@ -335,20 +348,20 @@ def update_sample(
 
 
 @router.post("/libraries/{library_id}/samples", response_model=LibraryInfo, status_code=201)
-async def add_sample(
+def add_sample(
     library_id: int,
     file: UploadFile = File(...),
     midi_note: int | None = Form(default=None),
     db: Session = Depends(get_db),
     user: OptionalAuthUser = None,
 ) -> LibraryInfo:
-    """Add a single sample to an existing library."""
+    """Add a single sample to an existing library (sync --- threadpool)."""
     service = sample_library_service.SampleLibraryService()
     lib = service.get_library(db, library_id)
     if lib is None:
         raise HTTPException(status_code=404, detail="library not found")
     check_resource_owner(user, lib.owner_id)
-    content = await file.read()
+    content = file.file.read()
 
     if len(content) > MAX_SAMPLE_BYTES:
         raise HTTPException(status_code=413, detail=f"sample exceeds {MAX_SAMPLE_BYTES} bytes")

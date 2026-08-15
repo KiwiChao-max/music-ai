@@ -18,11 +18,12 @@ from __future__ import annotations
 import hashlib
 import uuid
 from datetime import UTC, datetime, timedelta
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy import delete, select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -81,7 +82,7 @@ def _ttl_for(token_type: TokenType) -> timedelta:
 
 
 def create_token(
-    subject: str,
+    subject: str | int,
     *,
     token_type: TokenType,
     jti: str | None = None,
@@ -89,9 +90,9 @@ def create_token(
 ) -> str:
     """Sign a new JWT.
 
-    `subject` is the user id (as a string).  `jti` is a unique token
-    identifier (UUID4) --- refresh tokens always get one, access tokens
-    may optionally include it.
+    `subject` is the user id (as a string, or an int that gets stringified
+    into the ``sub`` claim).  `jti` is a unique token identifier (UUID4) ---
+    refresh tokens always get one, access tokens may optionally include it.
     """
     now = _now()
     payload: dict[str, Any] = {
@@ -104,13 +105,13 @@ def create_token(
         payload["jti"] = jti
     if extra_claims:
         payload.update(extra_claims)
-    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+    return cast(str, jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm))
 
 
 def decode_token(token: str, *, expected_type: TokenType) -> dict[str, Any]:
     """Verify the signature + expiry + type. Raises on any mismatch."""
     try:
-        payload = jwt.decode(
+        payload: dict[str, Any] = jwt.decode(
             token,
             settings.jwt_secret,
             algorithms=[settings.jwt_algorithm],
@@ -154,7 +155,7 @@ def create_download_token(
         "scope": scope,
         "filename": filename,
     }
-    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+    return cast(str, jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm))
 
 
 def verify_download_token(
@@ -370,7 +371,7 @@ def revoke_all_user_tokens(db: Session, user_id: int) -> int:
         .where(RefreshToken.status == RefreshTokenStatus.ACTIVE)
         .values(status=RefreshTokenStatus.REVOKED)
     )
-    result = db.execute(stmt)
+    result = cast(CursorResult, db.execute(stmt))
     db.flush()
     return result.rowcount or 0
 
@@ -383,6 +384,6 @@ def purge_expired_tokens(db: Session) -> int:
     memory and deleting one-by-one, which is critical for large tables.
     """
     stmt = delete(RefreshToken).where(RefreshToken.expires_at < _now())
-    result = db.execute(stmt)
+    result = cast(CursorResult, db.execute(stmt))
     db.flush()
     return result.rowcount or 0

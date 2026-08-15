@@ -33,7 +33,7 @@ import contextlib
 import json
 import logging
 import time
-from typing import Any
+from typing import Any, cast
 
 import redis
 
@@ -167,7 +167,7 @@ class EventBus:
             },
         )
 
-    def subscribe(self, task_id: int) -> redis.client.PubSub:
+    def subscribe(self, task_id: int) -> redis.client.PubSub | None:
         """Return a pubsub object subscribed to ``task:{task_id}``.
 
         The caller is responsible for closing the pubsub and the
@@ -178,7 +178,7 @@ class EventBus:
         """
         try:
             client = self._client()
-            pubsub = client.pubsub(ignore_subscribe_messages=True)
+            pubsub = cast(redis.client.PubSub, client.pubsub(ignore_subscribe_messages=True))
             pubsub.subscribe(_CHANNEL.format(task_id=task_id))
             return pubsub
         except Exception as exc:

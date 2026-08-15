@@ -16,10 +16,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Install Python deps first so source changes don't bust the layer cache.
-# Both requirements files are installed because the same image is used for
-# the API server and Celery workers (workers need demucs/basic-pitch).
-COPY requirements.txt requirements-audio.txt .
-RUN pip install --no-cache-dir -r requirements.txt -r requirements-audio.txt
+# The lock file pins every transitive version (Linux target) for
+# reproducible builds; it combines requirements.txt + requirements-audio.txt
+# because the same image is used for the API server and Celery workers
+# (workers need demucs/basic-pitch). Regenerate with the command in
+# requirements-audio.txt.
+COPY requirements.lock.txt .
+RUN pip install --no-cache-dir -r requirements.lock.txt
 
 # Copy the rest of the source.
 COPY . .

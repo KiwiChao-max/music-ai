@@ -40,9 +40,14 @@ export function AudioDetailPage() {
   const taskId = Number(id);
   const navigate = useNavigate();
 
-  const { data: task, isLoading, isError, error, refetch } = useAudioTask(taskId, {
-    refetchInterval: (current) =>
-      current?.status === "PROCESSING" ? POLL_MS : false,
+  const {
+    data: task,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useAudioTask(taskId, {
+    refetchInterval: (current) => (current?.status === "PROCESSING" ? POLL_MS : false),
   });
 
   useTaskProgress(taskId, { enabled: task?.status === "PROCESSING" });
@@ -61,10 +66,7 @@ export function AudioDetailPage() {
 
   if (!Number.isFinite(taskId)) {
     return (
-      <ErrorState
-        title={t("errors.generic")}
-        error={t("detail.invalidId", { id: String(id) })}
-      />
+      <ErrorState title={t("errors.generic")} error={t("detail.invalidId", { id: String(id) })} />
     );
   }
   if (isLoading) {
@@ -86,11 +88,7 @@ export function AudioDetailPage() {
   if (isError) {
     return (
       <section className="max-w-3xl space-y-4">
-        <ErrorState
-          title={t("detail.error")}
-          error={error}
-          onRetry={() => refetch()}
-        />
+        <ErrorState title={t("detail.error")} error={error} onRetry={() => refetch()} />
         <Link
           to="/audio"
           className="inline-block text-sm text-slate-600 dark:text-slate-400 underline hover:text-slate-900 dark:hover:text-slate-100"
@@ -120,8 +118,7 @@ export function AudioDetailPage() {
   const isFinished = task.status === "FINISHED";
 
   const onDelete = () => {
-    if (!confirm(t("detail.deleteConfirm", { id: task.id, name: task.filename })))
-      return;
+    if (!confirm(t("detail.deleteConfirm", { id: task.id, name: task.filename }))) return;
     remove.mutate(task.id, { onSuccess: () => navigate("/audio") });
   };
 
@@ -185,9 +182,7 @@ export function AudioDetailPage() {
                 description={t("detail.stems.empty.description")}
               />
             )}
-            {stemsQuery.data && stemsQuery.data.length > 0 && (
-              <StemMixer stems={stemsQuery.data} />
-            )}
+            {stemsQuery.data && stemsQuery.data.length > 0 && <StemMixer stems={stemsQuery.data} />}
           </section>
 
           {stemsQuery.data && <DrumPartPanel stems={stemsQuery.data} />}
@@ -219,10 +214,7 @@ export function AudioDetailPage() {
             </div>
           )}
           {analysisQuery.isError && (
-            <ErrorState
-              title={t("detail.analysis.error")}
-              error={analysisQuery.error}
-            />
+            <ErrorState title={t("detail.analysis.error")} error={analysisQuery.error} />
           )}
           {analysisQuery.data && (
             <>
@@ -239,9 +231,7 @@ export function AudioDetailPage() {
           <dt className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
             {t("detail.fields.id")}
           </dt>
-          <dd className="mt-1 text-sm text-slate-900 dark:text-slate-100">
-            {task.id}
-          </dd>
+          <dd className="mt-1 text-sm text-slate-900 dark:text-slate-100">{task.id}</dd>
         </div>
         <div>
           <dt className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
@@ -263,9 +253,7 @@ export function AudioDetailPage() {
           <dt className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
             {t("detail.fields.status")}
           </dt>
-          <dd className="mt-1 text-sm text-slate-900 dark:text-slate-100">
-            {task.status}
-          </dd>
+          <dd className="mt-1 text-sm text-slate-900 dark:text-slate-100">{task.status}</dd>
         </div>
       </dl>
 
@@ -280,11 +268,7 @@ export function AudioDetailPage() {
         </button>
       </div>
       {remove.isError && (
-        <ErrorState
-          title={t("detail.deleteError")}
-          error={remove.error}
-          onRetry={onDelete}
-        />
+        <ErrorState title={t("detail.deleteError")} error={remove.error} onRetry={onDelete} />
       )}
     </section>
   );

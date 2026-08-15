@@ -1,9 +1,12 @@
+import { useTranslation } from "react-i18next";
+
 interface ProgressBarProps {
   value: number; // 0-100
   className?: string;
 }
 
 export function ProgressBar({ value, className = "" }: ProgressBarProps) {
+  const { t } = useTranslation();
   const v = Math.max(0, Math.min(100, value));
   // 10 cells: ░ = empty, █ = filled.
   const cells = 10;
@@ -15,9 +18,12 @@ export function ProgressBar({ value, className = "" }: ProgressBarProps) {
       aria-valuenow={v}
       aria-valuemin={0}
       aria-valuemax={100}
-      aria-label="progress"
+      aria-label={t("common.progress")}
     >
-      <div className="font-mono text-xs tracking-tight text-slate-700 dark:text-slate-200" aria-hidden="true">
+      <div
+        className="font-mono text-xs tracking-tight text-slate-700 dark:text-slate-200"
+        aria-hidden="true"
+      >
         {"█".repeat(filled)}
         <span className="text-slate-300 dark:text-slate-700">{"░".repeat(cells - filled)}</span>
       </div>

@@ -28,7 +28,7 @@ export function AudioListPage() {
       </div>
 
       {isLoading && (
-        <ul className="space-y-2" aria-label="Loading tasks">
+        <ul className="space-y-2" aria-label={t("tasks.loading")}>
           {Array.from({ length: 3 }).map((_, idx) => (
             <li
               key={idx}

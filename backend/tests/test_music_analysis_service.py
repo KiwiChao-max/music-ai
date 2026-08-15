@@ -4,6 +4,7 @@ The public class methods depend on disk I/O, but the estimation functions
 (BPM, key, chords, sections, instrumentation/arrangement advice) are pure
 and only need a list of `NoteEvent`s. We exercise those here.
 """
+
 from __future__ import annotations
 
 from app.services.music_analysis_service import (
@@ -71,9 +72,15 @@ def test_estimate_key_prefers_real_scale_over_random() -> None:
 def test_estimate_chords_segments_into_bars() -> None:
     # At 120 BPM, one bar = 2 s. Three C-major triads across two bars.
     notes = [
-        _note(60, 0.0, 1.8), _note(64, 0.0, 1.8), _note(67, 0.0, 1.8),
-        _note(60, 2.0, 3.8), _note(64, 2.0, 3.8), _note(67, 2.0, 3.8),
-        _note(65, 4.0, 5.8), _note(69, 4.0, 5.8), _note(72, 4.0, 5.8),
+        _note(60, 0.0, 1.8),
+        _note(64, 0.0, 1.8),
+        _note(67, 0.0, 1.8),
+        _note(60, 2.0, 3.8),
+        _note(64, 2.0, 3.8),
+        _note(67, 2.0, 3.8),
+        _note(65, 4.0, 5.8),
+        _note(69, 4.0, 5.8),
+        _note(72, 4.0, 5.8),
     ]
     segments = _estimate_chords(notes, duration=6.0, bpm=120)
     assert segments, "expected at least one chord segment"
@@ -123,8 +130,7 @@ def test_analyze_notes_handles_empty_input() -> None:
 
 def test_analyze_notes_runs_end_to_end_on_simple_scale() -> None:
     notes = [
-        _note(p, t * 0.5)
-        for t, p in enumerate([60, 62, 64, 65, 67, 69, 71, 72, 71, 69, 67, 65])
+        _note(p, t * 0.5) for t, p in enumerate([60, 62, 64, 65, 67, 69, 71, 72, 71, 69, 67, 65])
     ]
     analysis = MusicAnalysisService().analyze_notes(notes)
     assert analysis.note_count == len(notes)

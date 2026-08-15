@@ -24,16 +24,9 @@ export interface TokenResponse {
 
 export const authApi = {
   login: (identifier: string, password: string) =>
-    api
-      .post<TokenResponse>("/auth/login", { identifier, password })
-      .then((r) => r.data),
+    api.post<TokenResponse>("/auth/login", { identifier, password }).then((r) => r.data),
 
-  register: (
-    email: string,
-    username: string,
-    password: string,
-    fullName?: string,
-  ) =>
+  register: (email: string, username: string, password: string, fullName?: string) =>
     api
       .post<TokenResponse>("/auth/register", {
         email,
@@ -45,14 +38,12 @@ export const authApi = {
 
   /** Refresh the access token.  The refresh token is sent automatically
    *  via the HttpOnly cookie --- no explicit token in the body. */
-  refresh: () =>
-    api.post<TokenResponse>("/auth/refresh").then((r) => r.data),
+  refresh: () => api.post<TokenResponse>("/auth/refresh").then((r) => r.data),
 
   me: () => api.get<UserPublic>("/auth/me").then((r) => r.data),
 
   logout: () => api.post<{ message: string }>("/auth/logout"),
 
   /** Fetch a fresh CSRF token (called on app mount). */
-  csrf: () =>
-    api.get<{ csrf_token: string }>("/auth/csrf").then((r) => r.data),
+  csrf: () => api.get<{ csrf_token: string }>("/auth/csrf").then((r) => r.data),
 };

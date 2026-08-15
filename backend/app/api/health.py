@@ -13,6 +13,7 @@ custom application instrumentation.
 
 from __future__ import annotations
 
+import threading
 import time
 from typing import Annotated
 
@@ -68,9 +69,9 @@ async def healthz() -> dict[str, str]:
 
 
 @router.get("/readyz")
-async def readyz(
+def readyz(
     db: Annotated[Session, Depends(get_db)],
-) -> dict[str, object]:
+) -> Response:
     """Readiness probe. Probes Postgres + Redis + Celery's broker.
 
     Returns 200 if all three are reachable, 503 otherwise. The body
@@ -116,31 +117,53 @@ def _readyz_payload(components: dict, ok: bool) -> str:
 
 
 @router.get("/metrics", include_in_schema=False)
-async def metrics(db: Annotated[Session, Depends(get_db)]) -> Response:
+def metrics(db: Annotated[Session, Depends(get_db)]) -> Response:
     """Prometheus text format.
 
-    Refreshes dynamic gauges on every scrape:
+    Refreshes dynamic gauges at most once per TTL window:
       * ``music_ai_tasks_total`` --- per-status task counts
       * ``music_ai_pipeline_queue_length`` --- UPLOADED tasks (waiting)
       * ``music_ai_pipeline_storage_bytes`` --- uploads / outputs usage
     """
-    try:
-        counts = task_service.count_tasks_by_status(db)
-        for status_name, count in counts.items():
-            TASKS_TOTAL.labels(status=status_name).set(count)
-
-        # Queue length: number of UPLOADED tasks waiting for a worker.
-        PIPELINE_QUEUE_LENGTH.set(counts.get("uploaded", 0))
-
-        # Storage usage: total bytes under uploads/ and outputs/ prefixes.
-        _refresh_storage_gauges()
-    except Exception:
-        # The /metrics endpoint must never fail because the DB is
-        # briefly unavailable --- Prometheus would stop scraping us.
-        pass
+    _refresh_dynamic_gauges(db)
 
     payload = generate_latest(REGISTRY)
     return Response(content=payload, media_type=CONTENT_TYPE_LATEST)
+
+
+# Dynamic gauges are refreshed at most every N seconds. Prometheus
+# scrapes every ~15s; a full-table GROUP BY plus a recursive filesystem
+# walk per scrape would waste DB time and IO for gauges that change
+# slowly anyway. Each API worker process caches independently, which is
+# fine for gauges (last writer wins).
+_METRICS_REFRESH_TTL_SECONDS = 60.0
+_metrics_refresh_lock = threading.Lock()
+_last_metrics_refresh = 0.0
+
+
+def _refresh_dynamic_gauges(db: Session) -> None:
+    """Refresh DB/storage-backed gauges, throttled by a TTL."""
+    global _last_metrics_refresh
+    if time.monotonic() - _last_metrics_refresh < _METRICS_REFRESH_TTL_SECONDS:
+        return
+    with _metrics_refresh_lock:
+        if time.monotonic() - _last_metrics_refresh < _METRICS_REFRESH_TTL_SECONDS:
+            return
+        try:
+            counts = task_service.count_tasks_by_status(db)
+            for status_name, count in counts.items():
+                TASKS_TOTAL.labels(status=status_name).set(count)
+
+            # Queue length: number of UPLOADED tasks waiting for a worker.
+            PIPELINE_QUEUE_LENGTH.set(counts.get("uploaded", 0))
+
+            # Storage usage: total bytes under uploads/ and outputs/ prefixes.
+            _refresh_storage_gauges()
+            _last_metrics_refresh = time.monotonic()
+        except Exception:
+            # The /metrics endpoint must never fail because the DB is
+            # briefly unavailable --- Prometheus would stop scraping us.
+            pass
 
 
 def _refresh_storage_gauges() -> None:
@@ -178,8 +201,3 @@ def ping_redis(url: str | None = None) -> bool:
         return ok
     except Exception:
         return False
-
-
-# Avoid an unused-import warning when the module is loaded just for
-# the metrics side-effects.
-_ = time

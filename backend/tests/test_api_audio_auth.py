@@ -5,6 +5,7 @@ Auth is disabled by default in `settings.auth_required` so the existing
 upload/list/delete paths work without a token. These tests flip the
 flag on (and create a real user) to exercise the gated behaviour.
 """
+
 from __future__ import annotations
 
 import io
@@ -51,6 +52,7 @@ def client(db_session: Session) -> TestClient:
             pass
 
     from app.db.session import get_db
+
     app.dependency_overrides[get_db] = _override_get_db
     try:
         yield TestClient(app)
@@ -79,9 +81,7 @@ def _bearer(token: str) -> dict[str, str]:
 
 
 def _make_user(db: Session, *, email: str, username: str) -> User:
-    user = user_service.create_user(
-        db, email=email, username=username, password=PWD
-    )
+    user = user_service.create_user(db, email=email, username=username, password=PWD)
     db.commit()
     return user
 
@@ -97,17 +97,13 @@ def test_upload_rejects_anonymous_when_auth_required(
     assert resp.status_code == 401
 
 
-def test_list_rejects_anonymous_when_auth_required(
-    client: TestClient, auth_required
-) -> None:
+def test_list_rejects_anonymous_when_auth_required(client: TestClient, auth_required) -> None:
     resp = client.get("/api/audio")
     assert resp.status_code == 401
 
 
 # ---- task ownership ------------------------------------------------------
-def test_get_task_returns_own_task(
-    client: TestClient, auth_required, db_session: Session
-) -> None:
+def test_get_task_returns_own_task(client: TestClient, auth_required, db_session: Session) -> None:
     token = _register(client, email=EMAIL_A, username="alice")
     resp = client.post(
         "/api/audio/upload",
@@ -189,15 +185,11 @@ def test_delete_task_forbidden_for_other_user(
     task_id = resp.json()["task_id"]
 
     # Bob can't delete it.
-    resp = client.delete(
-        f"/api/audio/{task_id}", headers=_bearer(token_b)
-    )
+    resp = client.delete(f"/api/audio/{task_id}", headers=_bearer(token_b))
     assert resp.status_code == 403
 
 
-def test_admin_sees_all_tasks(
-    client: TestClient, auth_required, db_session: Session
-) -> None:
+def test_admin_sees_all_tasks(client: TestClient, auth_required, db_session: Session) -> None:
     """An admin (role=admin) must see every task across users."""
     token_a = _register(client, email=EMAIL_A, username="alice")
     user_b = _make_user(db_session, email=EMAIL_B, username="bob")

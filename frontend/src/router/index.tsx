@@ -23,9 +23,7 @@ const SampleLibraryPage = lazy(() =>
 const UploadPage = lazy(() =>
   import("@/pages/UploadPage").then((m) => ({ default: m.UploadPage })),
 );
-const LoginPage = lazy(() =>
-  import("@/pages/LoginPage").then((m) => ({ default: m.LoginPage })),
-);
+const LoginPage = lazy(() => import("@/pages/LoginPage").then((m) => ({ default: m.LoginPage })));
 const RegisterPage = lazy(() =>
   import("@/pages/RegisterPage").then((m) => ({ default: m.RegisterPage })),
 );

@@ -31,7 +31,6 @@ export class ErrorBoundary extends Component<Props, State> {
     // In a real product this would feed an observability backend
     // (Sentry / Datadog). For now, log to the console so the
     // developer can see it in DevTools.
-    // eslint-disable-next-line no-console
     console.error("ErrorBoundary caught:", error, info.componentStack);
   }
 
@@ -50,9 +49,7 @@ export class ErrorBoundary extends Component<Props, State> {
           <h2 className="text-lg font-semibold text-rose-900">
             {i18next.t("errors.boundary.title")}
           </h2>
-          <p className="mt-2 text-sm text-rose-800">
-            {i18next.t("errors.boundary.description")}
-          </p>
+          <p className="mt-2 text-sm text-rose-800">{i18next.t("errors.boundary.description")}</p>
           <p className="mt-3 break-words rounded bg-rose-100 px-2 py-1 text-left font-mono text-xs text-rose-900">
             {this.state.error.message}
           </p>

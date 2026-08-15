@@ -1,9 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  ALLOWED_AUDIO_EXTENSIONS,
-  looksLikeAudio,
-  validateAudioFile,
-} from "./upload";
+import { ALLOWED_AUDIO_EXTENSIONS, looksLikeAudio, validateAudioFile } from "./upload";
 
 function makeFile(name: string, opts: { type?: string; size?: number } = {}): File {
   const blob = new Blob([new Uint8Array(opts.size ?? 0)], {

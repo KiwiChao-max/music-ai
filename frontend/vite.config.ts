@@ -1,4 +1,6 @@
-import { defineConfig } from "vite";
+// `vitest/config`'s defineConfig extends Vite's UserConfig with the `test`
+// block below, so `tsc -b` (tsconfig.node.json) type-checks it cleanly.
+import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "node:path";

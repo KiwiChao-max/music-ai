@@ -33,6 +33,7 @@ import logging
 import math
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 from .midi_cc import velocity_from_strength
 
@@ -314,7 +315,7 @@ class DrumMidiService:
         # matrix broadcast a single scalar to every frame and silently
         # disabled onset detection.
         def _mean_over_freq(matrix: np.ndarray, axis: int = -1) -> np.ndarray:
-            return np.mean(matrix, axis=axis)
+            return cast(np.ndarray, np.mean(matrix, axis=axis))
 
         onset_env = librosa.onset.onset_strength(y=y, sr=sr, aggregate=_mean_over_freq)
         frames = librosa.onset.onset_detect(
@@ -343,7 +344,7 @@ class DrumMidiService:
 
         # Pre-compute per-onset features so the classifier is one O(1) lookup
         # per hit rather than redoing FFTs.
-        features: list[tuple[float, float, float, float, float]] = []
+        features: list[tuple[str, float, float, float, float]] = []
         for time_s in times:
             features.append(self._extract_features(y, sr, float(time_s)))
 

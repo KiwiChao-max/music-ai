@@ -39,8 +39,9 @@ repos:
         exclude: ^backend/\.venv|^backend/alembic/versions/
 
   # ---- Python: mypy (type checking) ----------------------------------------
+  # The rev matches the mypy pin in backend/requirements-dev.txt.
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.13.0
+    rev: v2.3.0
     hooks:
       - id: mypy
         name: mypy (backend)
@@ -51,6 +52,14 @@ repos:
             "types-passlib",
           ]
         pass_filenames: false  # let mypy read pyproject.toml include/exclude
+
+  # ---- Secret scanning (gitleaks) ------------------------------------------
+  # Catches committed secrets at commit time (CI also runs a blocking
+  # gitleaks job, but this gives feedback before the push).
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4
+    hooks:
+      - id: gitleaks
 
   # ---- Frontend: ESLint + Prettier (run via npm script) --------------------
   - repo: local

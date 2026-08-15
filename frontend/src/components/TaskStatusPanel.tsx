@@ -1,7 +1,6 @@
 import { useTranslation } from "react-i18next";
 
 import { ProgressBar } from "@/components/ProgressBar";
-import { StatusBadge } from "@/components/StatusBadge";
 import { ErrorState } from "@/components/States";
 import type { AudioTask } from "@/types/audio";
 
@@ -10,7 +9,8 @@ interface TaskStatusPanelProps {
   /** Called when the user clicks "Start Processing" or "Retry". */
   onStart: () => void;
   isStarting: boolean;
-  startError: unknown;
+  /** Mutation error from `useStartProcess` (react-query v5 types it `Error | null`). */
+  startError: Error | null;
   startRetry: () => void;
 }
 
@@ -32,25 +32,17 @@ export function TaskStatusPanel({
       {/* Uploaded: show "Start Processing" button */}
       {isUploaded && (
         <div className="rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 p-6 text-center">
-          <p className="text-sm text-slate-600 dark:text-slate-400">
-            {t("detail.readyToProcess")}
-          </p>
+          <p className="text-sm text-slate-600 dark:text-slate-400">{t("detail.readyToProcess")}</p>
           <button
             type="button"
             onClick={onStart}
             disabled={isStarting}
             className="mt-3 rounded-md bg-slate-900 px-5 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
           >
-            {isStarting
-              ? t("detail.starting")
-              : t("detail.startProcessing")}
+            {isStarting ? t("detail.starting") : t("detail.startProcessing")}
           </button>
           {startError && (
-            <ErrorState
-              title={t("detail.startError")}
-              error={startError}
-              onRetry={startRetry}
-            />
+            <ErrorState title={t("detail.startError")} error={startError} onRetry={startRetry} />
           )}
         </div>
       )}
@@ -62,9 +54,7 @@ export function TaskStatusPanel({
             <span className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
               {t("detail.processing")}
             </span>
-            <span className="text-xs text-slate-500 dark:text-slate-400">
-              {t("detail.live")}
-            </span>
+            <span className="text-xs text-slate-500 dark:text-slate-400">{t("detail.live")}</span>
           </div>
           <ProgressBar value={task.progress} className="mt-1" />
           <p className="text-sm text-slate-700 dark:text-slate-300">
@@ -93,11 +83,7 @@ export function TaskStatusPanel({
             {isStarting ? t("detail.retrying") : t("detail.retry")}
           </button>
           {startError && (
-            <ErrorState
-              title={t("detail.retryError")}
-              error={startError}
-              onRetry={startRetry}
-            />
+            <ErrorState title={t("detail.retryError")} error={startError} onRetry={startRetry} />
           )}
         </div>
       )}
@@ -105,9 +91,7 @@ export function TaskStatusPanel({
       {/* Finished status badge */}
       {isFinished && (
         <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
-          <span className="text-slate-500 dark:text-slate-400">
-            {t("detail.status")}
-          </span>
+          <span className="text-slate-500 dark:text-slate-400">{t("detail.status")}</span>
           <span className="text-base font-semibold text-emerald-700 dark:text-emerald-300">
             {t("detail.finished")}
           </span>

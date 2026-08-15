@@ -7,6 +7,7 @@ issues are caught before merge. The Alembic migrations themselves are
 not run here --- the test session creates the schema straight from the
 model metadata.
 """
+
 from __future__ import annotations
 
 import os
@@ -25,9 +26,9 @@ os.environ.setdefault("STORAGE_DIR", str(Path(__file__).resolve().parent / ".tmp
 # Disable rate limiting for the full test suite (many auth/login calls).
 os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 
-from app.config import settings  # noqa: E402  (imports must come after env setup)
-from app.db.base import Base  # noqa: E402
-from app.db import models  # noqa: E402, F401  -- ensure models register on Base.metadata
+from app.config import settings
+from app.db import models  # noqa: F401  -- ensure models register on Base.metadata
+from app.db.base import Base
 
 # When set, the test suite connects to this database instead of in-memory
 # SQLite. Used by CI to run the suite against real Postgres.
@@ -83,13 +84,12 @@ def db_session() -> Generator[Session, None, None]:
         )
         Base.metadata.create_all(engine)
 
-    SessionTesting = sessionmaker(
+    session_testing = sessionmaker(
         bind=engine, autoflush=False, autocommit=False, expire_on_commit=False
     )
-    session = SessionTesting()
+    session = session_testing()
     try:
         yield session
     finally:
         session.close()
         engine.dispose()
-

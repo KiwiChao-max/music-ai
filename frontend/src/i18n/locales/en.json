@@ -136,6 +136,7 @@
       "confidenceHigh": "high",
       "confidenceMedium": "medium",
       "confidenceLow": "low",
+      "confidencePercent": "Confidence {{value}}%",
       "commentary": {
         "title": "Take on this track",
         "empty": "The AI commentary will appear here once the analysis finishes.",
@@ -206,6 +207,8 @@
     "classifying": "Analyzing sample types…",
     "classificationPreview": "Classification Preview",
     "classificationPending": "Pending…",
+    "classifyFailure": "{{count}} file could not be classified and was skipped.",
+    "classifyFailurePlural": "{{count}} files could not be classified and were skipped.",
     "colFile": "File",
     "colType": "Drum Type",
     "colNote": "MIDI Note",
@@ -245,6 +248,7 @@
     "batchDelete": "Batch delete",
     "batchDeleteConfirm": "Delete {{count}} selected samples?",
     "searchSoundfont": "Search soundfonts…",
+    "bankProg": "Bank:Prog",
     "filterAll": "All types",
     "noMatchSoundfont": "No matching soundfonts",
     "searchPreset": "Search presets…",
@@ -277,7 +281,9 @@
     "percussionNote": "percussion note",
     "percussionNotes": "percussion notes",
     "emptyLibraryHint": "The active library is empty. Upload samples on the Samples page.",
-    "samplesSummary": "{{fileCount}} samples loaded across {{noteCount}} GM percussion notes."
+    "samplesSummary": "{{fileCount}} samples loaded across {{noteCount}} GM percussion notes.",
+    "velocityLayers": " ({{count}} velocity layer)",
+    "velocityLayersPlural": " ({{count}} velocity layers)"
   },
   "common": {
     "retry": "Retry",
@@ -293,6 +299,7 @@
     "mergedMidi": "Merged MIDI",
     "stemMixer": "Stem Mixer",
     "midiStems": "MIDI stems",
+    "progress": "Progress",
     "original": "Original",
     "minutes": "{{count}} min",
     "seconds": "{{count}} s"

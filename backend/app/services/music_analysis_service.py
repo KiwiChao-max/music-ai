@@ -16,6 +16,7 @@ import math
 from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import cast
 
 ANALYSIS_FILENAME = "analysis.json"
 
@@ -167,7 +168,7 @@ def read_analysis(output_dir: Path) -> dict | None:
     if not path.is_file():
         return None
     with path.open("r", encoding="utf-8") as f:
-        return json.load(f)
+        return cast(dict, json.load(f))
 
 
 def _load_notes(output_dir: Path) -> list[NoteEvent]:

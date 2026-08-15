@@ -22,7 +22,7 @@ import json
 import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 import httpx
 
@@ -209,7 +209,7 @@ class OpenAICompatibleLlm:
             resp.raise_for_status()
             data = resp.json()
         try:
-            return data["choices"][0]["message"]["content"]
+            return cast(str, data["choices"][0]["message"]["content"])
         except (KeyError, IndexError, TypeError) as exc:
             raise RuntimeError(f"unexpected LLM response shape: {data!r}") from exc
 

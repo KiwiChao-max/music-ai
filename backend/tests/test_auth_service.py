@@ -4,10 +4,10 @@ Covers the two halves of the auth layer:
   * password hashing (bcrypt round-trip + malformed input)
   * JWT signing/verification (access/refresh, type mismatch, expiry)
 """
+
 from __future__ import annotations
 
 import time
-from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -19,9 +19,7 @@ from app.services import auth_service
 def test_hash_and_verify_round_trip() -> None:
     hashed = auth_service.hash_password("correct horse battery staple")
     assert hashed.startswith("$2")  # bcrypt marker
-    assert auth_service.verify_password(
-        "correct horse battery staple", hashed
-    )
+    assert auth_service.verify_password("correct horse battery staple", hashed)
     assert not auth_service.verify_password("wrong", hashed)
 
 
@@ -104,9 +102,7 @@ def test_decode_rejects_expired_token() -> None:
 
 
 def test_issue_token_pair_returns_both_tokens(db_session) -> None:
-    pair = auth_service.issue_token_pair(
-        db_session, 7, email="user@example.com", role="user"
-    )
+    pair = auth_service.issue_token_pair(db_session, 7, email="user@example.com", role="user")
     assert pair["token_type"] == "Bearer"
     assert pair["expires_in"] == settings.access_token_ttl_minutes * 60
     # Each token must round-trip with the right type.

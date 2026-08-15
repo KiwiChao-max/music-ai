@@ -11,9 +11,9 @@
  */
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import WaveSurfer from "wavesurfer.js";
+import type WaveSurfer from "wavesurfer.js";
 
-import { formatTime, usePlayer } from "@/contexts/PlayerContext";
+import { formatTime, usePlayer, usePlayerTime } from "@/contexts/PlayerContext";
 
 /**
  * Render a compact wavesurfer waveform for a single audio URL.
@@ -33,14 +33,7 @@ interface WaveformProps {
   className?: string;
 }
 
-function Waveform({
-  url,
-  height = 48,
-  reloadKey,
-  onReady,
-  onSeek,
-  className = "",
-}: WaveformProps) {
+function Waveform({ url, height = 48, reloadKey, onReady, onSeek, className = "" }: WaveformProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const wsRef = useRef<WaveSurfer | null>(null);
 
@@ -48,48 +41,59 @@ function Waveform({
     const container = containerRef.current;
     if (!container) return undefined;
 
-    // Pick colors that contrast with the current theme. We re-read on
-    // every mount because the user can flip the theme while the bar is
-    // open.
-    const dark = document.documentElement.classList.contains("dark");
-    const waveColor = dark ? "#475569" : "#cbd5e1";
-    const progressColor = dark ? "#e2e8f0" : "#0f172a";
-    const cursorColor = dark ? "#e2e8f0" : "#0f172a";
+    let disposed = false;
+    let ws: WaveSurfer | null = null;
 
-    const ws = WaveSurfer.create({
-      container,
-      url,
-      height,
-      // Visual: a thin bar with rounded edges. We keep the cursor and
-      // progress visible so the user can see where playback is.
-      waveColor,
-      progressColor,
-      cursorColor,
-      cursorWidth: 1,
-      barWidth: 2,
-      barGap: 1,
-      barRadius: 2,
-      normalize: true,
-      // Keep the wave from auto-playing; the global player drives
-      // playback separately and the bar reflects that.
-      autoplay: false,
-      interact: true,
+    // wavesurfer.js (~100 KB) is imported on demand so it stays out of
+    // the initial bundle: the bar itself is tiny and only needs the
+    // waveform once a track actually starts playing.
+    void import("wavesurfer.js").then(({ default: WaveSurferCtor }) => {
+      if (disposed) return;
+      const currentContainer = containerRef.current;
+      if (!currentContainer) return;
+
+      // Pick colors that contrast with the current theme. We re-read on
+      // every mount because the user can flip the theme while the bar is
+      // open.
+      const dark = document.documentElement.classList.contains("dark");
+      const waveColor = dark ? "#475569" : "#cbd5e1";
+      const progressColor = dark ? "#e2e8f0" : "#0f172a";
+      const cursorColor = dark ? "#e2e8f0" : "#0f172a";
+
+      ws = WaveSurferCtor.create({
+        container: currentContainer,
+        url,
+        height,
+        // Visual: a thin bar with rounded edges. We keep the cursor and
+        // progress visible so the user can see where playback is.
+        waveColor,
+        progressColor,
+        cursorColor,
+        cursorWidth: 1,
+        barWidth: 2,
+        barGap: 1,
+        barRadius: 2,
+        normalize: true,
+        // Keep the wave from auto-playing; the global player drives
+        // playback separately and the bar reflects that.
+        autoplay: false,
+        interact: true,
+      });
+      wsRef.current = ws;
+
+      const handleReady = () => {
+        if (onReady) onReady(ws!.getDuration());
+      };
+      const handleInteraction = (newTime: number) => {
+        if (onSeek) onSeek(newTime);
+      };
+      ws.on("ready", handleReady);
+      ws.on("interaction", handleInteraction);
     });
-    wsRef.current = ws;
-
-    const handleReady = () => {
-      if (onReady) onReady(ws.getDuration());
-    };
-    const handleInteraction = (newTime: number) => {
-      if (onSeek) onSeek(newTime);
-    };
-    ws.on("ready", handleReady);
-    ws.on("interaction", handleInteraction);
 
     return () => {
-      ws.un("ready", handleReady);
-      ws.un("interaction", handleInteraction);
-      ws.destroy();
+      disposed = true;
+      ws?.destroy();
       wsRef.current = null;
     };
     // `reloadKey` is the only thing that should ever cause a remount.
@@ -102,18 +106,9 @@ function Waveform({
 
 export function PlayerBar() {
   const { t } = useTranslation();
-  const {
-    current,
-    isPlaying,
-    currentTime,
-    duration,
-    volume,
-    loading,
-    toggle,
-    stop,
-    seek,
-    setVolume,
-  } = usePlayer();
+  const { current, isPlaying, duration, volume, loading, toggle, stop, seek, setVolume } =
+    usePlayer();
+  const currentTime = usePlayerTime();
 
   if (!current) return null;
 
@@ -144,12 +139,7 @@ export function PlayerBar() {
             </span>
           </div>
           <div className="mt-1.5">
-            <Waveform
-              url={current.url}
-              reloadKey={current.url}
-              onSeek={seek}
-              className="w-full"
-            />
+            <Waveform url={current.url} reloadKey={current.url} onSeek={seek} className="w-full" />
           </div>
         </div>
 
@@ -159,7 +149,7 @@ export function PlayerBar() {
             onClick={toggle}
             disabled={loading}
             className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-slate-900 text-white transition-colors hover:bg-slate-800 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
-            aria-label={isPlaying ? "Pause" : "Play"}
+            aria-label={isPlaying ? t("player.pause") : t("player.play")}
           >
             {isPlaying ? (
               <svg
@@ -187,7 +177,10 @@ export function PlayerBar() {
             )}
           </button>
 
-          <label className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400" title={t("player.volume")}>
+          <label
+            className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400"
+            title={t("player.volume")}
+          >
             <svg
               xmlns="http://www.w3.org/2000/svg"
               width="14"

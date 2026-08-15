@@ -11,6 +11,7 @@ The tests run against the same in-memory SQLite used by the rest of the
 suite, with the on-disk root pointed at a per-test temp dir via the
 `storage_dir` fixture.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -18,7 +19,6 @@ from pathlib import Path
 import pytest
 from sqlalchemy.orm import Session
 
-from app.services import sample_library_service
 from app.services.sample_library_service import (
     SampleLibraryService,
     _resolve_note_from_name,
@@ -56,9 +56,7 @@ def test_safe_filename_strips_directories_and_filters_unknown_ext() -> None:
         ("studio_kick.wav", 36),  # token match on "kick"
     ],
 )
-def test_resolve_note_from_name_maps_common_aliases(
-    filename: str, expected_note: int
-) -> None:
+def test_resolve_note_from_name_maps_common_aliases(filename: str, expected_note: int) -> None:
     assert _resolve_note_from_name(filename) == expected_note
 
 
@@ -96,9 +94,7 @@ def test_create_library_persists_files_and_maps_notes(
     assert (library_dir / "kick.wav").read_bytes() == b"kick-bytes"
 
 
-def test_create_library_rejects_empty_payload(
-    db_session: Session, storage_dir: Path
-) -> None:
+def test_create_library_rejects_empty_payload(db_session: Session, storage_dir: Path) -> None:
     service = SampleLibraryService(root=storage_dir / "sample-libraries")
     with pytest.raises(ValueError, match="name is required"):
         service.create_library(db_session, name="   ", files=[("kick.wav", b"x")])
@@ -122,16 +118,10 @@ def test_create_library_rolls_back_when_no_recognised_samples(
     assert not any(root.iterdir()) if root.exists() else True
 
 
-def test_activate_only_one_library_active_at_a_time(
-    db_session: Session, storage_dir: Path
-) -> None:
+def test_activate_only_one_library_active_at_a_time(db_session: Session, storage_dir: Path) -> None:
     service = SampleLibraryService(root=storage_dir / "sample-libraries")
-    a = service.create_library(
-        db_session, name="Kit A", files=[("kick.wav", b"a")]
-    )
-    b = service.create_library(
-        db_session, name="Kit B", files=[("snare.wav", b"b")]
-    )
+    a = service.create_library(db_session, name="Kit A", files=[("kick.wav", b"a")])
+    b = service.create_library(db_session, name="Kit B", files=[("snare.wav", b"b")])
     db_session.commit()
 
     service.activate(db_session, a.id)
@@ -144,13 +134,9 @@ def test_activate_only_one_library_active_at_a_time(
     assert a_fresh.is_active is False
 
 
-def test_delete_library_removes_files_and_db_rows(
-    db_session: Session, storage_dir: Path
-) -> None:
+def test_delete_library_removes_files_and_db_rows(db_session: Session, storage_dir: Path) -> None:
     service = SampleLibraryService(root=storage_dir / "sample-libraries")
-    info = service.create_library(
-        db_session, name="Doomed", files=[("kick.wav", b"x")]
-    )
+    info = service.create_library(db_session, name="Doomed", files=[("kick.wav", b"x")])
     db_session.commit()
     library_dir = storage_dir / "sample-libraries" / str(info.id)
     assert library_dir.is_dir()
@@ -166,13 +152,9 @@ def test_list_libraries_returns_all_libraries_with_files(
     db_session: Session, storage_dir: Path
 ) -> None:
     service = SampleLibraryService(root=storage_dir / "sample-libraries")
-    a = service.create_library(
-        db_session, name="First", files=[("kick.wav", b"a")]
-    )
+    a = service.create_library(db_session, name="First", files=[("kick.wav", b"a")])
     db_session.commit()
-    b = service.create_library(
-        db_session, name="Second", files=[("snare.wav", b"b")]
-    )
+    b = service.create_library(db_session, name="Second", files=[("snare.wav", b"b")])
     db_session.commit()
 
     listed = service.list_libraries(db_session)
@@ -208,15 +190,11 @@ def test_list_libraries_preserves_velocity_layers_through_schema(
     by_id = {lib.id: lib for lib in listed}
     files = by_id[info.id].files
     # Both layers present, each carrying its parsed velocity range.
-    ranges = sorted(
-        (sample.velocity_min, sample.velocity_max) for sample in files
-    )
+    ranges = sorted((sample.velocity_min, sample.velocity_max) for sample in files)
     assert ranges == [(1, 64), (65, 127)]
 
 
-def test_export_library_returns_mapping(
-    db_session: Session, storage_dir: Path
-) -> None:
+def test_export_library_returns_mapping(db_session: Session, storage_dir: Path) -> None:
     service = SampleLibraryService(root=storage_dir / "sample-libraries")
     lib = service.create_library(
         db_session,
@@ -245,20 +223,14 @@ def test_export_library_returns_mapping(
     assert exported["mapping"][38]["label"] == "snare"
 
 
-def test_export_library_returns_none_for_missing(
-    db_session: Session, storage_dir: Path
-) -> None:
+def test_export_library_returns_none_for_missing(db_session: Session, storage_dir: Path) -> None:
     service = SampleLibraryService(root=storage_dir / "sample-libraries")
     assert service.export_library(db_session, 999) is None
 
 
-def test_update_sample_note_changes_mapping(
-    db_session: Session, storage_dir: Path
-) -> None:
+def test_update_sample_note_changes_mapping(db_session: Session, storage_dir: Path) -> None:
     service = SampleLibraryService(root=storage_dir / "sample-libraries")
-    lib = service.create_library(
-        db_session, name="Update Test", files=[("kick.wav", b"k")]
-    )
+    lib = service.create_library(db_session, name="Update Test", files=[("kick.wav", b"k")])
     db_session.commit()
 
     sample = lib.files[0]
@@ -272,13 +244,9 @@ def test_update_sample_note_changes_mapping(
     assert 36 not in exported["mapping"]
 
 
-def test_update_library_name(
-    db_session: Session, storage_dir: Path
-) -> None:
+def test_update_library_name(db_session: Session, storage_dir: Path) -> None:
     service = SampleLibraryService(root=storage_dir / "sample-libraries")
-    lib = service.create_library(
-        db_session, name="Old Name", files=[("kick.wav", b"k")]
-    )
+    lib = service.create_library(db_session, name="Old Name", files=[("kick.wav", b"k")])
     db_session.commit()
 
     updated = service.update_library(db_session, lib.id, name="New Name")
@@ -286,9 +254,7 @@ def test_update_library_name(
     assert updated.name == "New Name"
 
 
-def test_update_library_description(
-    db_session: Session, storage_dir: Path
-) -> None:
+def test_update_library_description(db_session: Session, storage_dir: Path) -> None:
     service = SampleLibraryService(root=storage_dir / "sample-libraries")
     lib = service.create_library(
         db_session, name="Test", files=[("kick.wav", b"k")], description="Old desc"
@@ -300,29 +266,21 @@ def test_update_library_description(
     assert updated.description == "New desc"
 
 
-def test_update_library_empty_name_raises(
-    db_session: Session, storage_dir: Path
-) -> None:
+def test_update_library_empty_name_raises(db_session: Session, storage_dir: Path) -> None:
     service = SampleLibraryService(root=storage_dir / "sample-libraries")
-    lib = service.create_library(
-        db_session, name="Test", files=[("kick.wav", b"k")]
-    )
+    lib = service.create_library(db_session, name="Test", files=[("kick.wav", b"k")])
     db_session.commit()
 
     with pytest.raises(ValueError, match="name cannot be empty"):
         service.update_library(db_session, lib.id, name="   ")
 
 
-def test_update_library_missing_returns_none(
-    db_session: Session, storage_dir: Path
-) -> None:
+def test_update_library_missing_returns_none(db_session: Session, storage_dir: Path) -> None:
     service = SampleLibraryService(root=storage_dir / "sample-libraries")
     assert service.update_library(db_session, 999, name="Test") is None
 
 
-def test_batch_remove_samples(
-    db_session: Session, storage_dir: Path
-) -> None:
+def test_batch_remove_samples(db_session: Session, storage_dir: Path) -> None:
     service = SampleLibraryService(root=storage_dir / "sample-libraries")
     lib = service.create_library(
         db_session,
@@ -342,13 +300,9 @@ def test_batch_remove_samples(
     assert updated.files[0].midi_note == 42
 
 
-def test_batch_remove_empty_list(
-    db_session: Session, storage_dir: Path
-) -> None:
+def test_batch_remove_empty_list(db_session: Session, storage_dir: Path) -> None:
     service = SampleLibraryService(root=storage_dir / "sample-libraries")
-    lib = service.create_library(
-        db_session, name="Batch Empty", files=[("kick.wav", b"k")]
-    )
+    lib = service.create_library(db_session, name="Batch Empty", files=[("kick.wav", b"k")])
     db_session.commit()
 
     updated = service.batch_remove_samples(db_session, lib.id, [])
@@ -356,9 +310,7 @@ def test_batch_remove_empty_list(
     assert len(updated.files) == 1
 
 
-def test_batch_remove_missing_library(
-    db_session: Session, storage_dir: Path
-) -> None:
+def test_batch_remove_missing_library(db_session: Session, storage_dir: Path) -> None:
     service = SampleLibraryService(root=storage_dir / "sample-libraries")
     assert service.batch_remove_samples(db_session, 999, [1, 2]) is None
 
@@ -398,4 +350,3 @@ def test_resolve_velocity_range_parses_supported_patterns(
     filename: str, expected: tuple[int, int]
 ) -> None:
     assert _resolve_velocity_range(filename) == expected
-

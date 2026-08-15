@@ -7,11 +7,12 @@ Validates that critical security invariants hold:
   4. Refresh-token reuse (replay) is detected and revokes the family.
   5. Broker failure gracefully recovers task state.
 """
+
 from __future__ import annotations
 
 import io
 import sys
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -52,7 +53,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db.models import AudioTask, AudioTaskStatus, RefreshToken, RefreshTokenStatus
 from app.main import app
-from app.services import auth_service, sample_library_service, task_service
+from app.services import auth_service, sample_library_service
 from app.services.auth_service import (
     TokenNotFoundError,
     TokenReuseError,
@@ -62,10 +63,10 @@ from app.services.auth_service import (
 )
 from app.utils.network import get_client_ip, is_trusted_proxy
 
-
 # ---------------------------------------------------------------------------
 # Test client factory
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def client(db_session: Session) -> TestClient:
@@ -89,6 +90,7 @@ def client(db_session: Session) -> TestClient:
 # ---------------------------------------------------------------------------
 # 1. Unauthorized static-file access
 # ---------------------------------------------------------------------------
+
 
 class TestUnauthorizedArtifactAccess:
     """Artifact download endpoints must enforce task ownership.
@@ -133,6 +135,7 @@ class TestUnauthorizedArtifactAccess:
 # ---------------------------------------------------------------------------
 # 2. Multi-user privilege escalation (sample library)
 # ---------------------------------------------------------------------------
+
 
 class TestSampleLibraryPrivilegeEscalation:
     """A non-admin user must not be able to modify another user's library.
@@ -206,6 +209,7 @@ class TestSampleLibraryPrivilegeEscalation:
 # 3. Spoofed X-Forwarded-For
 # ---------------------------------------------------------------------------
 
+
 class TestSpoofedXForwardedFor:
     """X-Forwarded-For must only be honoured when the direct peer is trusted.
 
@@ -262,6 +266,7 @@ class TestSpoofedXForwardedFor:
 # 4. Refresh-token replay detection
 # ---------------------------------------------------------------------------
 
+
 class TestRefreshTokenReplay:
     """Reusing a consumed refresh token must revoke the entire family.
 
@@ -280,7 +285,10 @@ class TestRefreshTokenReplay:
 
     def test_rotation_consumes_old_token(self) -> None:
         tokens = issue_token_pair(
-            self.db, self.user.id, email=self.user.email, role="user",
+            self.db,
+            self.user.id,
+            email=self.user.email,
+            role="user",
         )
         self.db.commit()
         original_refresh = tokens["refresh_token"]
@@ -292,15 +300,22 @@ class TestRefreshTokenReplay:
         from app.services.auth_service import _hash_token
 
         old_hash = _hash_token(original_refresh)
-        record = self.db.query(RefreshToken).filter(
-            RefreshToken.token_hash == old_hash,
-        ).first()
+        record = (
+            self.db.query(RefreshToken)
+            .filter(
+                RefreshToken.token_hash == old_hash,
+            )
+            .first()
+        )
         assert record is not None
         assert record.status == RefreshTokenStatus.USED
 
     def test_replay_detected_and_family_revoked(self) -> None:
         tokens = issue_token_pair(
-            self.db, self.user.id, email=self.user.email, role="user",
+            self.db,
+            self.user.id,
+            email=self.user.email,
+            role="user",
         )
         self.db.commit()
         original_refresh = tokens["refresh_token"]
@@ -323,7 +338,10 @@ class TestRefreshTokenReplay:
 
     def test_revoked_token_raises(self) -> None:
         tokens = issue_token_pair(
-            self.db, self.user.id, email=self.user.email, role="user",
+            self.db,
+            self.user.id,
+            email=self.user.email,
+            role="user",
         )
         self.db.commit()
         auth_service.revoke_all_user_tokens(self.db, self.user.id)
@@ -333,11 +351,17 @@ class TestRefreshTokenReplay:
 
     def test_logout_revokes_all_families(self) -> None:
         tokens1 = issue_token_pair(
-            self.db, self.user.id, email=self.user.email, role="user",
+            self.db,
+            self.user.id,
+            email=self.user.email,
+            role="user",
         )
         self.db.commit()
         tokens2 = issue_token_pair(
-            self.db, self.user.id, email=self.user.email, role="user",
+            self.db,
+            self.user.id,
+            email=self.user.email,
+            role="user",
         )
         self.db.commit()
 
@@ -354,6 +378,7 @@ class TestRefreshTokenReplay:
 # ---------------------------------------------------------------------------
 # 5. Broker failure recovery
 # ---------------------------------------------------------------------------
+
 
 class TestBrokerFailureRecovery:
     """When the Celery broker is unreachable, the task state must be rolled back.
@@ -430,6 +455,7 @@ class TestBrokerFailureRecovery:
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _get_or_create_user(db: Session, email: str, username: str):
     from app.services import user_service
 
@@ -437,7 +463,10 @@ def _get_or_create_user(db: Session, email: str, username: str):
     if user is not None:
         return user
     user = user_service.create_user(
-        db, email=email, username=username, password="secure123",
+        db,
+        email=email,
+        username=username,
+        password="secure123",
     )
     db.flush()
     return user

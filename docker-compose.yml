@@ -1,6 +1,8 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    # Pinned to a concrete patch release (16.12-alpine); bump deliberately
+    # after reviewing release notes. Avoids silent major/minor drift.
+    image: postgres:16.12-alpine
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?err}
@@ -35,7 +37,9 @@ services:
     # Production: Redis is internal-only and requires a password.  If you
     # need host access for diagnostics, uncomment the ports block below
     # and set REDIS_PORT=6379 in your .env --- but never in production.
-    image: redis:7-alpine
+    # Pinned to the 7.4 minor line; patch releases track automatically
+    # within 7.4-alpine (security fixes) without major-version drift.
+    image: redis:7.4-alpine
     command:
       - "redis-server"
       - "--appendonly"
@@ -114,6 +118,11 @@ services:
       STORAGE_S3_BUCKET: ${STORAGE_S3_BUCKET:-music-ai}
       STORAGE_S3_REGION: ${STORAGE_S3_REGION:-us-east-1}
       STORAGE_LIFECYCLE_DAYS: ${STORAGE_LIFECYCLE_DAYS:-0}
+      # Auth: JWT_SECRET is REQUIRED (no fallback inside containers ---
+      # never sign tokens with the dev default).  Set PRODUCTION_MODE=true
+      # in production; it enforces non-default secrets and forces auth.
+      JWT_SECRET: ${JWT_SECRET:?err}
+      PRODUCTION_MODE: ${PRODUCTION_MODE:-false}
       # Logging configuration
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       LOG_JSON: ${LOG_JSON:-false}
@@ -205,9 +214,13 @@ services:
       WORKER_MEMORY_GATE_MB: ${WORKER_MEMORY_GATE_MB:-3000}
       WORKER_MAX_TASKS_PER_CHILD: ${WORKER_MAX_TASKS_PER_CHILD:-10}
       # Device placement.
-      DEMUCS_DEVICE: ${DEMUCS_DEVICE:-cpu}
+      DEMUCS_DEVICE: ${DEMUCS_DEVICE:-auto}
       BASIC_PITCH_DEVICE: ${BASIC_PITCH_DEVICE:-cpu}
       ADT_DEVICE: ${ADT_DEVICE:-cpu}
+      # Same auth settings as `api`: workers validate config at startup
+      # too, so JWT_SECRET / PRODUCTION_MODE must stay consistent.
+      JWT_SECRET: ${JWT_SECRET:?err}
+      PRODUCTION_MODE: ${PRODUCTION_MODE:-false}
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       LOG_JSON: ${LOG_JSON:-false}
@@ -280,6 +293,9 @@ services:
       # Light workers don't need the heavy models --- keep concurrency
       # modest but higher than the heavy worker.
       WORKER_CONCURRENCY: ${WORKER_LIGHT_CONCURRENCY:-4}
+      # Same auth settings as `api` (see comment there).
+      JWT_SECRET: ${JWT_SECRET:?err}
+      PRODUCTION_MODE: ${PRODUCTION_MODE:-false}
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       LOG_JSON: ${LOG_JSON:-false}
@@ -332,6 +348,9 @@ services:
       DB_NAME: ${POSTGRES_DB:-music_ai}
       REDIS_URL: redis://:${REDIS_PASSWORD:?err}@redis:6379/0
       STORAGE_DIR: /app/storage
+      # Same auth settings as `api` (see comment there).
+      JWT_SECRET: ${JWT_SECRET:?err}
+      PRODUCTION_MODE: ${PRODUCTION_MODE:-false}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       LOG_JSON: ${LOG_JSON:-false}
     command: >
@@ -369,6 +388,12 @@ services:
     depends_on:
       api:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost/"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
     restart: unless-stopped
     stop_grace_period: 10s
     deploy:

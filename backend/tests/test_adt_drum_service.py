@@ -14,6 +14,7 @@ injecting a tiny in-memory ``ADTModelBackend`` that returns canned
     filenames / paths as the rule-based ``DrumMidiService`` so the
     e2e pipeline and frontend keep working unchanged.
 """
+
 from __future__ import annotations
 
 import json
@@ -24,8 +25,8 @@ import soundfile as sf
 
 from app.services.adt_drum_service import (
     ADTOS_LABELS,
-    ADTHit,
     ADTDrumService,
+    ADTHit,
 )
 from app.services.drum_midi_service import DRUM_PARTS
 
@@ -109,8 +110,13 @@ def test_adtos_direct_mapping_covers_eight_classes(tmp_path: Path) -> None:
     # KD -> kick, SD -> snare, HH -> hihat_closed, OH -> hihat_open,
     # HT -> tom_high, MT -> tom_lomid, FT -> tom_floor.
     expected = {
-        "kick", "snare", "hihat_closed", "hihat_open",
-        "tom_high", "tom_lomid", "tom_floor",
+        "kick",
+        "snare",
+        "hihat_closed",
+        "hihat_open",
+        "tom_high",
+        "tom_lomid",
+        "tom_floor",
     }
     assert expected <= by_part, f"missing parts: {expected - by_part}"
     # No spurious cymbal sub-classification for non-cymbal ADTOS hits.
@@ -210,7 +216,7 @@ def test_adtos_label_set_is_stable() -> None:
     contract with the ADTOS checkpoint loader. Adding or removing a
     label requires a coordinated service update."""
     expected = ("KD", "SD", "HH", "OH", "HT", "MT", "FT", "CY", "RD")
-    assert ADTOS_LABELS == expected
+    assert expected == ADTOS_LABELS
 
 
 def test_adtos_backend_predict_is_called_with_audio_path(
