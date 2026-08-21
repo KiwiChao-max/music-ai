@@ -30,7 +30,11 @@ echo $! > "$LOG_DIR/api.pid"
 echo "  [start] api  pid=$(cat "$LOG_DIR/api.pid")  log=$LOG_DIR/api.log"
 
 # ---- Celery worker --------------------------------------------------------
-nohup celery -A app.celery_app:celery worker --loglevel=info --concurrency=2 \
+# OBJC_DISABLE_INITIALIZE_FORK_SAFETY: macOS only. Celery's prefork pool calls
+# fork(); if a threaded audio lib (soundfile/torch) is mid-ObjC init at that
+# moment the child dies with SIGABRT and audio tasks hang forever. Disabling the
+# fork safety check is the standard workaround on macOS.
+OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES nohup celery -A app.celery_app:celery worker --loglevel=info --concurrency=2 \
   > "$LOG_DIR/worker.log" 2>&1 &
 echo $! > "$LOG_DIR/worker.pid"
 echo "  [start] worker  pid=$(cat "$LOG_DIR/worker.pid")  log=$LOG_DIR/worker.log"
