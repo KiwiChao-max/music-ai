@@ -35,17 +35,41 @@ _BASIC_PITCH_MODEL_LOCK = threading.Lock()
 
 
 def _get_basic_pitch_model() -> object:
-    """Load (once) and return the Basic Pitch inference Model."""
+    """Load (once) and return the Basic Pitch inference Model.
+
+    Prefer the ONNX model over the TensorFlow SavedModel. basic-pitch's
+    ``ICASSP_2022_MODEL_PATH`` resolves to the TF directory whenever
+    TensorFlow is importable, but TF >=2.15 can't load that SavedModel
+    (unrelated ``add_slot`` AttributeError), so the driver silently fell
+    back to the slow librosa.pyin transcription. The ONNX model ships in
+    the same package and loads fine with onnxruntime, so use it whenever
+    onnxruntime is available.
+    """
     global _BASIC_PITCH_MODEL
     if _BASIC_PITCH_MODEL is not None:
         return _BASIC_PITCH_MODEL
     with _BASIC_PITCH_MODEL_LOCK:
         if _BASIC_PITCH_MODEL is None:
-            from basic_pitch import ICASSP_2022_MODEL_PATH
             from basic_pitch.inference import Model
 
-            logger.info("basic-pitch: loading ICASSP 2022 model (first use)")
-            _BASIC_PITCH_MODEL = Model(ICASSP_2022_MODEL_PATH)
+            try:
+                import onnxruntime  # noqa: F401
+
+                from basic_pitch import build_icassp_2022_model_path
+                from basic_pitch import FilenameSuffix
+                from basic_pitch import ICASSP_2022_MODEL_PATH
+
+                onnx_path = build_icassp_2022_model_path(FilenameSuffix.onnx)
+                model_path = onnx_path if onnx_path.exists() else ICASSP_2022_MODEL_PATH
+                logger.info("basic-pitch: loading ICASSP 2022 ONNX model (first use)")
+            except ImportError:
+                from basic_pitch import ICASSP_2022_MODEL_PATH
+
+                model_path = ICASSP_2022_MODEL_PATH
+                logger.info(
+                    "basic-pitch: onnxruntime unavailable; loading default model (first use)"
+                )
+            _BASIC_PITCH_MODEL = Model(model_path)
     return _BASIC_PITCH_MODEL
 
 
